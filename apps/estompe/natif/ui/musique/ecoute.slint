@@ -1,0 +1,517 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Icone, Avatar, Case, Etiquette, Champ, Curseur } from "../composants.slint";
+import { MiniProgression } from "../composants/mini-progression.slint";
+import { DonneesVueWeb, ZoneVueWeb } from "../composants/vue-web.slint";
+import { ParticipantSeance } from "../regarder-ensemble/donnees.slint";
+import { DonneesMusique, ElementMusique, ResultatMusique, VoisinMusique } from "donnees.slint";
+import { Pochette } from "mini.slint";
+
+component Carte inherits Rectangle {
+    in property <string> titre;
+    in property <string> compte;
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    height: disposition.preferred-height;
+    disposition := VerticalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Text {
+                text: root.titre;
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: Typo.corps;
+                font-weight: Typo.demi-gras;
+                accessible-role: text;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.compte;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+            }
+        }
+        @children
+    }
+}
+
+component Auditeur inherits HorizontalLayout {
+    in property <ParticipantSeance> p;
+    spacing: Espace.e2;
+    height: 32px;
+    opacity: root.p.charge ? 0.7 : 1;
+    accessible-role: text;
+    accessible-label: root.p.nom + " : " + root.p.pret;
+    Avatar {
+        y: (parent.height - self.height) / 2;
+        nom: root.p.nom;
+        initiales: root.p.initiales;
+        teinte: root.p.teinte;
+        taille: 26px;
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: root.p.nom;
+        color: Theme.encre;
+        font-size: Typo.compact;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: root.p.ok ? Theme.ok : root.p.charge ? Theme.attention : Theme.trait-fort;
+    }
+}
+
+component LigneMorceau inherits HorizontalLayout {
+    in property <image> pochette;
+    in property <bool> a-pochette;
+    in property <string> titre;
+    in property <string> details;
+    in property <string> duree;
+    spacing: Espace.e2;
+    height: 40px;
+    Pochette {
+        y: (parent.height - self.height) / 2;
+        source: root.pochette;
+        presente: root.a-pochette;
+        cote: 32px;
+    }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        Text {
+            text: root.titre;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            overflow: elide;
+        }
+        Text {
+            text: root.details;
+            color: Theme.gris;
+            font-size: 11.5px;
+            overflow: elide;
+        }
+    }
+    if root.duree != "": Text {
+        text: root.duree;
+        color: Theme.gris;
+        font-family: Typo.mono;
+        font-size: 10.5px;
+        vertical-alignment: center;
+    }
+    @children
+}
+
+component Voisin inherits VerticalLayout {
+    in property <VoisinMusique> v;
+    in property <string> description;
+    in property <bool> actif;
+    callback clique();
+    width: 112px;
+    spacing: 6px;
+    alignment: center;
+    HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            width: 88px;
+            height: 88px;
+            border-radius: Rayon.m;
+            background: Theme.papier-3;
+            clip: true;
+            opacity: root.v.present ? (zone.has-hover && root.actif ? 1 : 0.75) : 0.35;
+            accessible-role: button;
+            accessible-label: root.description + " : " + root.v.titre;
+            accessible-enabled: root.v.present && root.actif;
+            accessible-action-default => {
+                if (root.v.present && root.actif) {
+                    root.clique();
+                }
+            }
+            if root.v.a-pochette: Image {
+                width: 100%;
+                height: 100%;
+                source: root.v.pochette;
+                image-fit: cover;
+            }
+            zone := TouchArea {
+                enabled: root.v.present && root.actif && Calques.ouverts == 0;
+                mouse-cursor: self.enabled ? pointer : default;
+                clicked => {
+                    root.clique();
+                }
+            }
+        }
+    }
+    Text {
+        text: root.v.titre;
+        color: Theme.gris;
+        font-size: 11.5px;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+}
+
+export component EnEcoute inherits Rectangle {
+    in property <length> marge-bas: 0;
+    property <bool> utilisable: Calques.ouverts == 0;
+    accessible-role: groupbox;
+    accessible-label: "En cours de lecture";
+    HorizontalLayout {
+        padding: Espace.e4;
+        padding-bottom: root.marge-bas;
+        spacing: Espace.e4;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Espace.e3;
+            HorizontalLayout {
+                spacing: Espace.e2;
+                Bouton {
+                    texte: DonneesMusique.vue.repetition == 1 ? "1" : "";
+                    icone: "repeat";
+                    description: DonneesMusique.vue.libelle-repetition;
+                    variante: DonneesMusique.vue.repetition > 0 ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                    actif: DonneesMusique.vue.peut-piloter;
+                    clique => {
+                        DonneesMusique.repetition();
+                    }
+                }
+                Bouton {
+                    icone: "shuffle";
+                    description: "Mélanger la file";
+                    actif: DonneesMusique.vue.melanger;
+                    clique => {
+                        DonneesMusique.melanger();
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Espace.e1;
+                    Icone {
+                        y: (parent.height - self.height) / 2;
+                        nom: DonneesMusique.vue.volume == 0 ? "volcoupe" : "volume";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                    Curseur {
+                        width: 120px;
+                        minimum: 0;
+                        maximum: 100;
+                        pas: 5;
+                        valeur: DonneesMusique.vue.volume;
+                        libelle: "Volume de la musique (propre à toi)";
+                        unite: " %";
+                        change(v) => {
+                            DonneesMusique.volume(Math.round(v));
+                        }
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+                if DonneesMusique.vue.hote: Case {
+                    y: (parent.height - self.height) / 2;
+                    texte: "Seul l'hôte pilote";
+                    cochee: DonneesMusique.vue.hote-seul;
+                    bascule(v) => {
+                        DonneesMusique.hote-seul(v);
+                    }
+                }
+                if !DonneesMusique.vue.hote && DonneesMusique.vue.hote-seul: Etiquette {
+                    y: (parent.height - self.height) / 2;
+                    texte: "Seul l'hôte pilote";
+                }
+                if DonneesMusique.vue.peut-piloter: Bouton {
+                    texte: "Arrêter la session";
+                    clique => {
+                        DonneesMusique.arreter();
+                    }
+                }
+                Bouton {
+                    texte: "File d'attente (\{DonneesMusique.vue.compte-file})";
+                    icone: "file-attente";
+                    variante: DonneesMusique.file-ouverte ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                    clique => {
+                        DonneesMusique.file-ouverte = !DonneesMusique.file-ouverte;
+                    }
+                }
+            }
+            if DonneesMusique.vue.avis != "": HorizontalLayout {
+                spacing: Espace.e2;
+                Text {
+                    horizontal-stretch: 1;
+                    text: DonneesMusique.vue.avis;
+                    color: Theme.danger;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                    vertical-alignment: center;
+                    accessible-role: text;
+                }
+                Bouton {
+                    texte: "Recharger";
+                    description: "Recharger le lecteur chez moi seulement";
+                    clique => {
+                        DonneesMusique.recharger();
+                    }
+                }
+            }
+            HorizontalLayout {
+                vertical-stretch: 1;
+                alignment: center;
+                spacing: Espace.e6;
+                Voisin {
+                    v: DonneesMusique.vue.precedent;
+                    description: "Morceau précédent";
+                    actif: DonneesMusique.vue.peut-piloter;
+                    clique => {
+                        DonneesMusique.precedent();
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 280px;
+                        height: 280px;
+                        border-radius: Rayon.l;
+                        background: DonneesMusique.vue.a-couleur ? DonneesMusique.vue.couleur : Theme.papier-3;
+                        clip: true;
+                        accessible-role: image;
+                        accessible-label: "Lecteur YouTube : " + DonneesMusique.vue.titre;
+                        if !DonneesVueWeb.musique && DonneesMusique.vue.a-pochette: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: DonneesMusique.vue.pochette;
+                            image-fit: cover;
+                        }
+                        if !DonneesVueWeb.musique && !DonneesMusique.vue.a-pochette: Icone {
+                            nom: "note";
+                            taille: 64px;
+                            couleur: Theme.gris;
+                        }
+                        if DonneesVueWeb.musique: ZoneVueWeb {
+                            x: 0;
+                            y: 0;
+                            width: parent.width;
+                            height: parent.height;
+                            nom: "musique";
+                            montree: root.utilisable;
+                        }
+                    }
+                }
+                Voisin {
+                    v: DonneesMusique.vue.prochain;
+                    description: "Morceau suivant";
+                    actif: DonneesMusique.vue.suivant;
+                    clique => {
+                        DonneesMusique.suivant();
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: DonneesMusique.vue.titre;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: Typo.titre-section;
+                    font-weight: Typo.demi-gras;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                    accessible-role: text;
+                }
+                Text {
+                    text: DonneesMusique.vue.details;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+            }
+            if DonneesMusique.vue.navigateur: HorizontalLayout {
+                alignment: center;
+                spacing: Espace.e2;
+                Text {
+                    text: "La musique s'écoute dans le navigateur sur cet appareil : elle n'y est pas synchronisée.";
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                }
+                Bouton {
+                    texte: "Ouvrir dans le navigateur";
+                    icone: "external";
+                    clique => {
+                        DonneesMusique.ouvrir-navigateur();
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                MiniProgression {
+                    width: Math.max(200px, Math.min(520px, root.width - 380px));
+                    position: DonneesMusique.vue.position;
+                    duree: DonneesMusique.vue.duree;
+                    texte-position: DonneesMusique.vue.texte-position;
+                    texte-duree: DonneesMusique.vue.texte-duree;
+                    texte-restant: DonneesMusique.vue.texte-restant;
+                    utilisable: DonneesMusique.vue.peut-piloter;
+                    aller(v) => {
+                        DonneesMusique.aller(v);
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: Espace.e3;
+                Bouton {
+                    icone: "precedent";
+                    description: "Précédent";
+                    variante: VarianteBouton.fantome;
+                    actif: DonneesMusique.vue.peut-piloter;
+                    clique => {
+                        DonneesMusique.precedent();
+                    }
+                }
+                Bouton {
+                    icone: DonneesMusique.vue.lecture ? "pause" : "lecture";
+                    description: DonneesMusique.vue.lecture ? "Pause" : "Lecture";
+                    variante: VarianteBouton.primaire;
+                    actif: DonneesMusique.vue.peut-piloter;
+                    clique => {
+                        DonneesMusique.basculer();
+                    }
+                }
+                Bouton {
+                    icone: "suivant";
+                    description: "Suivant";
+                    variante: VarianteBouton.fantome;
+                    actif: DonneesMusique.vue.suivant;
+                    clique => {
+                        DonneesMusique.suivant();
+                    }
+                }
+            }
+            Text {
+                text: DonneesMusique.vue.statut;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                horizontal-alignment: center;
+                accessible-role: text;
+            }
+        }
+        VerticalLayout {
+            width: 300px;
+            spacing: Espace.e3;
+            alignment: start;
+            Carte {
+                titre: "Auditeurs";
+                compte: DonneesMusique.auditeurs.length;
+                for p in DonneesMusique.auditeurs: Auditeur {
+                    p: p;
+                }
+            }
+            Carte {
+                titre: "Ajouter";
+                HorizontalLayout {
+                    spacing: Espace.e1;
+                    saisie := Champ {
+                        indice: "https://… ou rechercher un morceau";
+                        valide(v) => {
+                            if (DonneesMusique.ajouter(v)) {
+                                self.valeur = "";
+                            }
+                        }
+                    }
+                    Bouton {
+                        icone: "plus";
+                        description: "Ajouter ou rechercher";
+                        actif: saisie.valeur != "";
+                        en-cours: DonneesMusique.vue.recherche-en-cours;
+                        clique => {
+                            if (DonneesMusique.ajouter(saisie.valeur)) {
+                                saisie.valeur = "";
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: "Lien YouTube Music ou recherche (Entrée)";
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 10.5px;
+                }
+                if DonneesMusique.vue.recherche-erreur != "": Text {
+                    text: DonneesMusique.vue.recherche-erreur;
+                    color: Theme.danger;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                }
+                for r in DonneesMusique.resultats: LigneMorceau {
+                    pochette: r.pochette;
+                    a-pochette: r.a-pochette;
+                    titre: r.titre;
+                    details: r.artiste;
+                    duree: r.duree;
+                    Bouton {
+                        icone: "plus";
+                        description: "Ajouter « " + r.titre + " » à la file";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesMusique.choisir(r.id);
+                        }
+                    }
+                }
+            }
+            if DonneesMusique.file-ouverte: Carte {
+                titre: "File d'attente";
+                compte: DonneesMusique.file.length;
+                if DonneesMusique.file.length == 0: Text {
+                    text: "La file est vide : ajoutez un morceau, un album ou une playlist.";
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                }
+                for e[i] in DonneesMusique.file: LigneMorceau {
+                    pochette: e.pochette;
+                    a-pochette: e.a-pochette;
+                    titre: e.titre;
+                    details: e.details;
+                    duree: e.duree;
+                    if e.monter || e.descendre: Bouton {
+                        icone: "up";
+                        description: "Monter";
+                        variante: VarianteBouton.fantome;
+                        actif: e.monter;
+                        clique => {
+                            DonneesMusique.monter(i);
+                        }
+                    }
+                    if e.monter || e.descendre: Bouton {
+                        icone: "down";
+                        description: "Descendre";
+                        variante: VarianteBouton.fantome;
+                        actif: e.descendre;
+                        clique => {
+                            DonneesMusique.descendre(i);
+                        }
+                    }
+                    if e.retirer: Bouton {
+                        icone: "x";
+                        description: "Retirer de la file";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesMusique.retirer(e.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -175,6 +175,7 @@ fn ligne_membre_slint(
         },
         libelle_presence: libelle_presence(d.presence).into(),
         activite: d.activite.as_str().into(),
+        ecoute: d.ecoute.as_str().into(),
         a_couleur: couleur.is_some(),
         couleur: couleur.unwrap_or_default(),
         createur: d.createur,
@@ -1130,6 +1131,7 @@ impl Pont {
         f.global::<DonneesCoquille>().set_bandeau(etat);
         if retabli {
             self.vocal.seance().reconnecte(f);
+            self.vocal.musique().reconnecte(f);
             self.videos.reconnecte();
         }
     }

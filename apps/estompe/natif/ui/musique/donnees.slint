@@ -1,0 +1,109 @@
+import { ParticipantSeance } from "../regarder-ensemble/donnees.slint";
+
+export struct VoisinMusique {
+    present: bool,
+    titre: string,
+    infobulle: string,
+    pochette: image,
+    a-pochette: bool,
+}
+
+export struct ElementMusique {
+    id: string,
+    titre: string,
+    details: string,
+    duree: string,
+    pochette: image,
+    a-pochette: bool,
+    monter: bool,
+    descendre: bool,
+    retirer: bool,
+}
+
+export struct ResultatMusique {
+    id: string,
+    titre: string,
+    artiste: string,
+    duree: string,
+    pochette: image,
+    a-pochette: bool,
+}
+
+export struct VueMusique {
+    active: bool,
+    titre: string,
+    details: string,
+    pochette: image,
+    a-pochette: bool,
+    couleur: color,
+    a-couleur: bool,
+    peut-piloter: bool,
+    hote: bool,
+    hote-seul: bool,
+    lecture: bool,
+    position: float,
+    duree: float,
+    texte-position: string,
+    texte-duree: string,
+    texte-restant: string,
+    repetition: int,
+    libelle-repetition: string,
+    melanger: bool,
+    suivant: bool,
+    precedent: VoisinMusique,
+    prochain: VoisinMusique,
+    statut: string,
+    avis: string,
+    navigateur: bool,
+    volume: int,
+    compte-file: int,
+    recherche-erreur: string,
+    recherche-en-cours: bool,
+}
+
+export struct MiniMusique {
+    salon: string,
+    titre: string,
+    sous-titre: string,
+    pochette: image,
+    a-pochette: bool,
+    lecture: bool,
+    peut-piloter: bool,
+    position: float,
+    duree: float,
+    texte-position: string,
+    texte-duree: string,
+    texte-restant: string,
+}
+
+export global DonneesMusique {
+    in property <bool> disponible;
+    in property <VueMusique> vue;
+    in property <[ParticipantSeance]> auditeurs;
+    in property <[ElementMusique]> file;
+    in property <[ResultatMusique]> resultats;
+    in property <[MiniMusique]> minis;
+    in property <MiniMusique> ici;
+    in property <bool> a-ici;
+    in-out property <bool> file-ouverte: false;
+    in-out property <bool> afficher: true;
+    callback basculer();
+    callback aller(float);
+    callback precedent();
+    callback suivant();
+    callback repetition();
+    callback melanger();
+    callback hote-seul(bool);
+    callback arreter();
+    callback volume(int);
+    callback ajouter(string) -> bool;
+    callback choisir(string);
+    callback retirer(string);
+    callback monter(int);
+    callback descendre(int);
+    callback ouvrir-navigateur();
+    callback recharger();
+    callback ecouter-ensemble();
+    callback mini-basculer(string);
+    callback mini-aller(string, float);
+}

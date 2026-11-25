@@ -11,6 +11,7 @@ pub mod menu;
 pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
+pub mod musique;
 pub mod overlay;
 pub mod parametres;
 pub mod regarder_ensemble;

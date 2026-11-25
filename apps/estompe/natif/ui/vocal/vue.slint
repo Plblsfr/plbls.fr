@@ -8,6 +8,8 @@ import { BandeauPartage } from "partage.slint";
 import { DonneesSeance } from "../regarder-ensemble/donnees.slint";
 import { SeanceVue } from "../regarder-ensemble/seance.slint";
 import { SansAccesVue } from "../regarder-ensemble/sans-acces.slint";
+import { DonneesMusique } from "../musique/donnees.slint";
+import { EnEcoute } from "../musique/ecoute.slint";
 
 component Rejoindre inherits VerticalLayout {
     alignment: center;
@@ -154,7 +156,9 @@ component Scene inherits Rectangle {
     property <length> debut-bande: (self.width - (bande * largeur-bande + (bande - 1) * ecart)) / 2;
     property <length> largeur-vedette: plein ? self.width : self.width - 48px;
     property <length> hauteur-vedette: plein ? self.height : self.height - 20px - marge-bas - (DonneesVocal.vue.bande > 0 ? hauteur-bande + ecart : 0);
-    property <bool> seance: DonneesSeance.vue.active || DonneesSeance.vue.sans-acces;
+    property <bool> seance-presente: DonneesSeance.vue.active || DonneesSeance.vue.sans-acces;
+    property <bool> musique: DonneesMusique.vue.active && (!root.seance-presente || DonneesMusique.afficher);
+    property <bool> seance: root.seance-presente && !root.musique;
     init => {
         DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
         DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
@@ -172,7 +176,7 @@ component Scene inherits Rectangle {
         DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
     }
     for p in DonneesVocal.tuiles: Tuile {
-        visible: !root.seance && (!root.plein || p.cle == DonneesVocal.vue.plein-ecran);
+        visible: !root.seance && !root.musique && (!root.plein || p.cle == DonneesVocal.vue.plein-ecran);
         x: root.plein ? 0 : root.vedette ? (p.vedette ? 24px : root.debut-bande + p.rang * (root.largeur-bande + root.ecart)) : (root.width - root.largeur-grille) / 2 + Math.mod(p.rang, root.colonnes) * (root.largeur-tuile + root.ecart);
         y: root.plein ? 0 : root.vedette ? (p.vedette ? 20px : 20px + root.hauteur-vedette + root.ecart) : 20px + Math.floor(p.rang / root.colonnes) * (root.hauteur-tuile + root.ecart);
         width: root.plein ? root.width : root.vedette ? (p.vedette ? root.largeur-vedette : root.largeur-bande) : root.largeur-tuile;
@@ -215,18 +219,44 @@ component Scene inherits Rectangle {
         width: 100%;
         height: parent.height - root.marge-bas;
     }
-    if !root.seance && !root.plein && !DonneesVocal.vue.cinema: Bouton {
+    if root.musique && !root.plein: EnEcoute {
+        width: 100%;
+        height: 100%;
+        marge-bas: root.marge-bas;
+    }
+    if !root.plein && !DonneesVocal.vue.cinema: HorizontalLayout {
         x: parent.width - self.width - 24px;
         y: barre.y + (barre.height - self.height) / 2;
-        texte: "Regarder ensemble";
-        icone: "tele";
-        description: "Regarder ensemble (vidéo)";
-        variante: VarianteBouton.secondaire;
-        clique => {
-            DonneesSeance.ouvrir-choix();
+        spacing: Espace.e2;
+        if root.seance-presente && DonneesMusique.vue.active: Bouton {
+            texte: root.musique ? "Vidéo" : "Musique";
+            icone: root.musique ? "tele" : "note";
+            description: root.musique ? "Afficher la vidéo" : "Afficher la musique";
+            variante: VarianteBouton.secondaire;
+            clique => {
+                DonneesMusique.afficher = !root.musique;
+            }
+        }
+        if !DonneesMusique.vue.active && DonneesMusique.disponible: Bouton {
+            texte: "Écouter ensemble";
+            icone: "note";
+            description: "Écouter ensemble (Music2gether)";
+            variante: VarianteBouton.secondaire;
+            clique => {
+                DonneesMusique.ecouter-ensemble();
+            }
+        }
+        if !root.seance-presente: Bouton {
+            texte: "Regarder ensemble";
+            icone: "tele";
+            description: "Regarder ensemble (vidéo)";
+            variante: VarianteBouton.secondaire;
+            clique => {
+                DonneesSeance.ouvrir-choix();
+            }
         }
     }
-    if !root.seance && !root.plein && (DonneesVocal.vue.seul || DonneesVocal.vue.cinema): Text {
+    if !root.seance && !root.musique && !root.plein && (DonneesVocal.vue.seul || DonneesVocal.vue.cinema): Text {
         x: 24px;
         y: parent.height - root.marge-bas - 4px;
         width: parent.width - 48px;

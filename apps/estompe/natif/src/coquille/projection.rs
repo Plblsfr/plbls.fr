@@ -572,7 +572,9 @@ pub fn lignes_contacts(etat: &Etat) -> Vec<DonneesContact> {
 
 pub fn donnees_compte(etat: &Etat) -> DonneesCompte {
     let presence = etat.presence_de(etat.moi());
+    let ecoute = estompe_client::musique::ecoute_de(etat, etat.moi());
     let statut = match etat.activite_de(etat.moi()) {
+        "" if !ecoute.is_empty() => format!("Écoute {ecoute}"),
         "" => super::membres::libelle_presence(presence).to_string(),
         activite => activite.to_string(),
     };
@@ -1004,6 +1006,37 @@ mod tests {
         e.activite_locale = "Factorio".into();
         assert_eq!(donnees_compte(&e).presence, Presence::Absent);
         assert_eq!(donnees_compte(&e).statut, "Factorio");
+        e.vocal.insert(
+            "v9".into(),
+            vec![estompe_client::store::ParticipantVocal {
+                utilisateur: "me".into(),
+                pseudo: "bob".into(),
+                ..Default::default()
+            }],
+        );
+        e.seances.appliquer(
+            estompe_client::regarder_ensemble::GenreSeance::Musique,
+            &estompe_client::temps_reel::evenements::Seance {
+                channel_id: "v9".into(),
+                state: Some(estompe_client::temps_reel::evenements::EtatSeance {
+                    meta: Some(estompe_client::temps_reel::evenements::MetaMorceau {
+                        title: "Nuit blanche".into(),
+                        artist: "Les Lucioles".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            true,
+            0,
+        );
+        assert_eq!(donnees_compte(&e).statut, "Factorio");
+        e.activite_locale.clear();
+        assert_eq!(
+            donnees_compte(&e).statut,
+            "Écoute Nuit blanche – Les Lucioles"
+        );
     }
 
     #[test]

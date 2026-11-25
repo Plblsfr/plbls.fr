@@ -30,6 +30,7 @@ use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::synchroniser;
 use crate::coquille::pont::vec_de;
 use crate::messagerie::pont::SystemeFichiers;
+use crate::musique::PontMusique;
 use crate::overlay::voix as overlay_voix;
 use crate::regarder_ensemble::PontSeance;
 use crate::session::Memoire;
@@ -199,6 +200,7 @@ pub struct PontVocal {
     profils: Arc<Profils>,
     videos_hors_session: Arc<Videos>,
     seance: PontSeance,
+    musique: PontMusique,
 }
 
 pub fn installer_modeles(f: &Principale) {
@@ -456,6 +458,12 @@ impl PontVocal {
         horloge: HorlogeMs,
         profils: Arc<Profils>,
     ) -> Self {
+        let seance = PontSeance::nouveau(
+            store.clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            memoire.clone(),
+        );
         Self {
             interne: Arc::new(Mutex::new(Interne {
                 outils: None,
@@ -495,11 +503,13 @@ impl PontVocal {
                 zone_vedette: (0.0, 0.0),
                 menu_partage: false,
             })),
-            seance: PontSeance::nouveau(
+            seance: seance.clone(),
+            musique: PontMusique::nouveau(
                 store.clone(),
                 fenetre.clone(),
                 runtime.clone(),
                 memoire.clone(),
+                seance,
             ),
             store,
             fenetre,
@@ -513,6 +523,10 @@ impl PontVocal {
 
     pub fn seance(&self) -> &PontSeance {
         &self.seance
+    }
+
+    pub fn musique(&self) -> &PontMusique {
+        &self.musique
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
@@ -612,6 +626,7 @@ impl PontVocal {
             }
         }
         self.seance.arreter();
+        self.musique.arreter();
     }
 
     pub fn outils(&self) -> Option<OutilsVocaux> {
@@ -1059,12 +1074,19 @@ impl PontVocal {
         self.projeter_niveau(f, i);
         self.projeter_camera(f, i);
         self.projeter_partage(f, i);
+        let connecte = i.etat.salon.clone().filter(|_| i.etat.actif());
         drop(guard);
         for cle in demandes {
             self.telecharger_avatar(cle);
         }
         self.seance
             .suivre(f, salon_vue.as_deref(), serveur.as_deref(), ici);
+        self.musique.suivre(
+            f,
+            salon_vue.as_deref(),
+            serveur.as_deref(),
+            connecte.as_deref(),
+        );
     }
 
     fn projeter_videos(

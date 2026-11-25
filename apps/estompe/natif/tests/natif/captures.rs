@@ -329,6 +329,11 @@ const ECRANS: &[Ecran] = ecrans![
     "videos-lecteur-clair", Clair, videos_lecteur;
     "videos-mini-clair", Clair, videos_mini;
     "videos-mini-sombre", Sombre, videos_mini;
+    "musique-ecoute-clair", Clair, musique_ecoute;
+    "musique-ecoute-sombre", Sombre, musique_ecoute;
+    "musique-lecteur-clair", Clair, musique_lecteur;
+    "musique-mini-clair", Clair, musique_mini;
+    "musique-mini-sombre", Sombre, musique_mini;
 ];
 
 fn bob() -> Compte {
@@ -1164,6 +1169,135 @@ fn videos_mini(f: &Principale) {
     let pont = videos_solo(f);
     pont.naviguer(f, salon("s1", Some("c1")));
     stabiliser(f);
+}
+
+const MORCEAUX: [(&str, &str, &str, i64); 5] = [
+    ("aaaaaaaaaaa", "Nuit blanche", "Les Lucioles", 205),
+    ("bbbbbbbbbbb", "Marée haute", "Clara Sol", 248),
+    ("ccccccccccc", "Train de 6 h 12", "Les Lucioles", 187),
+    ("ddddddddddd", "Lumière d'hiver", "Orchestre du Nord", 312),
+    ("eeeeeeeeeee", "Petit matin", "Clara Sol", 164),
+];
+
+fn morceau(i: usize) -> estompe_client::temps_reel::evenements::MetaMorceau {
+    let (id, titre, artiste, duree) = MORCEAUX[i];
+    estompe_client::temps_reel::evenements::MetaMorceau {
+        title: titre.into(),
+        artist: artiste.into(),
+        album: "Saisons".into(),
+        duration: duree,
+        cover: format!("/music/cover/{id}"),
+    }
+}
+
+fn musique_dans(etat: &mut estompe_client::store::Etat, salon: &str, courant: usize) {
+    use estompe_client::regarder_ensemble::GenreSeance;
+    use estompe_client::temps_reel::evenements::{ElementFile, EtatSeance, Seance};
+    let element = |i: usize, par: &str| ElementFile {
+        id: format!("q{i}"),
+        provider: "youtube".into(),
+        video: MORCEAUX[i].0.into(),
+        by: par.into(),
+        by_id: par.into(),
+        meta: Some(morceau(i)),
+    };
+    let e = EtatSeance {
+        rev: 9,
+        provider: "youtube".into(),
+        video: MORCEAUX[courant].0.into(),
+        playing: false,
+        pos: 72.0,
+        rate: 1.0,
+        at: "2026-11-19T09:30:00Z".into(),
+        host: "carol".into(),
+        by_id: "carol".into(),
+        by: "carol".into(),
+        act: "pause".into(),
+        ready: [("u1", true), ("carol", true), ("dave", false)]
+            .into_iter()
+            .map(|(u, p)| (u.to_string(), p))
+            .collect(),
+        meta: Some(morceau(courant)),
+        queue: vec![element(2, "dave"), element(3, "bob"), element(4, "carol")],
+        history: vec![element(1, "carol")],
+        ..EtatSeance::default()
+    };
+    etat.seances.appliquer(
+        GenreSeance::Musique,
+        &Seance {
+            server_id: "s1".into(),
+            channel_id: salon.into(),
+            state: Some(e),
+            now: None,
+        },
+        true,
+        MAINTENANT_MS,
+    );
+}
+
+fn musique_avec(f: &Principale, vue: &str) -> Pont {
+    let autres: Vec<&str> = PRENOMS.iter().take(3).copied().collect();
+    let mut etat = commun::coquille::etat();
+    if let Some(salons) = etat.details.get_mut("s1").and_then(|d| d.channels.as_mut()) {
+        salons.push(
+            serde_json::from_value(serde_json::json!({"id": "v2", "name": "Soirée jeux", "kind": "voice", "position": 3}))
+                .unwrap(),
+        );
+    }
+    for (salon, gens) in [("v1", &autres[..]), ("v2", &["hugo", "inès"][..])] {
+        etat.vocal.insert(
+            salon.into(),
+            gens.iter()
+                .map(|u| ParticipantVocal {
+                    utilisateur: u.to_string(),
+                    pseudo: u.to_string(),
+                    depuis: Some(DEBUT_DU_VOCAL.into()),
+                    ..ParticipantVocal::default()
+                })
+                .collect(),
+        );
+    }
+    musique_dans(&mut etat, "v1", 0);
+    musique_dans(&mut etat, "v2", 3);
+    for (i, (id, ..)) in MORCEAUX.iter().enumerate() {
+        let image = estompe_natif::video::convertir(
+            &Mire::nouvelle(280, 280).image(i as u64 * 7),
+            (0, 0),
+            false,
+        )
+        .map(slint::Image::from_rgba8);
+        if let Some(image) = image {
+            estompe_natif::musique::installer_pochette(
+                &format!("/music/cover/{id}"),
+                image,
+                Some([180, 120 + i as u8 * 20, 140]),
+            );
+        }
+    }
+    let pont = coquille_avec(f, etat, salon("s1", Some(vue)), profils_du_vocal());
+    pont.vocal()
+        .musique()
+        .definir_outils(Arc::new(commun::FauxNavigateur::default()), None);
+    pont.vocal()
+        .definir_etat(f, etat_vocal("v1", &autres, |_| {}));
+    stabiliser(f);
+    pont
+}
+
+fn musique_ecoute(f: &Principale) {
+    musique_avec(f, "v1");
+}
+
+fn musique_lecteur(f: &Principale) {
+    musique_avec(f, "v1");
+    f.global::<estompe_natif::DonneesVueWeb>().set_musique(true);
+    f.global::<estompe_natif::DonneesMusique>()
+        .set_file_ouverte(true);
+    stabiliser(f);
+}
+
+fn musique_mini(f: &Principale) {
+    musique_avec(f, "c1");
 }
 
 fn cameras_du_poste() -> Vec<estompe_plateforme::InfoCamera> {

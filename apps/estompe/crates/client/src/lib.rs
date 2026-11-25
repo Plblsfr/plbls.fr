@@ -32,6 +32,7 @@ pub mod message_vocal;
 pub mod mesures;
 pub mod mise_a_jour;
 pub mod moderation;
+pub mod musique;
 pub mod niveaux_notification;
 pub mod notifications;
 pub mod nouveau_prive;

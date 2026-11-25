@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 
+use estompe_client::regarder_ensemble::GenreSeance;
 use estompe_client::route::Route;
 use estompe_client::store::{Changement, CleConversation};
 use slint::{Model, VecModel};
@@ -254,9 +255,18 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
             }
             Changement::Vocal { salon } => {
                 c.accueil = true;
+                c.compte = true;
                 if courant.is_some() {
                     c.salons.ajouter(salon);
+                    c.membres = true;
                 }
+            }
+            Changement::Seance {
+                genre: GenreSeance::Musique,
+                ..
+            } => {
+                c.compte = true;
+                c.membres |= courant.is_some();
             }
             Changement::ConversationCourante
             | Changement::DeplacementVocal { .. }

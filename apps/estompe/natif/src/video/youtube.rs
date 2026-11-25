@@ -20,6 +20,7 @@ use crate::{DonneesVueWeb, Principale};
 pub const PLACE_SEANCE: &str = "seance";
 pub const PLACE_VISIONNEUSE: &str = "visionneuse";
 pub const PLACE_SOLO: &str = "solo";
+pub const PLACE_MUSIQUE: &str = "musique";
 pub const DOSSIER_VUE_WEB: &str = "vue-web";
 const SOURCE_JOURNAL: &str = "youtube";
 const SANS_NOUVELLES: Duration = Duration::from_millis(600);
@@ -316,6 +317,17 @@ pub fn pomper_solo(f: &Principale, lien: Option<&LienVue>, rappel: RappelLien) {
     let g = f.global::<DonneesVueWeb>();
     if g.get_solo() != ouverte {
         g.set_solo(ouverte);
+    }
+}
+
+pub fn pomper_musique(f: &Principale, lien: Option<&LienVue>, rappel: RappelLien) {
+    if EN_OUVERTURE.with(Cell::get) {
+        return;
+    }
+    let ouverte = pomper(f, PLACE_MUSIQUE, lien, rappel);
+    let g = f.global::<DonneesVueWeb>();
+    if g.get_musique() != ouverte {
+        g.set_musique(ouverte);
     }
 }
 

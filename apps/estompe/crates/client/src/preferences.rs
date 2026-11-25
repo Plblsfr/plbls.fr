@@ -93,6 +93,7 @@ pub struct Preferences {
     pub overlay_messages: ReglagesMessages,
     pub replay: ReglagesReplay,
     pub film: PreferencesFilm,
+    pub volume_musique: u8,
 }
 
 impl Default for Preferences {
@@ -133,6 +134,7 @@ impl Default for Preferences {
             overlay_messages: ReglagesMessages::default(),
             replay: ReglagesReplay::default(),
             film: PreferencesFilm::default(),
+            volume_musique: crate::musique::VOLUME_PAR_DEFAUT,
         }
     }
 }
@@ -228,6 +230,7 @@ impl Preferences {
             overlay_messages: champ(&objet, "overlay_messages", d.overlay_messages).borne(),
             replay: champ(&objet, "replay", d.replay).borne(),
             film: champ(&objet, "film", d.film),
+            volume_musique: champ(&objet, "volume_musique", d.volume_musique).min(100),
         })
     }
 
@@ -520,6 +523,7 @@ mod tests {
                 wifi_seulement: true,
                 ..PreferencesFilm::default()
             },
+            volume_musique: 35,
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -580,6 +584,18 @@ mod tests {
         assert_eq!(relu.film, p.film);
         let invalide = Preferences::depuis_json(r#"{"film": {"tampon": "x"}}"#).unwrap();
         assert_eq!(invalide.film, PreferencesFilm::default());
+    }
+
+    #[test]
+    fn le_volume_de_la_musique_est_relu_borne_et_revient_au_defaut() {
+        let lu = |json: &str| Preferences::depuis_json(json).unwrap().volume_musique;
+        assert_eq!(lu(r#"{"volume_musique": 35}"#), 35);
+        assert_eq!(lu(r#"{"volume_musique": 250}"#), 100);
+        assert_eq!(
+            lu(r#"{"volume_musique": "fort"}"#),
+            crate::musique::VOLUME_PAR_DEFAUT
+        );
+        assert_eq!(lu("{}"), crate::musique::VOLUME_PAR_DEFAUT);
     }
 
     #[test]

@@ -11,6 +11,8 @@ import { DonneesParametres } from "../parametres/page.slint";
 import { DonneesReglagesServeur } from "reglages-serveur.slint";
 import { DonneesVideos } from "../videos/donnees.slint";
 import { MiniLecteurSolo } from "../videos/mini.slint";
+import { DonneesMusique } from "../musique/donnees.slint";
+import { MiniMusiqueVue } from "../musique/mini.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -451,6 +453,16 @@ export component Panneau inherits Rectangle {
                                 p: p;
                             }
                         }
+                        for m in DonneesMusique.minis: VerticalLayout {
+                            if m.salon == salon.id: HorizontalLayout {
+                                padding-left: 26px;
+                                padding-right: 4px;
+                                padding-bottom: 4px;
+                                MiniMusiqueVue {
+                                    m: m;
+                                }
+                            }
+                        }
                     }
                     if DonneesCoquille.salons.length == 0: HorizontalLayout {
                         padding-left: 10px;
@@ -476,6 +488,9 @@ export component Panneau inherits Rectangle {
             padding: Espace.e2;
             spacing: Espace.e2;
             if DonneesVideos.solo.actif && !DonneesVideos.solo.ancre: MiniLecteurSolo { }
+            if DonneesMusique.a-ici: MiniMusiqueVue {
+                m: DonneesMusique.ici;
+            }
             if DonneesVocal.barre.visible: BarreVocalPanneau { }
             if DonneesMiseAJour.automatique && (DonneesMiseAJour.proposee || DonneesMiseAJour.compte-a-rebours > 0): BandeauMiseAJour { }
             BarreMoi {

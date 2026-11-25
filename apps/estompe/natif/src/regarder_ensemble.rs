@@ -110,7 +110,7 @@ fn entrees(choix: Vec<vue_salon::Choix>) -> Vec<Entree> {
         .collect()
 }
 
-fn participant_slint(p: &vue_salon::ParticipantSeance) -> ParticipantSeance {
+pub(crate) fn participant_slint(p: &vue_salon::ParticipantSeance) -> ParticipantSeance {
     ParticipantSeance {
         id: p.id.as_str().into(),
         nom: p.nom.as_str().into(),

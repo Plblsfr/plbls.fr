@@ -1600,6 +1600,9 @@ async fn session(
             navigateur: contexte.fabrique.navigateur(),
             journal: contexte.fabrique.journal(),
         });
+    pont.vocal()
+        .musique()
+        .definir_outils(contexte.fabrique.navigateur(), contexte.fabrique.journal());
     pont.videos().definir_outils(crate::videos::OutilsVideos {
         lecteur: contexte.fabrique.lecteur(),
         navigateur: contexte.fabrique.navigateur(),
@@ -1647,6 +1650,7 @@ async fn session(
     let etat_vocal_initial = etat_vocal.as_mut().map(|e| e.borrow_and_update().clone());
     contexte.sur_l_interface(move |f| {
         p.vocal().seance().brancher(f);
+        p.vocal().musique().brancher(f);
         p.videos().brancher(f);
         p.definir_reseau(f, reseau_initial);
         p.demarrer(f);

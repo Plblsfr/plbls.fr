@@ -741,7 +741,7 @@ mod tests {
     use crate::regarder_ensemble::seance::RegistreSeances;
     use crate::regarder_ensemble::synchro::tests::base;
     use crate::serveur_factice::{Reponse, ServeurFactice};
-    use crate::temps_reel::evenements::MetaMorceau;
+    use crate::temps_reel::evenements::{ElementFile, MetaMorceau};
 
     const VIDEO: &str = "https://estompe.test/f/film.mp4";
     const PAS: i64 = 20;
@@ -755,6 +755,8 @@ mod tests {
         tampon_jusqua: Option<i64>,
         horloge: i64,
         dernier: EtatLecture,
+        reference: String,
+        durees: BTreeMap<String, f64>,
     }
 
     impl LecteurWeb {
@@ -767,6 +769,8 @@ mod tests {
                 tampon_jusqua: None,
                 horloge: 0,
                 dernier: EtatLecture::NonDemarre,
+                reference: String::new(),
+                durees: BTreeMap::new(),
             }
         }
 
@@ -782,6 +786,13 @@ mod tests {
             }
             if self.st == EtatLecture::Lecture {
                 self.t += ms as f64 / 1000.0 * self.r;
+                if let Some(&d) = self.durees.get(&self.reference) {
+                    if self.t >= d {
+                        self.t = d;
+                        self.voulu = false;
+                        self.st = EtatLecture::Fin;
+                    }
+                }
             }
         }
 
@@ -794,7 +805,8 @@ mod tests {
     }
 
     impl LecteurSeance for LecteurWeb {
-        fn charger(&mut self, _reference: &str, depart: f64, lecture: bool) {
+        fn charger(&mut self, reference: &str, depart: f64, lecture: bool) {
+            self.reference = reference.to_string();
             self.t = depart;
             self.voulu = lecture;
             self.st = EtatLecture::Tampon;
@@ -869,16 +881,59 @@ mod tests {
         etat: EtatSeance,
     }
 
+    fn changer_de_titre(e: &mut EtatSeance, suivant: ElementFile, maintenant: i64) {
+        e.rev += 1;
+        e.act = "video".into();
+        e.at = iso_de_ms(maintenant);
+        e.provider = suivant.provider;
+        e.video = suivant.video;
+        e.meta = suivant.meta;
+        e.pos = 0.0;
+        e.playing = true;
+        e.ready.clear();
+    }
+
+    fn courant(e: &EtatSeance) -> ElementFile {
+        ElementFile {
+            id: format!("h{}", e.rev),
+            provider: e.provider.clone(),
+            video: e.video.clone(),
+            meta: e.meta.clone(),
+            ..ElementFile::default()
+        }
+    }
+
     impl Serveur {
         fn appliquer(
             &mut self,
             action: &str,
             position: Option<f64>,
             vitesse: Option<f64>,
+            rev: Option<i64>,
             maintenant: i64,
-        ) {
+        ) -> bool {
             let actuelle = position_attendue(&self.etat, 0, maintenant);
             let e = &mut self.etat;
+            match action {
+                "ended" if rev != Some(e.rev) || e.queue.is_empty() => return false,
+                "ended" => {
+                    let suivant = e.queue.remove(0);
+                    let present = courant(e);
+                    e.history.push(present);
+                    changer_de_titre(e, suivant, maintenant);
+                    return true;
+                }
+                "previous" => {
+                    let Some(precedent) = e.history.pop() else {
+                        return false;
+                    };
+                    let present = courant(e);
+                    e.queue.insert(0, present);
+                    changer_de_titre(e, precedent, maintenant);
+                    return true;
+                }
+                _ => {}
+            }
             e.rev += 1;
             e.act = action.into();
             e.at = iso_de_ms(maintenant);
@@ -901,6 +956,7 @@ mod tests {
                     e.pos = actuelle;
                 }
             }
+            true
         }
 
         fn vue(&self, maintenant: i64) -> Seance {
@@ -939,7 +995,8 @@ mod tests {
         clients: Vec<Client2>,
         reseau: VecDeque<(i64, Message)>,
         moteur: MoteurFactice,
-        web: Arc<std::sync::Mutex<LecteurWeb>>,
+        webs: Vec<Arc<std::sync::Mutex<LecteurWeb>>>,
+        genre: GenreSeance,
     }
 
     impl Monde {
@@ -987,13 +1044,84 @@ mod tests {
                 ],
                 reseau: VecDeque::new(),
                 moteur,
-                web,
+                webs: vec![web],
+                genre: GenreSeance::Regarder,
             };
             for c in 0..2 {
                 let vue = m.serveur.vue(m.maintenant);
                 m.livrer(c, vue, true);
             }
             m
+        }
+
+        fn musique(titres: &[(&str, f64)]) -> Self {
+            let (_, moteur) = Lecteur::factice();
+            let maintenant = base();
+            let webs: Vec<_> = (0..2)
+                .map(|_| {
+                    let mut w = LecteurWeb::nouveau();
+                    w.durees = titres.iter().map(|(t, d)| (t.to_string(), *d)).collect();
+                    Arc::new(std::sync::Mutex::new(w))
+                })
+                .collect();
+            let fabrique = |w: Arc<std::sync::Mutex<LecteurWeb>>| -> FabriqueLecteur {
+                Box::new(move |f| {
+                    (f == Fournisseur::YouTube)
+                        .then(|| Box::new(Partage(w.clone())) as Box<dyn LecteurSeance>)
+                })
+            };
+            let element = |(t, d): &(&str, f64)| ElementFile {
+                id: format!("q-{t}"),
+                provider: "youtube".into(),
+                video: t.to_string(),
+                by: "web".into(),
+                by_id: "web".into(),
+                meta: Some(MetaMorceau {
+                    title: format!("Titre {t}"),
+                    duration: *d as i64,
+                    ..MetaMorceau::default()
+                }),
+            };
+            let mut etat = EtatSeance {
+                rev: 1,
+                rate: 1.0,
+                at: iso_de_ms(maintenant),
+                queue: titres.iter().map(element).collect(),
+                ..EtatSeance::default()
+            };
+            let premier = etat.queue.remove(0);
+            changer_de_titre(&mut etat, premier, maintenant);
+            let clients = [("web", 1500), ("natif", -700)]
+                .into_iter()
+                .zip(&webs)
+                .map(|((moi, decalage), w)| Client2 {
+                    pilote: PiloteSeance::nouveau(GenreSeance::Musique, moi, fabrique(w.clone())),
+                    registre: RegistreSeances::default(),
+                    decalage_horloge: decalage,
+                    coupe: false,
+                })
+                .collect();
+            let mut m = Self {
+                maintenant,
+                serveur: Serveur { etat },
+                clients,
+                reseau: VecDeque::new(),
+                moteur,
+                webs,
+                genre: GenreSeance::Musique,
+            };
+            for c in 0..2 {
+                let vue = m.serveur.vue(m.maintenant);
+                m.livrer(c, vue, true);
+            }
+            m
+        }
+
+        fn titres(&self) -> Vec<String> {
+            self.webs
+                .iter()
+                .map(|w| w.lock().unwrap().reference.clone())
+                .collect()
         }
 
         fn heure(&self, client: usize) -> i64 {
@@ -1003,9 +1131,8 @@ mod tests {
         fn livrer(&mut self, client: usize, vue: Seance, frais: bool) {
             let heure = self.heure(client);
             let c = &mut self.clients[client];
-            c.registre
-                .appliquer(GenreSeance::Regarder, &vue, frais, heure);
-            let seance = c.registre.seance(GenreSeance::Regarder, "v1").cloned();
+            c.registre.appliquer(self.genre, &vue, frais, heure);
+            let seance = c.registre.seance(self.genre, "v1").cloned();
             c.pilote.recevoir(seance.as_ref(), heure);
         }
 
@@ -1040,15 +1167,20 @@ mod tests {
                                 action,
                                 position,
                                 vitesse,
+                                rev,
                                 ..
-                            } if action != "ended" => {
-                                self.serveur.appliquer(
+                            } => {
+                                let change = self.serveur.appliquer(
                                     action,
                                     *position,
                                     *vitesse,
+                                    *rev,
                                     self.maintenant,
                                 );
                                 for c in 0..self.clients.len() {
+                                    if !change && c != client {
+                                        continue;
+                                    }
                                     let vue = self.serveur.vue(self.maintenant);
                                     restants.push_back((
                                         retour,
@@ -1103,7 +1235,9 @@ mod tests {
             while self.maintenant < fin {
                 self.maintenant += PAS;
                 self.moteur.avancer(PAS as f64 / 1000.0);
-                self.web.lock().unwrap().avancer(PAS);
+                for w in &self.webs {
+                    w.lock().unwrap().avancer(PAS);
+                }
                 self.traiter();
                 for c in 0..self.clients.len() {
                     let heure = self.heure(c);
@@ -1180,6 +1314,87 @@ mod tests {
         assert!(m.serveur.etat.playing);
         for c in &m.clients {
             assert!(!c.pilote.vue(m.maintenant).suspendu);
+        }
+    }
+
+    #[test]
+    fn deux_clients_factices_restent_synchronises_sur_un_changement_de_titre() {
+        let mut m = Monde::musique(&[("un", 12.0), ("deux", 240.0), ("trois", 180.0)]);
+        m.passer(3000);
+        assert_eq!(m.titres(), ["un", "un"]);
+        assert!(m.ecart() < 0.5, "au démarrage : {:?}", m.positions());
+        m.passer(11_000);
+        assert_eq!(m.titres(), ["deux", "deux"]);
+        assert_eq!(m.serveur.etat.video, "deux");
+        assert_eq!(m.serveur.etat.history.len(), 1, "une seule fin comptée");
+        assert!(
+            m.ecart() < 0.5,
+            "après la fin du titre : {:?}",
+            m.positions()
+        );
+        m.passer(5000);
+        let (web, natif, serveur) = m.positions();
+        assert!(
+            m.ecart() < 0.5 && (natif - serveur).abs() < 0.5,
+            "{web} {natif} {serveur}"
+        );
+        assert!(serveur > 5.0);
+        let rev = m.serveur.etat.rev;
+        for client in 0..2 {
+            m.clients[client]
+                .pilote
+                .actions
+                .push(ActionPilote::Appel(AppelSeance::Action {
+                    numero: None,
+                    action: "ended".into(),
+                    position: None,
+                    vitesse: None,
+                    rev: Some(rev),
+                    video: None,
+                }));
+        }
+        m.ramasser();
+        m.passer(3000);
+        assert_eq!(m.titres(), ["trois", "trois"]);
+        assert_eq!(
+            m.serveur.etat.rev,
+            rev + 1,
+            "le second « suivant » est ignoré"
+        );
+        assert!(m.ecart() < 0.5, "après « suivant » : {:?}", m.positions());
+        m.commande(1, |p| Commande::aller(p + 60.0));
+        m.passer(2500);
+        assert!(
+            m.ecart() < 0.5,
+            "après un déplacement : {:?}",
+            m.positions()
+        );
+        m.clients[0]
+            .pilote
+            .actions
+            .push(ActionPilote::Appel(AppelSeance::Action {
+                numero: None,
+                action: "previous".into(),
+                position: None,
+                vitesse: None,
+                rev: None,
+                video: None,
+            }));
+        m.ramasser();
+        m.passer(3000);
+        assert_eq!(m.titres(), ["deux", "deux"]);
+        let (web, natif, serveur) = m.positions();
+        assert!(
+            m.ecart() < 0.5 && (natif - serveur).abs() < 0.5,
+            "{web} {natif} {serveur}"
+        );
+        assert!(
+            serveur < 5.0,
+            "le titre précédent repart du début : {serveur}"
+        );
+        for c in &m.clients {
+            assert!(!c.pilote.vue(m.maintenant).suspendu);
+            assert!(c.pilote.vue(m.maintenant).erreur.is_empty());
         }
     }
 
