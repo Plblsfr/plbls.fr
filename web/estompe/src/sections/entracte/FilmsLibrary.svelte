@@ -22,9 +22,9 @@
   let loading = $state(true)
   let turn = 0
 
-  const fromList = $derived(section === 'continue' || section === 'seen')
+  const fromList = $derived(section === 'continue')
   const accueil = $derived(!section)
-  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Historique' } as Record<string, string>)[section ?? ''] ?? '')
+  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre' } as Record<string, string>)[section ?? ''] ?? '')
   const filtering = $derived(!!(genre || year))
   const gridHeading = $derived(accueil ? (filtering ? genre || 'Résultats' : 'Ajouts récents') : '')
   const showResume = $derived(accueil && !filtering && films.resume.length > 0)
@@ -52,7 +52,7 @@
     loading = true
     try {
       if (fromList) {
-        const r = section === 'seen' ? await filmsApi.seen() : await filmsApi.resume()
+        const r = await filmsApi.resume()
         if (mine !== turn) return
         items = r.items
         total = r.items.length
@@ -144,7 +144,6 @@
             </span>
             <strong class="truncate">{i.series_title ?? i.title}</strong>
             <span class="v-mono v-mute truncate">{episodeLabel(i) || meta(i)}</span>
-            {#if section === 'seen' && i.seen_at}<span class="v-note truncate">vu le {new Date(i.seen_at).toLocaleDateString('fr-FR')}</span>{/if}
             {#if i.progress && !i.progress.seen}<span class="v-mono film-left">{remaining(i.progress)}</span><span class="film-bar"><span style="width:{percent(i.progress)}"></span></span>{/if}
           </a>
         {/each}

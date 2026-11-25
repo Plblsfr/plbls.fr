@@ -18,7 +18,7 @@ class FilmsState {
     ])
     this.movies = movies.total
     this.series = series.total
-    this.seen = seen.items.length
+    this.seen = seen.total
     this.resume = resume.items
     if (admin) this.pending = (await entracteApi.adminRequests({ state: 'en_attente' }).catch(() => ({ items: [] }))).items.length
   }

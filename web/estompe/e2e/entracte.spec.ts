@@ -13,7 +13,7 @@ const pistes = {
   subtitles: [{ n: 0, label: 'English', language: 'eng', forced: false }, { n: 1, label: 'Français', language: 'fre', forced: false }, { n: 2, label: 'Français forcés', language: 'fre', forced: true }],
 }
 
-type Profil = { estompe: boolean; entracte: boolean; admin?: boolean }
+type Profil = { estompe: boolean; entracte: boolean; admin?: boolean; historique?: unknown[] }
 
 const demandeAcceptee = { id: '22222222-2222-2222-2222-222222222222', kind: 'movie', tmdb_id: 501, seasons: null, title: 'Le Règne animal', year: 2023, poster_url: null, state: 'acceptee', reason: null, created_at: '2026-11-18T21:00:00.000Z', updated_at: '2026-11-18T21:00:00.000Z', sent: true, send_error: null, requesters: [{ name: 'camille', joined_at: '2026-11-18T21:00:00.000Z' }] }
 const demandeEnCours = { ...demandeAcceptee, id: '33333333-3333-3333-3333-333333333333', tmdb_id: 502, title: 'Dune : Deuxième partie', year: 2024 }
@@ -94,7 +94,8 @@ async function simuler(page: Page, p: Profil) {
       case '/me': return json(route, { sub: 'kc-moi', name: 'moi', email: '', permissions: { access: p.entracte, request: p.entracte, admin: !!p.admin }, push: { web: false, fcm: false } })
       case '/library': return json(route, { items: [film], total: 1 })
       case '/genres': return json(route, { genres: ['Drame'] })
-      case '/continue': case '/history': return json(route, { items: [], total: 0 })
+      case '/continue': return json(route, { items: [], total: 0 })
+      case '/history': return json(route, { items: p.historique ?? [], total: (p.historique ?? []).length })
       case '/notifications': return json(route, { items: [], last_id: 0 })
       case '/requests/mine': return json(route, { items: [] })
       case `/titles/${film.id}`: return json(route, { ...film, ...pistes })
@@ -118,6 +119,34 @@ test('Entracte seul : la section Entracte, sans messagerie', async ({ page }) =>
   await expect(page.getByText('Messages privés')).toHaveCount(0)
   expect(s.erreursEstompe).toEqual([])
   expect(s.appelsEstompe.filter((c) => c !== '/me')).toEqual([])
+})
+
+test('Historique : un jour par section, les épisodes d’une série regroupés', async ({ page }) => {
+  const maintenant = Date.now()
+  const episode = (n: number, serie: string, titre: string, vu: number) => ({ ...film, id: `44444444-4444-4444-4444-${serie}${String(n).padStart(8, '0')}`, kind: 'episode', title: `Épisode ${n}`, season: 1, episode: n, series_id: `55555555-5555-5555-5555-${serie}00000000`, series_title: titre, progress: { position: 3000, duration: 3000, seen: true }, seen_at: new Date(vu).toISOString() })
+  const hier = maintenant - 86_400_000
+  await simuler(page, { estompe: false, entracte: true, historique: [
+    episode(9, 'aaaa', 'Les Veilleurs', maintenant),
+    episode(4, 'bbbb', 'La Combe', maintenant),
+    episode(8, 'aaaa', 'Les Veilleurs', maintenant),
+    episode(7, 'aaaa', 'Les Veilleurs', maintenant),
+    { ...film, progress: { position: 5400, duration: 5400, seen: true }, available: false, seen_at: new Date(hier).toISOString() },
+    episode(6, 'aaaa', 'Les Veilleurs', hier),
+  ] })
+  await page.goto('/#/films/seen')
+  await expect(page.getByRole('heading', { name: 'Historique', level: 2 })).toBeVisible()
+  await expect(page.getByText('6 titres vus')).toBeVisible()
+  const aujourdhui = page.getByRole('region', { name: 'Aujourd’hui' })
+  await expect(aujourdhui.locator('.film-vu')).toHaveCount(2)
+  await expect(aujourdhui.locator('.film-vu').first()).toContainText('Les Veilleurs')
+  await expect(aujourdhui.locator('.film-vu').first()).toContainText('S1 · E7 à E9 · 3 épisodes')
+  await expect(aujourdhui.locator('.film-vu').nth(1)).toContainText('S1 · E4 · Épisode 4')
+  const veille = page.getByRole('region', { name: 'Hier' })
+  await expect(veille.locator('.film-vu')).toHaveCount(2)
+  await expect(veille.locator('.film-vu').first()).toContainText('Film · 2021 · 1 h 30')
+  await expect(veille.locator('.film-vu').first()).toContainText('Indisponible')
+  await expect(veille.locator('.film-vu').nth(1)).toContainText('S1 · E6 · Épisode 6')
+  if (process.env.CAPTURE_HISTORIQUE) await page.screenshot({ path: process.env.CAPTURE_HISTORIQUE })
 })
 
 test('Estompe seul : la messagerie, aucune entrée Entracte', async ({ page }) => {

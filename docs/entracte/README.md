@@ -54,6 +54,8 @@ Attribution : l'app affiche « Données et images fournies par TMDB » (conditio
 Position enregistrée par personne et par titre. Au-delà de 90 % de la durée, le titre est vu : une entrée datée par titre, que revoir le titre
 met à jour. « Reprendre » liste les titres commencés et l'épisode suivant d'une série en cours. L'historique est lié au titre, pas au
 fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la session, jamais un paramètre).
+Dans l'app, l'historique est une liste par jour (« Aujourd'hui », « Hier », puis la date) : les épisodes d'une même série vus le même
+jour tiennent sur une ligne (`S1 · E5 à E8 · 4 épisodes`), qui ouvre la fiche de la série ; il se charge par pages de 100 titres.
 
 ## Statistiques (Sablier)
 
