@@ -1,0 +1,173 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton } from "../composants.slint";
+import { MiniProgression } from "../composants/mini-progression.slint";
+import { DonneesVueWeb, ZoneVueWeb } from "../composants/vue-web.slint";
+import { DonneesVocal } from "../vocal/donnees.slint";
+import { DonneesVideos } from "donnees.slint";
+import { PetitBouton } from "vue.slint";
+
+export component MiniLecteurSolo inherits Rectangle {
+    property <bool> volume-ouvert: false;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: groupbox;
+    accessible-label: "Lecture en solo";
+    vertical-stretch: 0;
+    height: contenu.preferred-height;
+    contenu := VerticalLayout {
+        padding: Espace.e2;
+        spacing: 4px;
+        if DonneesVideos.solo.youtube && DonneesVueWeb.solo: ZoneVueWeb {
+            height: (root.width - 2 * Espace.e2) * 9 / 16;
+            nom: "solo";
+            montree: Calques.ouverts == 0;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 36px;
+                height: 36px;
+                border-radius: Rayon.xs;
+                background: Theme.papier-3;
+                Icone {
+                    nom: DonneesVideos.solo.youtube ? "casque" : "video";
+                    taille: 16px;
+                    couleur: Theme.gris;
+                }
+            }
+            titre := VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                accessible-role: button;
+                accessible-label: "Revenir au salon : " + DonneesVideos.solo.titre;
+                accessible-action-default => {
+                    DonneesVideos.solo-ouvrir();
+                }
+                Text {
+                    text: DonneesVideos.solo.titre;
+                    color: Theme.encre;
+                    font-size: Typo.petit;
+                    font-weight: Typo.demi-gras;
+                    overflow: elide;
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            DonneesVideos.solo-ouvrir();
+                        }
+                    }
+                }
+                Text {
+                    text: DonneesVideos.solo.erreur != "" ? DonneesVideos.solo.erreur : DonneesVideos.solo.cede ? "En pause : un autre média joue" : (DonneesVideos.solo.sous-titre != "" ? DonneesVideos.solo.sous-titre : "Écoute personnelle") + (DonneesVideos.solo.a-suivre != "" ? " · " + DonneesVideos.solo.a-suivre : "");
+                    color: DonneesVideos.solo.erreur != "" ? Theme.danger : Theme.gris;
+                    font-size: 11.5px;
+                    overflow: elide;
+                }
+            }
+            PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: DonneesVideos.solo.lecture ? "pause" : "lecture";
+                description: DonneesVideos.solo.lecture ? "Pause" : "Lecture";
+                clique => {
+                    DonneesVideos.solo-basculer();
+                }
+            }
+            PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: "suivant";
+                description: "Suivant";
+                actif: DonneesVideos.solo.a-suivre != "";
+                clique => {
+                    DonneesVideos.solo-suivant();
+                }
+            }
+            PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: "x";
+                description: "Arrêter l'écoute";
+                clique => {
+                    DonneesVideos.solo-arreter();
+                }
+            }
+        }
+        MiniProgression {
+            position: DonneesVideos.solo.position;
+            duree: DonneesVideos.solo.duree;
+            texte-position: DonneesVideos.solo.texte-position;
+            texte-duree: DonneesVideos.solo.texte-duree;
+            texte-restant: DonneesVideos.solo.texte-restant;
+            utilisable: !DonneesVideos.solo.cede;
+            aller(v) => {
+                DonneesVideos.solo-aller(v);
+            }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            if DonneesVocal.barre.visible && DonneesVideos.solo.partage: PetitBouton {
+                horizontal-stretch: 1;
+                icone: "gens";
+                texte: "Partager dans le vocal";
+                fort: true;
+                clique => {
+                    DonneesVideos.solo-partager();
+                }
+            }
+            if !(DonneesVocal.barre.visible && DonneesVideos.solo.partage): Rectangle {
+                horizontal-stretch: 1;
+            }
+            if root.volume-ouvert: Rectangle {
+                width: 96px;
+                height: 28px;
+                accessible-role: slider;
+                accessible-label: "Volume de l'écoute personnelle";
+                accessible-value: "\{DonneesVideos.solo.volume} %";
+                accessible-value-minimum: 0;
+                accessible-value-maximum: 100;
+                accessible-value-step: 5;
+                accessible-action-increment => {
+                    DonneesVideos.solo-volume(Math.min(100, DonneesVideos.solo.volume + 5));
+                }
+                accessible-action-decrement => {
+                    DonneesVideos.solo-volume(Math.max(0, DonneesVideos.solo.volume - 5));
+                }
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    height: 3px;
+                    border-radius: 2px;
+                    background: Theme.trait-fort;
+                }
+                Rectangle {
+                    x: 0;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width * DonneesVideos.solo.volume / 100;
+                    height: 3px;
+                    border-radius: 2px;
+                    background: Theme.rose-fonce;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    pointer-event(e) => {
+                        if (e.kind == PointerEventKind.down) {
+                            DonneesVideos.solo-volume(Math.round(Math.clamp(self.mouse-x / parent.width, 0, 1) * 100));
+                        }
+                    }
+                    moved => {
+                        if (self.pressed) {
+                            DonneesVideos.solo-volume(Math.round(Math.clamp(self.mouse-x / parent.width, 0, 1) * 100));
+                        }
+                    }
+                }
+            }
+            PetitBouton {
+                icone: "volmax";
+                description: "Volume de l'écoute personnelle";
+                enfonce: root.volume-ouvert;
+                clique => {
+                    root.volume-ouvert = !root.volume-ouvert;
+                }
+            }
+        }
+    }
+}

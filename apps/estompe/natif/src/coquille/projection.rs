@@ -329,7 +329,7 @@ fn ligne_de_salon(
         } else {
             0
         },
-        bientot: est_esquisse(salon.kind),
+        bientot: false,
         occupants: etat.participants(&identifiant).len(),
         brouillon: false,
         duree: if lisible {
@@ -711,10 +711,10 @@ pub fn donnees_vue(etat: &Etat, route: &Route) -> DonneesVue {
                     Some(GenreSalon::Videos | GenreSalon::Music) => vue(
                         GenreVue::Esquisse,
                         nom,
-                        String::new(),
+                        salon.topic.clone().unwrap_or_default(),
                         icone,
-                        BIENTOT,
-                        "Les salons vidéos et musique arrivent avec le lot 9.".to_string(),
+                        "",
+                        String::new(),
                     ),
                     _ => {
                         let sujet = [
@@ -871,7 +871,7 @@ mod tests {
             [
                 ("c1", "hash", "SALONS TEXTE", true, false),
                 ("c2", "lock", "", false, false),
-                ("m1", "headphones", "ESQUISSES", false, true),
+                ("m1", "headphones", "ESQUISSES", false, false),
                 ("v1", "volume", "SALONS VOCAUX", false, false),
                 ("k1", "film", "", false, false),
             ]

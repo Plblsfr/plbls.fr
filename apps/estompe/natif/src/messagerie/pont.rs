@@ -1507,7 +1507,7 @@ impl PontMessagerie {
         self.verrou().transcription_auto
     }
 
-    fn maintenant(&self) -> i64 {
+    pub fn maintenant(&self) -> i64 {
         verrou_de(&self.horloge)()
     }
 

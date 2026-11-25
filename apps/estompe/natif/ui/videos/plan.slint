@@ -1,0 +1,155 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Modal, Champ, Case, Bouton, VarianteBouton, Icone } from "../composants.slint";
+import { DonneesVideos } from "donnees.slint";
+
+component ChoixPlan inherits Rectangle {
+    in property <string> etiquette;
+    in property <string> valeur;
+    in property <string> nom;
+    height: 60px;
+    accessible-role: button;
+    accessible-label: root.etiquette + " : " + root.valeur;
+    accessible-action-default => {
+        DonneesVideos.menu-plan(root.nom, root.absolute-position.x, root.absolute-position.y + root.height);
+    }
+    VerticalLayout {
+        spacing: 4px;
+        Text {
+            text: root.etiquette;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.moyen;
+        }
+        Rectangle {
+            height: 36px;
+            border-radius: Rayon.s;
+            background: zone.has-hover ? Theme.papier-3 : Theme.papier-2;
+            border-width: 1px;
+            border-color: Theme.trait;
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e2;
+                spacing: Espace.e2;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.valeur;
+                    color: Theme.encre;
+                    font-size: Typo.compact;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Icone {
+                    y: (parent.height - self.height) / 2;
+                    nom: "down";
+                    taille: 16px;
+                    couleur: Theme.gris;
+                }
+            }
+            zone := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    DonneesVideos.menu-plan(root.nom, root.absolute-position.x, root.absolute-position.y + root.height);
+                }
+            }
+        }
+    }
+}
+
+export component PlanSeanceVideos inherits Modal {
+    titre: "Planifier une séance";
+    ouvert: DonneesVideos.plan.ouvert;
+    largeur: 520px;
+    ferme => {
+        DonneesVideos.fermer-plan();
+    }
+    if DonneesVideos.plan.ouvert: VerticalLayout {
+        spacing: Espace.e3;
+        Champ {
+            etiquette: "Titre";
+            indice: "Titre (« Soirée bandes-annonces »)";
+            calque: 1;
+            init => {
+                self.valeur = DonneesVideos.plan.titre;
+            }
+            modifie(v) => {
+                DonneesVideos.plan-titre(v);
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Champ {
+                etiquette: "Date et heure";
+                indice: "JJ/MM/AAAA HH:MM";
+                calque: 1;
+                init => {
+                    self.valeur = DonneesVideos.plan.date;
+                }
+                modifie(v) => {
+                    DonneesVideos.plan-date(v);
+                }
+            }
+            ChoixPlan {
+                etiquette: "Rappel";
+                valeur: DonneesVideos.plan.rappel;
+                nom: "rappel";
+            }
+        }
+        ChoixPlan {
+            etiquette: "Salon vocal";
+            valeur: DonneesVideos.plan.salon;
+            nom: "salon";
+        }
+        ChoixPlan {
+            etiquette: "File de la séance";
+            valeur: DonneesVideos.plan.file;
+            nom: "file";
+        }
+        if DonneesVideos.plan.choisir: Rectangle {
+            height: Math.min(200px, liste.preferred-height);
+            border-radius: Rayon.s;
+            border-width: 1px;
+            border-color: Theme.trait;
+            clip: true;
+            Flickable {
+                content-height: liste.preferred-height;
+                liste := VerticalLayout {
+                    padding: Espace.e2;
+                    spacing: 2px;
+                    for c in DonneesVideos.choix-plan: Case {
+                        texte: c.titre;
+                        cochee: c.coche;
+                        calque: 1;
+                        bascule(v) => {
+                            DonneesVideos.plan-choix(c.id, v);
+                        }
+                    }
+                    if DonneesVideos.choix-plan.length == 0: Text {
+                        text: "Aucune vidéo lisible dans le salon.";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                    }
+                }
+            }
+        }
+        if DonneesVideos.plan.erreur != "": Text {
+            text: DonneesVideos.plan.erreur;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        HorizontalLayout {
+            alignment: end;
+            Bouton {
+                texte: "Planifier";
+                variante: VarianteBouton.primaire;
+                actif: DonneesVideos.plan.pret;
+                en-cours: DonneesVideos.plan.occupe;
+                calque: 1;
+                clique => {
+                    DonneesVideos.planifier();
+                }
+            }
+        }
+    }
+}

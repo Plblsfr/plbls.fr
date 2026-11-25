@@ -797,6 +797,44 @@ pub mod coquille {
         etat
     }
 
+    pub const VIDEO_SOLO: &str = "https://videos.plbls.fr/vacances-2026.mp4";
+
+    pub fn etat_videos() -> Etat {
+        let mut e = etat();
+        if let Some(d) = e.details.get_mut("s1") {
+            if let Some(salons) = d.channels.as_mut() {
+                salons.push(depuis(json!({"id": "w1", "name": "vidéos-du-groupe", "kind": "videos", "position": 2, "topic": "Ce qu'on regarde ensemble"})));
+            }
+            d.members = Some(depuis(json!([
+                {"id": "u1", "pseudo": "bob"},
+                {"id": "carol", "pseudo": "carol"},
+                {"id": "dave", "pseudo": "dave"},
+                {"id": "elise", "pseudo": "Élise"}
+            ])));
+        }
+        let auteur = |id: &str, pseudo: &str| json!({"id": id, "pseudo": pseudo});
+        e.videos.insert(
+            "w1".into(),
+            depuis(json!({
+                "posts": [
+                    {"message_id": "1006", "author": auteur("carol", "carol"), "created_at": "2026-11-18T20:00:00Z", "provider": "page", "ref": VIDEO_SOLO, "url": "https://videos.plbls.fr/vacances", "title": "Vacances à la mer 2026", "site": "videos.plbls.fr", "has_thumb": true, "watched_at": null, "reactions": 3, "liked": true, "replies": 2},
+                    {"message_id": "1005", "author": auteur("dave", "dave"), "created_at": "2026-11-18T19:00:00Z", "provider": "youtube", "ref": "dQw4w9WgXcQ", "url": "https://youtu.be/dQw4w9WgXcQ", "title": "Bande-annonce : Le Grand Bleu", "site": "YouTube · Studio Bleu", "has_thumb": true, "watched_at": "2026-11-18T22:00:00Z", "reactions": 1, "liked": false, "replies": 0},
+                    {"message_id": "1004", "author": auteur("u1", "bob"), "created_at": "2026-11-18T18:00:00Z", "provider": "vimeo", "ref": "76979871", "url": "https://vimeo.com/76979871", "title": "Court métrage : La Nuit", "site": "Vimeo", "has_thumb": false, "watched_at": null, "reactions": 0, "liked": false, "replies": 1},
+                    {"message_id": "1003", "author": auteur("elise", "Élise"), "created_at": "2026-11-18T17:00:00Z", "provider": "twitch_vod", "ref": "123456", "url": "https://www.twitch.tv/videos/123456", "title": "Rediffusion de la partie de jeudi", "site": "Twitch", "has_thumb": true, "watched_at": null, "reactions": 5, "liked": false, "replies": 4},
+                    {"message_id": "1002", "author": auteur("carol", "carol"), "created_at": "2026-11-18T16:00:00Z", "provider": "simple", "ref": "", "url": "https://exemple.fr/video", "title": "", "site": "exemple.fr", "has_thumb": false, "watched_at": null, "reactions": 0, "liked": false, "replies": 0}
+                ],
+                "lists": [
+                    {"id": "l1", "name": "À voir ce week-end", "created_by": "u1", "collaborative": true, "items": ["1006", "1004", "1005"]},
+                    {"id": "l2", "name": "Les classiques de carol", "created_by": "carol", "collaborative": false, "items": ["1003"]}
+                ],
+                "sessions": [
+                    {"id": "e1", "title": "Soirée bandes-annonces", "starts_at": "2026-11-19T19:30:00Z", "voice_channel_id": "v1", "remind_minutes": 10, "videos": ["1005", "1004"], "created_by": "u1", "started_at": null, "rsvps": {"u1": "yes", "carol": "yes", "dave": "maybe", "elise": "no"}}
+                ]
+            })),
+        );
+        e
+    }
+
     pub fn gif_anime(images: usize) -> Vec<u8> {
         let mut octets = Vec::new();
         {

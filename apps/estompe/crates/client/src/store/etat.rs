@@ -10,6 +10,7 @@ use crate::types::{
     GetServersIdReponseChannelsElementKind, Mention, NotifySettings, NotifySettingsTypes, Server,
     DM,
 };
+use crate::videos::TableauVideos;
 
 pub type Salon = GetServersIdReponseChannelsElement;
 pub type GenreSalon = GetServersIdReponseChannelsElementKind;
@@ -165,6 +166,7 @@ pub struct Etat {
     pub activite_locale: String,
     pub ordre_serveurs: Vec<String>,
     pub seances: RegistreSeances,
+    pub videos: BTreeMap<String, TableauVideos>,
 }
 
 impl Default for Etat {
@@ -189,6 +191,7 @@ impl Default for Etat {
             activite_locale: String::new(),
             ordre_serveurs: Vec::new(),
             seances: RegistreSeances::default(),
+            videos: BTreeMap::new(),
         }
     }
 }

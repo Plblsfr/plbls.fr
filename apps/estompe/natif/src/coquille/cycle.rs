@@ -1600,6 +1600,11 @@ async fn session(
             navigateur: contexte.fabrique.navigateur(),
             journal: contexte.fabrique.journal(),
         });
+    pont.videos().definir_outils(crate::videos::OutilsVideos {
+        lecteur: contexte.fabrique.lecteur(),
+        navigateur: contexte.fabrique.navigateur(),
+        journal: contexte.fabrique.journal(),
+    });
     let mut jeux = contexte.fabrique.jeux();
     let annonce = crate::jeux::Annonce::default();
     let mut etat_vocal = outils.as_ref().map(|o| o.session.etat());
@@ -1642,6 +1647,7 @@ async fn session(
     let etat_vocal_initial = etat_vocal.as_mut().map(|e| e.borrow_and_update().clone());
     contexte.sur_l_interface(move |f| {
         p.vocal().seance().brancher(f);
+        p.videos().brancher(f);
         p.definir_reseau(f, reseau_initial);
         p.demarrer(f);
         if let Some(etat) = etat_vocal_initial {

@@ -9,6 +9,8 @@ import { BandeauMiseAJour } from "../mise-a-jour/bandeau.slint";
 import { DonneesMiseAJour } from "../mise-a-jour/donnees.slint";
 import { DonneesParametres } from "../parametres/page.slint";
 import { DonneesReglagesServeur } from "reglages-serveur.slint";
+import { DonneesVideos } from "../videos/donnees.slint";
+import { MiniLecteurSolo } from "../videos/mini.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -473,6 +475,7 @@ export component Panneau inherits Rectangle {
         VerticalLayout {
             padding: Espace.e2;
             spacing: Espace.e2;
+            if DonneesVideos.solo.actif && !DonneesVideos.solo.ancre: MiniLecteurSolo { }
             if DonneesVocal.barre.visible: BarreVocalPanneau { }
             if DonneesMiseAJour.automatique && (DonneesMiseAJour.proposee || DonneesMiseAJour.compte-a-rebours > 0): BandeauMiseAJour { }
             BarreMoi {

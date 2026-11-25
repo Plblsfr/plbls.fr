@@ -23,6 +23,7 @@ use super::projection::*;
 use super::recherche::EtatRecherche;
 use crate::messagerie::pont::PontMessagerie;
 use crate::session::Memoire;
+use crate::videos::PontVideos;
 use crate::vocal::PontVocal;
 use crate::{
     Accueil, CarteProfil, DonneesCoquille, DonneesMessagerie, EnTeteMarge, EnTetePanneau,
@@ -309,6 +310,7 @@ pub struct Pont {
     profils: Arc<Profils>,
     messagerie: PontMessagerie,
     vocal: PontVocal,
+    videos: PontVideos,
     admin: PontAdmin,
 }
 
@@ -584,6 +586,15 @@ impl Pont {
             Arc::new(move || millisecondes(horloge_vocal())),
             profils.clone(),
         );
+        let (horloge_videos, fuseau_videos) = (messagerie.clone(), messagerie.clone());
+        let videos = PontVideos::nouveau(
+            store.clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            vocal.seance().clone(),
+            Arc::new(move || horloge_videos.maintenant()),
+            Arc::new(move || fuseau_videos.decalage_minutes()),
+        );
         let decalage_messagerie = messagerie.clone();
         let admin = PontAdmin::nouveau(
             store.client().clone(),
@@ -618,6 +629,7 @@ impl Pont {
             profils,
             messagerie,
             vocal,
+            videos,
             admin,
         }
     }
@@ -645,6 +657,10 @@ impl Pont {
 
     pub fn vocal(&self) -> &PontVocal {
         &self.vocal
+    }
+
+    pub fn videos(&self) -> &PontVideos {
+        &self.videos
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
@@ -705,6 +721,7 @@ impl Pont {
         }
         self.messagerie.appliquer(f, changements);
         self.vocal.changements(f, changements);
+        self.videos.changements(f, changements);
     }
 
     pub fn rafraichir_brouillons(&self, f: &Principale) {
@@ -883,6 +900,7 @@ impl Pont {
         if c.membres {
             self.projeter_membres(f);
         }
+        self.videos.suivre(f, &route_vocal);
         self.vocal.definir_route(&route_vocal);
         self.vocal.projeter(f);
     }
@@ -1112,6 +1130,7 @@ impl Pont {
         f.global::<DonneesCoquille>().set_bandeau(etat);
         if retabli {
             self.vocal.seance().reconnecte(f);
+            self.videos.reconnecte();
         }
     }
 

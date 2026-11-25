@@ -264,10 +264,22 @@ impl SeanceActive {
     }
 
     pub fn arreter(self) {
+        self.quitter(false);
+    }
+
+    pub fn ceder(self) {
+        self.quitter(true);
+    }
+
+    fn quitter(self, ceder: bool) {
         self.tache.abort();
         let actions = {
             let mut p = verrou(&self.contexte.pilote);
-            p.detruire();
+            if ceder {
+                p.ceder();
+            } else {
+                p.detruire();
+            }
             p.actions()
         };
         self.contexte.traiter(

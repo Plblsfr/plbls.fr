@@ -33,6 +33,7 @@ use crate::{
 pub const ORIGINE: &str = "seance";
 pub const AUTRE_MEDIA: &str = "Un autre média joue sur cet appareil : la séance est en pause ici.";
 pub const LIEN_MANQUANT: &str = "Colle le lien d'une vidéo.";
+const FILE_MAX: usize = 49;
 const SOURCE_JOURNAL: &str = "seance";
 const HAUTEUR_BOUTON: f32 = 32.0;
 
@@ -57,6 +58,7 @@ struct Choix {
     serveur: Option<String>,
     genre: GenreSeance,
     erreur: String,
+    liens: Vec<String>,
 }
 
 #[derive(Default)]
@@ -70,7 +72,7 @@ struct Interne {
     avis: String,
     cede: bool,
     choix: Option<Choix>,
-    en_attente: Option<(String, String)>,
+    en_attente: Option<(String, GenreSeance, Vec<String>)>,
     demande_envoyee: bool,
     demande_en_cours: bool,
     participants: Vec<vue_salon::ParticipantSeance>,
@@ -298,13 +300,21 @@ impl PontSeance {
         self.actualiser(f);
     }
 
+    fn lacher(&self, a: SeanceActive) {
+        match self.gestion() {
+            Some(g) if !g.reservee_par(&origine()) => a.ceder(),
+            Some(g) => {
+                a.arreter();
+                g.liberer(&origine());
+            }
+            None => a.arreter(),
+        }
+    }
+
     fn terminer(&self) {
         let active = self.verrou().active.take();
         if let Some(a) = active {
-            a.arreter();
-            if let Some(g) = self.gestion() {
-                g.liberer(&origine());
-            }
+            self.lacher(a);
         }
     }
 
@@ -335,17 +345,12 @@ impl PontSeance {
         let pret = {
             let mut i = self.verrou();
             match &i.en_attente {
-                Some((s, _)) if ici && Some(s.as_str()) == salon => i.en_attente.take(),
+                Some((s, _, _)) if ici && Some(s.as_str()) == salon => i.en_attente.take(),
                 _ => None,
             }
         };
-        if let Some((salon, lien)) = pret {
-            let client = self.store.client().clone();
-            self.executer(async move {
-                client
-                    .lancer_seance(&salon, GenreSeance::Regarder, &lien, &[])
-                    .await
-            });
+        if let Some((salon, genre, liens)) = pret {
+            self.lancer_liens(salon, genre, liens);
         }
     }
 
@@ -385,10 +390,7 @@ impl PontSeance {
             }
         };
         if let Some(a) = perimee {
-            a.arreter();
-            if let Some(g) = self.gestion() {
-                g.liberer(&origine());
-            }
+            self.lacher(a);
         }
         if voulue {
             let a_creer = {
@@ -402,7 +404,7 @@ impl PontSeance {
             if reprise {
                 let active = self.verrou().active.take();
                 if let Some(a) = active {
-                    a.arreter();
+                    a.ceder();
                     self.verrou().cede = true;
                 }
             }
@@ -714,12 +716,32 @@ impl PontSeance {
 
     pub fn ouvrir_choix(&self, f: &Principale) {
         let serveur = self.verrou().lieu.serveur.clone();
+        self.ouvrir_choix_avec(f, serveur, GenreSeance::Regarder, Vec::new());
+    }
+
+    pub fn ouvrir_choix_avec(
+        &self,
+        f: &Principale,
+        serveur: Option<String>,
+        genre: GenreSeance,
+        liens: Vec<String>,
+    ) {
         self.verrou().choix = Some(Choix {
             serveur,
-            genre: GenreSeance::Regarder,
+            genre,
             erreur: String::new(),
+            liens: liens.into_iter().filter(|l| !l.trim().is_empty()).collect(),
         });
         self.projeter_choix(f);
+    }
+
+    fn lancer_liens(&self, salon: String, genre: GenreSeance, liens: Vec<String>) {
+        let Some((video, file)) = liens.split_first() else {
+            return;
+        };
+        let (client, video) = (self.store.client().clone(), video.clone());
+        let file: Vec<String> = file.iter().take(FILE_MAX).cloned().collect();
+        self.executer(async move { client.lancer_seance(&salon, genre, &video, &file).await });
     }
 
     pub fn fermer_choix(&self, f: &Principale) {
@@ -729,7 +751,17 @@ impl PontSeance {
 
     pub fn lancer(&self, f: &Principale, salon: &str, lien: &str) {
         let lien = lien.trim().to_string();
-        if lien.is_empty() {
+        let (genre, mut liens) = self
+            .verrou()
+            .choix
+            .as_ref()
+            .map_or((GenreSeance::Regarder, Vec::new()), |c| {
+                (c.genre, c.liens.clone())
+            });
+        if liens.is_empty() && !lien.is_empty() {
+            liens.push(lien);
+        }
+        if liens.is_empty() {
             if let Some(c) = self.verrou().choix.as_mut() {
                 c.erreur = LIEN_MANQUANT.to_string();
             }
@@ -742,14 +774,9 @@ impl PontSeance {
             i.lieu.ici && i.lieu.salon.as_deref() == Some(salon)
         };
         if ici {
-            let (client, salon) = (self.store.client().clone(), salon.to_string());
-            self.executer(async move {
-                client
-                    .lancer_seance(&salon, GenreSeance::Regarder, &lien, &[])
-                    .await
-            });
+            self.lancer_liens(salon.to_string(), genre, liens);
         } else {
-            self.verrou().en_attente = Some((salon.to_string(), lien));
+            self.verrou().en_attente = Some((salon.to_string(), genre, liens));
             f.global::<DonneesCoquille>()
                 .invoke_ouvrir_salon(salon.into());
         }
@@ -1118,7 +1145,7 @@ impl PontSeance {
             vide: vue_salon::aucun_salon(c.genre, c.serveur.is_some()).into(),
             occupe: false,
             erreur: c.erreur.as_str().into(),
-            lien: true,
+            lien: c.liens.is_empty(),
             cinema: c.genre == GenreSeance::Cinema,
         });
     }

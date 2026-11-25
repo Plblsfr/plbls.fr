@@ -209,6 +209,7 @@ pub fn etat_depuis(chargement: Chargement, precedent: &Etat) -> Etat {
         activite_locale: precedent.activite_locale.clone(),
         ordre_serveurs: precedent.ordre_serveurs.clone(),
         seances: precedent.seances.clone(),
+        videos: precedent.videos.clone(),
         ..Etat::default()
     };
     for dm in &etat.messages_prives {

@@ -33,6 +33,7 @@ use crate::regarder_ensemble::GenreSeance;
 use crate::temps_reel::evenements::{Seance, StatutPresence};
 use crate::temps_reel::{Evenement, FluxTempsReel, Signal};
 use crate::types::NotifySettings;
+use crate::videos::TableauVideos;
 pub(crate) use etat::id_de;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,6 +184,27 @@ impl Store {
         });
     }
 
+    pub async fn charger_videos(&self, salon: &str) -> Result<(), ErreurApi> {
+        let tableau = self.client().videos(salon).await?;
+        self.installer_videos(salon, tableau);
+        Ok(())
+    }
+
+    pub fn installer_videos(&self, salon: &str, tableau: TableauVideos) {
+        self.modifier(|etat| {
+            let change = etat.videos.get(salon) != Some(&tableau);
+            etat.videos.insert(salon.to_string(), tableau);
+            let changements = if change {
+                vec![Changement::Videos {
+                    salon: salon.to_string(),
+                }]
+            } else {
+                Vec::new()
+            };
+            ((), changements)
+        });
+    }
+
     pub async fn charger_seances(&self, serveur: &str, genres: &[GenreSeance]) {
         for &genre in genres {
             let Ok(vues) = self.client().seances_du_serveur(serveur, genre).await else {
@@ -232,6 +254,7 @@ impl Store {
                 Effet::RechargerMessagesPrives => self.rafraichir_messages_prives().await,
                 Effet::MarquerLu(cle) => self.client().marquer_lu(&cle).await,
                 Effet::LireNotifications(ids) => self.client().lire_notifications(&ids).await,
+                Effet::RechargerVideos(salon) => self.charger_videos(&salon).await,
             };
         }
     }
@@ -767,6 +790,77 @@ mod tests {
             json!({"server_id": "s1", "id": "v1"}),
         ));
         assert!(store.lire(|e| e.seances.seance(GenreSeance::Regarder, "v1").is_none()));
+    }
+
+    #[tokio::test]
+    async fn les_tableaux_videos_suivent_les_evenements_et_les_reactions() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        let mut etat = essais::etat_de_depart();
+        etat.details.get_mut("s1").unwrap().channels = Some(
+            serde_json::from_value(json!([
+                {"id": "w1", "name": "Vidéos", "kind": "videos", "position": 1}
+            ]))
+            .unwrap(),
+        );
+        store.installer(etat);
+        let moi = store.lire(|e| e.moi().to_string());
+        let mut abonne = store.abonner();
+        let tableau = |titre: &str| json!({"posts": [{"message_id": "10", "provider": "youtube", "ref": "dQw4w9WgXcQ", "url": "https://youtu.be/dQw4w9WgXcQ", "title": titre, "reactions": 1}], "lists": [], "sessions": []});
+        serveur.router(
+            "GET",
+            "/channels/w1/videos",
+            Reponse::json(200, tableau("Un")),
+        );
+        assert!(store
+            .appliquer(&evenement(
+                "videos.changed",
+                json!({"server_id": "s1", "channel_id": "w1"})
+            ))
+            .is_empty());
+        store.charger_videos("w1").await.unwrap();
+        assert_eq!(
+            abonne.try_recv().unwrap(),
+            [Changement::Videos { salon: "w1".into() }]
+        );
+        store.charger_videos("w1").await.unwrap();
+        assert!(abonne.try_recv().is_err(), "même tableau : rien ne change");
+        serveur.router(
+            "GET",
+            "/channels/w1/videos",
+            Reponse::json(200, tableau("Deux")),
+        );
+        let effets = store.appliquer(&evenement(
+            "videos.changed",
+            json!({"server_id": "s1", "channel_id": "w1"}),
+        ));
+        assert_eq!(effets, [Effet::RechargerVideos("w1".into())]);
+        store.executer(effets).await;
+        assert_eq!(
+            store.lire(|e| e.videos["w1"].posts[0].title.clone()),
+            "Deux"
+        );
+        while abonne.try_recv().is_ok() {}
+        store.appliquer(&evenement(
+            "reaction.updated",
+            json!({"message_id": "10", "emoji": "👍", "user_id": moi, "added": true}),
+        ));
+        assert_eq!(
+            store.lire(|e| (
+                e.videos["w1"].posts[0].reactions,
+                e.videos["w1"].posts[0].liked
+            )),
+            (2, true)
+        );
+        assert!(abonne
+            .try_recv()
+            .unwrap()
+            .contains(&Changement::Videos { salon: "w1".into() }));
+        store.appliquer(&evenement(
+            "channel.deleted",
+            json!({"server_id": "s1", "id": "w1"}),
+        ));
+        assert!(store.lire(|e| e.videos.is_empty()));
     }
 
     #[tokio::test]

@@ -1,0 +1,1153 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Case, Defilement, Chargement, Etiquette, Vide } from "../composants.slint";
+import { LecteurMedia } from "../composants/lecteur.slint";
+import { MiniProgression } from "../composants/mini-progression.slint";
+import { DonneesVueWeb, ZoneVueWeb } from "../composants/vue-web.slint";
+import { DonneesLecteur } from "../video/lecteur.slint";
+import { DonneesVideos, OngletVideos, CarteVideo, ListeVideoVue, SeanceVideoVue } from "donnees.slint";
+
+export component PetitBouton inherits Rectangle {
+    in property <string> icone;
+    in property <string> texte;
+    in property <string> description;
+    in property <bool> enfonce: false;
+    in property <bool> actif: true;
+    in property <bool> danger: false;
+    in property <bool> fort: false;
+    callback clique(length, length);
+    property <bool> utilisable: root.actif && Calques.ouverts == 0;
+    height: 28px;
+    min-width: disposition.preferred-width;
+    border-radius: Rayon.xs;
+    background: root.fort ? (zone.has-hover && root.utilisable ? Theme.rose-fonce : Theme.rose) : root.enfonce ? Theme.rose-doux : zone.has-hover && root.utilisable ? Theme.papier-3 : transparent;
+    opacity: root.actif ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: root.texte != "" ? root.texte : root.description;
+    accessible-enabled: root.utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.clique(root.absolute-position.x, root.absolute-position.y + root.height);
+        }
+    }
+    animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    disposition := HorizontalLayout {
+        padding-left: root.texte == "" ? 5px : 8px;
+        padding-right: root.texte == "" ? 5px : 9px;
+        spacing: 5px;
+        alignment: center;
+        if root.icone != "": Icone {
+            y: (parent.height - self.height) / 2;
+            nom: root.icone;
+            taille: 16px;
+            couleur: root.danger ? Theme.danger : root.fort ? Theme.rose-texte : root.enfonce ? Theme.rose-texte : Theme.encre-2;
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: root.danger ? Theme.danger : root.fort || root.enfonce ? Theme.rose-texte : Theme.encre-2;
+            font-size: Typo.minuscule;
+            font-weight: Typo.moyen;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique(root.absolute-position.x, root.absolute-position.y + root.height);
+        }
+    }
+}
+
+component Puce inherits PetitBouton {
+    background: Theme.papier-2;
+    border-width: 1px;
+    border-color: Theme.trait;
+}
+
+component Miniature inherits Rectangle {
+    in property <CarteVideo> carte;
+    callback ensemble();
+    border-radius: Rayon.s;
+    clip: true;
+    background: Theme.papier-3;
+    if root.carte.a-miniature: Image {
+        width: 100%;
+        height: 100%;
+        source: root.carte.miniature;
+        image-fit: ImageFit.cover;
+        accessible-role: none;
+    }
+    if !root.carte.a-miniature: Icone {
+        nom: root.carte.musique ? "note" : "video";
+        taille: 28px;
+        couleur: Theme.gris;
+    }
+    if root.carte.ensemble: Rectangle {
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: lecture.has-hover ? Theme.rose-fonce : #0e0c0bb3;
+        accessible-role: button;
+        accessible-label: root.carte.musique ? "Écouter ensemble" : "Regarder ensemble";
+        accessible-action-default => {
+            root.ensemble();
+        }
+        Icone {
+            nom: "lecture";
+            taille: 20px;
+            couleur: #f1ece6;
+        }
+        lecture := TouchArea {
+            enabled: Calques.ouverts == 0;
+            mouse-cursor: pointer;
+            clicked => {
+                root.ensemble();
+            }
+        }
+    }
+    Etiquette {
+        x: 8px;
+        y: 8px;
+        texte: root.carte.source;
+    }
+    if root.carte.vue: Rectangle {
+        x: parent.width - self.width - 8px;
+        y: 8px;
+        width: vu.preferred-width + 12px;
+        height: 18px;
+        border-radius: Rayon.pilule;
+        background: Theme.ok-fond;
+        vu := Text {
+            text: root.carte.musique ? "Écouté" : "Vue";
+            color: Theme.ok;
+            font-family: Typo.mono;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    if root.carte.en-cours: Rectangle {
+        x: 8px;
+        y: parent.height - self.height - 8px;
+        width: lit.preferred-width + 14px;
+        height: 20px;
+        border-radius: Rayon.pilule;
+        background: Theme.rose;
+        lit := Text {
+            text: "En lecture";
+            color: Theme.rose-texte;
+            font-family: Typo.mono;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component ActionsCarte inherits HorizontalLayout {
+    in property <CarteVideo> carte;
+    spacing: 2px;
+    PetitBouton {
+        icone: "coeur";
+        texte: root.carte.reactions;
+        enfonce: root.carte.aime;
+        description: "J’aime";
+        clique => {
+            DonneesVideos.aimer(root.carte.id);
+        }
+    }
+    Rectangle {
+        width: reponses.preferred-width + 8px;
+        accessible-role: text;
+        accessible-label: "Réponses dans la discussion : " + root.carte.reponses;
+        reponses := HorizontalLayout {
+            spacing: 3px;
+            Icone {
+                y: (parent.height - self.height) / 2;
+                nom: "repondre";
+                taille: 14px;
+                couleur: Theme.gris;
+            }
+            Text {
+                text: root.carte.reponses;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+            }
+        }
+    }
+    Rectangle {
+        horizontal-stretch: 1;
+    }
+    if root.carte.peut-lister: PetitBouton {
+        icone: "file-attente";
+        description: "Ajouter à une liste";
+        clique(x, y) => {
+            DonneesVideos.menu-listes(root.carte.id, x, y);
+        }
+    }
+    if root.carte.peut-organiser: PetitBouton {
+        icone: "ok";
+        enfonce: root.carte.vue;
+        description: root.carte.vue ? (root.carte.musique ? "Marquer comme non écouté" : "Marquer comme non vue") : (root.carte.musique ? "Marquer comme écouté par le groupe" : "Marquer comme vue par le groupe");
+        clique => {
+            DonneesVideos.marquer-vue(root.carte.id);
+        }
+    }
+    if root.carte.peut-supprimer: PetitBouton {
+        icone: "plus3";
+        description: "Plus d’actions";
+        clique(x, y) => {
+            DonneesVideos.menu-carte(root.carte.id, x, y);
+        }
+    }
+}
+
+component BoutonsCarte inherits HorizontalLayout {
+    in property <CarteVideo> carte;
+    spacing: 4px;
+    alignment: start;
+    if root.carte.ensemble: PetitBouton {
+        icone: root.carte.musique ? "note" : "tele";
+        texte: root.carte.musique ? "Écouter ensemble" : "Regarder ensemble";
+        fort: true;
+        clique => {
+            DonneesVideos.ensemble(root.carte.id);
+        }
+    }
+    if root.carte.solo: PetitBouton {
+        icone: root.carte.en-cours ? "pause" : "casque";
+        texte: root.carte.musique ? "Écouter" : "Regarder";
+        description: root.carte.musique ? "Écouter seul, sans session" : "Regarder seul, sans session";
+        enfonce: root.carte.en-cours;
+        clique => {
+            DonneesVideos.lire(root.carte.id);
+        }
+    }
+    if root.carte.ajout-solo: PetitBouton {
+        icone: "plus";
+        texte: "À ma file";
+        clique => {
+            DonneesVideos.ajouter-solo(root.carte.id);
+        }
+    }
+    if root.carte.ajout-file: PetitBouton {
+        icone: "plus";
+        texte: "Ajouter à la file";
+        description: "Ajouter à la file de la session en cours";
+        clique => {
+            DonneesVideos.ajouter-file(root.carte.id);
+        }
+    }
+}
+
+component TitreCarte inherits Text {
+    in property <CarteVideo> carte;
+    text: root.carte.titre;
+    color: zone.has-hover ? Theme.rose-texte : Theme.encre;
+    font-size: Typo.compact;
+    font-weight: Typo.demi-gras;
+    overflow: elide;
+    accessible-role: button;
+    accessible-label: root.carte.titre;
+    accessible-action-default => {
+        DonneesVideos.ouvrir-lien(root.carte.id);
+    }
+    zone := TouchArea {
+        enabled: Calques.ouverts == 0;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesVideos.ouvrir-lien(root.carte.id);
+        }
+    }
+}
+
+export component CarteVideoVue inherits Rectangle {
+    in property <CarteVideo> carte;
+    in property <bool> compacte: false;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: root.carte.en-cours ? Theme.rose-fonce : Theme.trait;
+    opacity: root.carte.vue ? 0.82 : 1;
+    accessible-role: groupbox;
+    accessible-label: root.carte.titre;
+    if !root.compacte: VerticalLayout {
+        padding: Espace.e2;
+        spacing: 6px;
+        Miniature {
+            height: (root.width - 2 * Espace.e2) * 9 / 16;
+            carte: root.carte;
+            ensemble => {
+                DonneesVideos.ensemble(root.carte.id);
+            }
+        }
+        VerticalLayout {
+            padding-left: 4px;
+            padding-right: 4px;
+            spacing: 4px;
+            TitreCarte {
+                carte: root.carte;
+            }
+            Text {
+                text: root.carte.sous-titre;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                overflow: elide;
+            }
+            BoutonsCarte {
+                carte: root.carte;
+            }
+            ActionsCarte {
+                carte: root.carte;
+            }
+        }
+    }
+    if root.compacte: HorizontalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e3;
+        Miniature {
+            width: 144px;
+            carte: root.carte;
+            ensemble => {
+                DonneesVideos.ensemble(root.carte.id);
+            }
+        }
+        VerticalLayout {
+            spacing: 4px;
+            alignment: center;
+            TitreCarte {
+                carte: root.carte;
+            }
+            Text {
+                text: root.carte.sous-titre;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                BoutonsCarte {
+                    carte: root.carte;
+                }
+                ActionsCarte {
+                    horizontal-stretch: 1;
+                    carte: root.carte;
+                }
+            }
+        }
+    }
+}
+
+component LecteurAncre inherits Rectangle {
+    property <bool> youtube: DonneesVideos.solo.youtube;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    clip: true;
+    accessible-role: groupbox;
+    accessible-label: "Lecture en solo : " + DonneesVideos.solo.titre;
+    VerticalLayout {
+        Rectangle {
+            vertical-stretch: 1;
+            background: #0e0c0b;
+            if !root.youtube && !DonneesVideos.solo.cede: LecteurMedia {
+                width: 100%;
+                height: 100%;
+                etat: DonneesLecteur.etat;
+                avance: DonneesLecteur.avance;
+                titre: DonneesVideos.solo.titre;
+                basculer => {
+                    DonneesVideos.solo-basculer();
+                }
+                aller(v) => {
+                    DonneesVideos.solo-aller(v);
+                }
+                volume(v) => {
+                    DonneesLecteur.volume(v);
+                }
+                muet => {
+                    DonneesLecteur.muet();
+                }
+                plein-ecran => {
+                    DonneesLecteur.plein-ecran();
+                }
+                menu-vitesse(x, y) => {
+                    DonneesLecteur.menu-vitesse(x, y);
+                }
+                menu-audio(x, y) => {
+                    DonneesLecteur.menu-audio(x, y);
+                }
+                menu-sous-titres(x, y) => {
+                    DonneesLecteur.menu-sous-titres(x, y);
+                }
+                touche(t, c, m, a) => {
+                    return DonneesLecteur.touche(t, c, m, a);
+                }
+                zone-image(l, h) => {
+                    DonneesLecteur.zone-image(l, h);
+                }
+            }
+            if root.youtube && DonneesVueWeb.solo: ZoneVueWeb {
+                width: 100%;
+                height: 100%;
+                nom: "solo";
+                montree: Calques.ouverts == 0;
+            }
+            if DonneesVideos.solo.cede: VerticalLayout {
+                alignment: center;
+                spacing: Espace.e3;
+                Text {
+                    text: "Un autre média joue sur cet appareil.";
+                    color: #f1ece6;
+                    font-size: Typo.compact;
+                    horizontal-alignment: center;
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Reprendre ici";
+                        icone: "lecture";
+                        variante: VarianteBouton.primaire;
+                        clique => {
+                            DonneesVideos.solo-basculer();
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding: Espace.e2;
+            padding-left: Espace.e3;
+            spacing: Espace.e2;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text {
+                    text: DonneesVideos.solo.titre;
+                    color: Theme.encre;
+                    font-size: Typo.compact;
+                    font-weight: Typo.demi-gras;
+                    overflow: elide;
+                }
+                Text {
+                    text: DonneesVideos.solo.erreur != "" ? DonneesVideos.solo.erreur : DonneesVideos.solo.sous-titre + (DonneesVideos.solo.sous-titre != "" && DonneesVideos.solo.a-suivre != "" ? " · " : "") + DonneesVideos.solo.a-suivre;
+                    color: DonneesVideos.solo.erreur != "" ? Theme.danger : Theme.gris;
+                    font-size: Typo.minuscule;
+                    overflow: elide;
+                }
+            }
+            if root.youtube: PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: DonneesVideos.solo.lecture ? "pause" : "lecture";
+                description: DonneesVideos.solo.lecture ? "Pause" : "Lecture";
+                clique => {
+                    DonneesVideos.solo-basculer();
+                }
+            }
+            if root.youtube: MiniProgression {
+                width: 260px;
+                position: DonneesVideos.solo.position;
+                duree: DonneesVideos.solo.duree;
+                texte-position: DonneesVideos.solo.texte-position;
+                texte-duree: DonneesVideos.solo.texte-duree;
+                texte-restant: DonneesVideos.solo.texte-restant;
+                aller(v) => {
+                    DonneesVideos.solo-aller(v);
+                }
+            }
+            PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: "suivant";
+                description: "Suivant";
+                actif: DonneesVideos.solo.a-suivre != "";
+                clique => {
+                    DonneesVideos.solo-suivant();
+                }
+            }
+            PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: "x";
+                description: "Arrêter la lecture";
+                clique => {
+                    DonneesVideos.solo-arreter();
+                }
+            }
+        }
+    }
+}
+
+component Grille inherits Rectangle {
+    property <bool> grille: DonneesVideos.vue.grille;
+    property <int> colonnes: grille ? Math.max(1, Math.floor((root.width - 2 * Espace.e6 + Espace.e4) / 284px)) : 1;
+    property <length> largeur: (root.width - 2 * Espace.e6 - (root.colonnes - 1) * Espace.e4) / root.colonnes;
+    property <length> hauteur: grille ? (root.largeur - 2 * Espace.e2) * 9 / 16 + 136px : 100px;
+    property <int> rangees: Math.ceil(DonneesVideos.cartes.length / root.colonnes);
+    Defilement {
+        hauteur-contenu: root.rangees * (root.hauteur + Espace.e4) + Espace.e6;
+        for c[i] in DonneesVideos.cartes: CarteVideoVue {
+            x: Espace.e6 + Math.mod(i, root.colonnes) * (root.largeur + Espace.e4);
+            y: Math.floor(i / root.colonnes) * (root.hauteur + Espace.e4);
+            width: root.largeur;
+            height: root.hauteur;
+            carte: c;
+            compacte: !root.grille;
+        }
+    }
+    if DonneesVideos.cartes.length == 0: VerticalLayout {
+        alignment: start;
+        padding: Espace.e8;
+        HorizontalLayout {
+            alignment: center;
+            Vide {
+                preferred-width: 480px;
+                max-width: 480px;
+                icone: DonneesVideos.vue.musique ? "casque" : "video";
+                titre: DonneesVideos.vue.vide;
+            }
+        }
+    }
+}
+
+component OngletVideosVue inherits VerticalLayout {
+    property <string> lien;
+    spacing: Espace.e3;
+    if DonneesVideos.vue.peut-publier: HorizontalLayout {
+        padding-left: Espace.e6;
+        padding-right: Espace.e6;
+        spacing: Espace.e2;
+        champ := Champ {
+            horizontal-stretch: 1;
+            indice: DonneesVideos.vue.musique ? "Coller un lien YouTube Music (morceau, album, playlist)" : "Coller un lien de vidéo (YouTube, Twitch, Vimeo, Dailymotion, fichier…)";
+            modifie(v) => {
+                root.lien = v;
+            }
+            valide(v) => {
+                DonneesVideos.publier(v);
+                self.valeur = "";
+                root.lien = "";
+            }
+        }
+        Bouton {
+            texte: "Publier";
+            variante: VarianteBouton.primaire;
+            actif: root.lien != "";
+            clique => {
+                DonneesVideos.publier(root.lien);
+                champ.valeur = "";
+                root.lien = "";
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: Espace.e6;
+        padding-right: Espace.e6;
+        spacing: Espace.e2;
+        Icone {
+            y: (parent.height - self.height) / 2;
+            nom: "filtre";
+            taille: 16px;
+            couleur: Theme.gris;
+        }
+        if DonneesVideos.vue.musique: Puce {
+            texte: DonneesVideos.vue.filtre-artiste;
+            icone: "down";
+            clique(x, y) => {
+                DonneesVideos.menu-filtre("artiste", x, y);
+            }
+        }
+        if !DonneesVideos.vue.musique: Puce {
+            texte: DonneesVideos.vue.filtre-source;
+            icone: "down";
+            clique(x, y) => {
+                DonneesVideos.menu-filtre("source", x, y);
+            }
+        }
+        Puce {
+            texte: DonneesVideos.vue.filtre-vues;
+            icone: "down";
+            clique(x, y) => {
+                DonneesVideos.menu-filtre("vues", x, y);
+            }
+        }
+        Puce {
+            texte: DonneesVideos.vue.filtre-auteur;
+            icone: "down";
+            clique(x, y) => {
+                DonneesVideos.menu-filtre("auteur", x, y);
+            }
+        }
+        if DonneesVideos.vue.listes-existent: Puce {
+            texte: DonneesVideos.vue.filtre-liste;
+            icone: "down";
+            clique(x, y) => {
+                DonneesVideos.menu-filtre("liste", x, y);
+            }
+        }
+        Puce {
+            texte: DonneesVideos.vue.tri;
+            icone: "down";
+            clique(x, y) => {
+                DonneesVideos.menu-filtre("tri", x, y);
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+        PetitBouton {
+            icone: "grid";
+            description: "Vue en grille";
+            enfonce: DonneesVideos.vue.grille;
+            clique => {
+                DonneesVideos.disposition(true);
+            }
+        }
+        PetitBouton {
+            icone: "list";
+            description: "Vue en liste";
+            enfonce: !DonneesVideos.vue.grille;
+            clique => {
+                DonneesVideos.disposition(false);
+            }
+        }
+    }
+    Grille {
+        vertical-stretch: 1;
+    }
+}
+
+component ListeVue inherits Rectangle {
+    in property <ListeVideoVue> l;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    height: disposition.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: root.l.nom;
+    disposition := VerticalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e1;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Text {
+                    text: root.l.nom;
+                    color: Theme.encre;
+                    font-size: Typo.corps;
+                    font-weight: Typo.demi-gras;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Icone {
+                        y: (parent.height - self.height) / 2;
+                        nom: root.l.collaborative ? "gens" : "cadenas";
+                        taille: 14px;
+                        couleur: Theme.gris;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.l.meta;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                        overflow: elide;
+                    }
+                }
+            }
+            if root.l.supprimable: PetitBouton {
+                icone: root.l.collaborative ? "gens" : "cadenas";
+                enfonce: root.l.collaborative;
+                description: root.l.collaborative ? "Réserver la liste à son créateur" : "Rendre la liste collaborative";
+                clique => {
+                    DonneesVideos.basculer-collaborative(root.l.id);
+                }
+            }
+            if root.l.modifiable: PetitBouton {
+                icone: "crayon";
+                description: "Renommer la liste";
+                clique => {
+                    DonneesVideos.renommer-liste(root.l.id);
+                }
+            }
+            if root.l.supprimable: PetitBouton {
+                icone: "corbeille";
+                danger: true;
+                description: "Supprimer la liste";
+                clique => {
+                    DonneesVideos.supprimer-liste(root.l.id);
+                }
+            }
+        }
+        if root.l.regarder || root.l.ecouter || root.l.planifiable: HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            if root.l.regarder: PetitBouton {
+                icone: "tele";
+                texte: "Regarder";
+                fort: true;
+                description: "La liste devient la file de la session";
+                clique => {
+                    DonneesVideos.regarder-liste(root.l.id);
+                }
+            }
+            if root.l.ecouter: PetitBouton {
+                icone: "note";
+                texte: "Écouter";
+                fort: true;
+                description: "Les titres deviennent la file de la session Music2gether";
+                clique => {
+                    DonneesVideos.ecouter-liste(root.l.id);
+                }
+            }
+            if root.l.ecouter: PetitBouton {
+                icone: "casque";
+                texte: "Écouter seul";
+                clique => {
+                    DonneesVideos.ecouter-liste-solo(root.l.id, false);
+                }
+            }
+            if root.l.ecouter: PetitBouton {
+                icone: "shuffle";
+                description: "Écouter seul dans le désordre";
+                clique => {
+                    DonneesVideos.ecouter-liste-solo(root.l.id, true);
+                }
+            }
+            if root.l.planifiable: PetitBouton {
+                icone: "horloge";
+                texte: "Planifier";
+                clique => {
+                    DonneesVideos.planifier-liste(root.l.id);
+                }
+            }
+        }
+        for e[i] in root.l.elements: HorizontalLayout {
+            height: 30px;
+            spacing: Espace.e2;
+            Text {
+                width: 22px;
+                text: e.rang;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+            }
+            Text {
+                width: 92px;
+                text: e.source;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: e.titre;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if root.l.modifiable: PetitBouton {
+                icone: "up";
+                description: "Monter";
+                actif: e.monter;
+                clique => {
+                    DonneesVideos.deplacer-element(root.l.id, i, true);
+                }
+            }
+            if root.l.modifiable: PetitBouton {
+                icone: "bas";
+                description: "Descendre";
+                actif: e.descendre;
+                clique => {
+                    DonneesVideos.deplacer-element(root.l.id, i, false);
+                }
+            }
+            if root.l.modifiable: PetitBouton {
+                icone: "x";
+                description: "Retirer de la liste";
+                clique => {
+                    DonneesVideos.retirer-element(root.l.id, e.id);
+                }
+            }
+        }
+        if root.l.elements.length == 0: Text {
+            text: "Liste vide : ajoutez des vidéos depuis leur carte (bouton liste).";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component OngletListes inherits Rectangle {
+    property <string> nom;
+    property <bool> collaborative: true;
+    Defilement {
+        hauteur-contenu: corps.preferred-height;
+        corps := VerticalLayout {
+            alignment: start;
+            padding-left: Espace.e6;
+            padding-right: Espace.e6;
+            padding-bottom: Espace.e8;
+            spacing: Espace.e3;
+            if DonneesVideos.vue.peut-creer-liste: HorizontalLayout {
+                spacing: Espace.e2;
+                nouvelle := Champ {
+                    horizontal-stretch: 1;
+                    indice: "Nouvelle liste (« À voir ce week-end »…)";
+                    modifie(v) => {
+                        root.nom = v;
+                    }
+                    valide(v) => {
+                        DonneesVideos.creer-liste(v, root.collaborative);
+                        self.valeur = "";
+                        root.nom = "";
+                    }
+                }
+                Case {
+                    y: (parent.height - self.height) / 2;
+                    texte: "Collaborative";
+                    cochee: root.collaborative;
+                    bascule(c) => {
+                        root.collaborative = c;
+                    }
+                }
+                Bouton {
+                    texte: "Créer";
+                    actif: root.nom != "";
+                    clique => {
+                        DonneesVideos.creer-liste(root.nom, root.collaborative);
+                        nouvelle.valeur = "";
+                        root.nom = "";
+                    }
+                }
+            }
+            for l in DonneesVideos.listes: ListeVue {
+                l: l;
+            }
+            if DonneesVideos.listes.length == 0: Text {
+                text: "Aucune liste. Créez-en une pour rassembler des vidéos et en faire la file d’une séance.";
+                color: Theme.gris;
+                font-size: Typo.compact;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+component SeanceVue inherits Rectangle {
+    in property <SeanceVideoVue> s;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: root.s.en-cours ? Theme.ok : Theme.trait;
+    height: disposition.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: root.s.titre;
+    disposition := VerticalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Rectangle {
+                width: 46px;
+                height: 50px;
+                border-radius: Rayon.s;
+                background: Theme.rose-doux;
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: root.s.mois;
+                        color: Theme.rose-texte;
+                        font-family: Typo.mono;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: root.s.jour;
+                        color: Theme.rose-texte;
+                        font-family: Typo.titre;
+                        font-size: 20px;
+                        font-weight: Typo.gras;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text {
+                    text: root.s.titre;
+                    color: Theme.encre;
+                    font-size: Typo.corps;
+                    font-weight: Typo.demi-gras;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.s.detail;
+                    color: Theme.gris;
+                    font-size: Typo.minuscule;
+                    wrap: word-wrap;
+                }
+            }
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: statut.preferred-width + 16px;
+                height: 22px;
+                border-radius: Rayon.pilule;
+                background: root.s.en-cours ? Theme.ok-fond : Theme.attention-fond;
+                statut := Text {
+                    text: root.s.statut;
+                    color: root.s.en-cours ? Theme.ok : Theme.attention;
+                    font-family: Typo.mono;
+                    font-size: 10.5px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            if root.s.annulable: PetitBouton {
+                y: (parent.height - self.height) / 2;
+                icone: "corbeille";
+                danger: true;
+                description: "Annuler la séance";
+                clique => {
+                    DonneesVideos.annuler-seance(root.s.id);
+                }
+            }
+        }
+        for v in root.s.videos: Text {
+            text: "· " + v;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            spacing: 4px;
+            PetitBouton {
+                texte: root.s.oui;
+                icone: root.s.reponse == 1 ? "ok" : "";
+                enfonce: root.s.reponse == 1;
+                clique => {
+                    DonneesVideos.repondre(root.s.id, 1);
+                }
+            }
+            PetitBouton {
+                texte: root.s.peut-etre;
+                icone: root.s.reponse == 2 ? "ok" : "";
+                enfonce: root.s.reponse == 2;
+                clique => {
+                    DonneesVideos.repondre(root.s.id, 2);
+                }
+            }
+            PetitBouton {
+                texte: root.s.non;
+                icone: root.s.reponse == 3 ? "ok" : "";
+                enfonce: root.s.reponse == 3;
+                clique => {
+                    DonneesVideos.repondre(root.s.id, 3);
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            if root.s.rejoindre: PetitBouton {
+                icone: "lecture";
+                texte: "Rejoindre";
+                fort: true;
+                clique => {
+                    DonneesVideos.rejoindre(root.s.id);
+                }
+            }
+        }
+        if root.s.presents != "": Text {
+            text: root.s.presents;
+            color: Theme.gris;
+            font-size: Typo.minuscule;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component OngletSeances inherits Rectangle {
+    Defilement {
+        hauteur-contenu: corps.preferred-height;
+        corps := VerticalLayout {
+            alignment: start;
+            padding-left: Espace.e6;
+            padding-right: Espace.e6;
+            padding-bottom: Espace.e8;
+            spacing: Espace.e3;
+            if DonneesVideos.vue.peut-planifier: HorizontalLayout {
+                Text {
+                    horizontal-stretch: 1;
+                    text: "SÉANCES";
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 10.5px;
+                    letter-spacing: 0.8px;
+                    vertical-alignment: center;
+                }
+                Bouton {
+                    texte: "Planifier une séance";
+                    icone: "plus";
+                    clique => {
+                        DonneesVideos.ouvrir-plan();
+                    }
+                }
+            }
+            for s in DonneesVideos.seances: SeanceVue {
+                s: s;
+            }
+            if DonneesVideos.seances.length == 0: Text {
+                text: "Aucune séance prévue.";
+                color: Theme.gris;
+                font-size: Typo.compact;
+            }
+        }
+    }
+}
+
+component Onglet inherits Rectangle {
+    in property <string> texte;
+    in property <string> icone;
+    in property <bool> choisi;
+    callback clique();
+    height: 36px;
+    width: contenu.preferred-width + 20px;
+    accessible-role: tab;
+    accessible-label: root.texte;
+    accessible-item-selected: root.choisi;
+    accessible-action-default => {
+        root.clique();
+    }
+    contenu := HorizontalLayout {
+        x: 10px;
+        spacing: 6px;
+        Icone {
+            y: (parent.height - self.height) / 2;
+            nom: root.icone;
+            taille: 16px;
+            couleur: root.choisi ? Theme.encre : Theme.gris;
+        }
+        Text {
+            text: root.texte;
+            color: root.choisi ? Theme.encre : Theme.gris;
+            font-size: Typo.compact;
+            font-weight: root.choisi ? Typo.demi-gras : Typo.moyen;
+            vertical-alignment: center;
+        }
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        background: root.choisi ? Theme.rose-fonce : zone.has-hover ? Theme.trait-fort : transparent;
+    }
+    zone := TouchArea {
+        enabled: Calques.ouverts == 0;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+export component SalonVideos inherits VerticalLayout {
+    property <bool> musique: DonneesVideos.vue.musique;
+    if DonneesVideos.prochaines.length > 0: HorizontalLayout {
+        padding-left: Espace.e6;
+        padding-right: Espace.e6;
+        padding-top: Espace.e3;
+        spacing: Espace.e2;
+        alignment: start;
+        for p in DonneesVideos.prochaines: PetitBouton {
+            icone: "horloge";
+            texte: p.titre + " · " + p.quand;
+            enfonce: true;
+            clique => {
+                DonneesVideos.onglet(OngletVideos.seances);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: Espace.e6 - 10px;
+        padding-right: Espace.e6;
+        Onglet {
+            texte: root.musique ? "Morceaux" : "Vidéos";
+            icone: root.musique ? "headphones" : "video";
+            choisi: DonneesVideos.vue.onglet == OngletVideos.videos;
+            clique => {
+                DonneesVideos.onglet(OngletVideos.videos);
+            }
+        }
+        Onglet {
+            texte: root.musique ? "Playlists" : "Listes";
+            icone: "list";
+            choisi: DonneesVideos.vue.onglet == OngletVideos.listes;
+            clique => {
+                DonneesVideos.onglet(OngletVideos.listes);
+            }
+        }
+        Onglet {
+            texte: root.musique ? "Écoutes" : "Séances";
+            icone: "calendar";
+            choisi: DonneesVideos.vue.onglet == OngletVideos.seances;
+            clique => {
+                DonneesVideos.onglet(OngletVideos.seances);
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+    }
+    Rectangle {
+        height: 1px;
+        background: Theme.trait;
+    }
+    if DonneesVideos.solo.actif && DonneesVideos.solo.ancre: HorizontalLayout {
+        padding-left: Espace.e6;
+        padding-right: Espace.e6;
+        padding-top: Espace.e3;
+        LecteurAncre {
+            height: Math.min(380px, (parent.width - 2 * Espace.e6) * 9 / 16 + 52px);
+        }
+    }
+    if DonneesVideos.vue.avis != "": HorizontalLayout {
+        padding-left: Espace.e6;
+        padding-right: Espace.e6;
+        padding-top: Espace.e2;
+        Text {
+            text: DonneesVideos.vue.avis;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+    }
+    Rectangle {
+        vertical-stretch: 1;
+        if !DonneesVideos.vue.charge: Chargement {
+            width: 28px;
+            height: 28px;
+        }
+        if DonneesVideos.vue.charge && DonneesVideos.vue.onglet == OngletVideos.videos: OngletVideosVue {
+            y: Espace.e3;
+            height: parent.height - Espace.e3;
+        }
+        if DonneesVideos.vue.charge && DonneesVideos.vue.onglet == OngletVideos.listes: OngletListes {
+            y: Espace.e3;
+            height: parent.height - Espace.e3;
+        }
+        if DonneesVideos.vue.charge && DonneesVideos.vue.onglet == OngletVideos.seances: OngletSeances {
+            y: Espace.e3;
+            height: parent.height - Espace.e3;
+        }
+    }
+}

@@ -7,6 +7,7 @@ use crate::temps_reel::evenements::{
     Evenement, GenreDepart, MentionRecue, NotificationServeur, SourcePartage, StatutPresence,
 };
 use crate::types::{Mention, Message};
+use crate::videos::appliquer_reaction;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Changement {
@@ -91,6 +92,9 @@ pub enum Changement {
         genre: GenreSeance,
         salon: String,
     },
+    Videos {
+        salon: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +158,7 @@ pub enum Effet {
     RechargerMessagesPrives,
     MarquerLu(CleConversation),
     LireNotifications(Vec<String>),
+    RechargerVideos(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -610,12 +615,24 @@ pub fn appliquer_avec_effets(etat: &mut Etat, evenement: &Evenement) -> Applicat
         Evenement::EmojisModifies(e) => a.changer(Changement::Emojis {
             serveur: e.server_id.clone(),
         }),
+        Evenement::VideosModifiees(d) => {
+            if etat.videos.contains_key(&d.channel_id) {
+                a.effet(Effet::RechargerVideos(d.channel_id.clone()));
+            }
+        }
+        Evenement::ReactionModifiee(d) => {
+            let mienne = d.user_id == etat.moi();
+            for salon in
+                appliquer_reaction(&mut etat.videos, &d.message_id, &d.emoji, d.added, mienne)
+            {
+                a.changer(Changement::Videos { salon });
+            }
+        }
         Evenement::Pret(_)
         | Evenement::Saisie(_)
         | Evenement::MessageModifie(_)
         | Evenement::SondageVote(_)
         | Evenement::SondageClos(_)
-        | Evenement::ReactionModifiee(_)
         | Evenement::SeanceRegarder(_)
         | Evenement::SeanceCinema(_)
         | Evenement::SeanceMusique(_)
@@ -623,7 +640,6 @@ pub fn appliquer_avec_effets(etat: &mut Etat, evenement: &Evenement) -> Applicat
         | Evenement::DessinPrive(_)
         | Evenement::ChatDessin(_)
         | Evenement::OperationsDessin(_)
-        | Evenement::VideosModifiees(_)
         | Evenement::Pong
         | Evenement::Renouvele => {}
     }
@@ -864,6 +880,11 @@ pub(crate) fn oublier_salon(
         .filter(|g| etat.seances.seance(*g, salon).is_some())
         .collect();
     etat.seances.retirer_salon(salon);
+    if etat.videos.remove(salon).is_some() {
+        a.changer(Changement::Videos {
+            salon: salon.to_string(),
+        });
+    }
     for genre in genres {
         a.changer(Changement::Seance {
             genre,

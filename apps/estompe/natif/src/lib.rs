@@ -17,6 +17,7 @@ pub mod regarder_ensemble;
 pub mod replay;
 pub mod session;
 pub mod video;
+pub mod videos;
 pub mod vocal;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -19,6 +19,7 @@ use crate::{DonneesVueWeb, Principale};
 
 pub const PLACE_SEANCE: &str = "seance";
 pub const PLACE_VISIONNEUSE: &str = "visionneuse";
+pub const PLACE_SOLO: &str = "solo";
 pub const DOSSIER_VUE_WEB: &str = "vue-web";
 const SOURCE_JOURNAL: &str = "youtube";
 const SANS_NOUVELLES: Duration = Duration::from_millis(600);
@@ -267,48 +268,54 @@ fn ouvrir_sans_reentree(
     Ok(())
 }
 
-pub fn pomper_seance(f: &Principale, lien: Option<&LienVue>, rappel: RappelLien) {
-    if EN_OUVERTURE.with(Cell::get) {
-        return;
-    }
-    let g = f.global::<DonneesVueWeb>();
-    let actuelle = avec(|e| e.ouvertes.get(PLACE_SEANCE).and_then(|o| o.lien.clone())).flatten();
+fn pomper(f: &Principale, place: &str, lien: Option<&LienVue>, rappel: RappelLien) -> bool {
+    let actuelle = avec(|e| e.ouvertes.get(place).and_then(|o| o.lien.clone())).flatten();
     let Some(lien) = lien.filter(|l| !l.ferme()) else {
         if actuelle.is_some() {
-            fermer(PLACE_SEANCE);
+            fermer(place);
         }
-        if g.get_seance() {
-            g.set_seance(false);
-        }
-        return;
+        return false;
     };
     if let Some(page) = lien.page_a_ouvrir() {
-        if let Err(e) = ouvrir(
-            f,
-            PLACE_SEANCE,
-            &page,
-            Some(lien.clone()),
-            Some(rappel.clone()),
-        ) {
-            journal(&format!("lecteur YouTube de la séance : {e}"));
+        if let Err(e) = ouvrir(f, place, &page, Some(lien.clone()), Some(rappel.clone())) {
+            journal(&format!("lecteur YouTube ({place}) : {e}"));
             lien.signaler_indisponible(&e);
             rappel();
         }
     } else if actuelle.is_some_and(|a| !a.meme(lien)) {
-        fermer(PLACE_SEANCE);
+        fermer(place);
     }
     let messages = lien.sortants();
     avec(|e| {
-        if let Some(o) = e.ouvertes.get(PLACE_SEANCE) {
+        if let Some(o) = e.ouvertes.get(place) {
             for m in &messages {
                 let _ = o.vue.executer(&script_envoi(m));
             }
         }
     });
-    actualiser(PLACE_SEANCE);
-    let ouverte = avec(|e| e.ouvertes.contains_key(PLACE_SEANCE)).unwrap_or(false);
+    actualiser(place);
+    avec(|e| e.ouvertes.contains_key(place)).unwrap_or(false)
+}
+
+pub fn pomper_seance(f: &Principale, lien: Option<&LienVue>, rappel: RappelLien) {
+    if EN_OUVERTURE.with(Cell::get) {
+        return;
+    }
+    let ouverte = pomper(f, PLACE_SEANCE, lien, rappel);
+    let g = f.global::<DonneesVueWeb>();
     if g.get_seance() != ouverte {
         g.set_seance(ouverte);
+    }
+}
+
+pub fn pomper_solo(f: &Principale, lien: Option<&LienVue>, rappel: RappelLien) {
+    if EN_OUVERTURE.with(Cell::get) {
+        return;
+    }
+    let ouverte = pomper(f, PLACE_SOLO, lien, rappel);
+    let g = f.global::<DonneesVueWeb>();
+    if g.get_solo() != ouverte {
+        g.set_solo(ouverte);
     }
 }
 

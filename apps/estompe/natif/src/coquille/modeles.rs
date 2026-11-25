@@ -264,6 +264,7 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
             | Changement::Avis(_)
             | Changement::Emojis { .. }
             | Changement::Seance { .. }
+            | Changement::Videos { .. }
             | Changement::Messages(_) => {}
         }
     }

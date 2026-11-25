@@ -28,4 +28,5 @@ mod roles;
 mod saisie;
 mod session;
 mod signalements;
+mod videos;
 mod vocal;

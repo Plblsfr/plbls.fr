@@ -533,6 +533,12 @@ impl PiloteSeance {
         self.lecteur = None;
         self.moteur = None;
     }
+
+    pub fn ceder(&mut self) {
+        self.drainer_film();
+        self.lecteur = None;
+        self.moteur = None;
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -730,7 +736,7 @@ mod tests {
 
     use super::*;
     use crate::format::iso_de_ms;
-    use crate::lecteur::{Lecteur, MediaFactice, MoteurFactice};
+    use crate::lecteur::{CommandeMoteur, Lecteur, MediaFactice, MoteurFactice};
     use crate::regarder_ensemble::fournisseurs::LecteurFichier;
     use crate::regarder_ensemble::seance::RegistreSeances;
     use crate::regarder_ensemble::synchro::tests::base;
@@ -1271,6 +1277,32 @@ mod tests {
             a,
             ActionPilote::Appel(AppelSeance::Action { action, position: Some(_), .. }) if action == "pause"
         )));
+    }
+
+    #[test]
+    fn ceder_le_lecteur_ne_l_arrete_pas_detruire_l_arrete() {
+        let (lecteur, moteur) = Lecteur::factice();
+        moteur.ajouter_media(VIDEO, MediaFactice::video(600.0));
+        let lecteur = Arc::new(lecteur);
+        let pilote = || {
+            let l = lecteur.clone();
+            let fabrique: FabriqueLecteur = Box::new(move |_| {
+                Some(Box::new(LecteurFichier::nouveau(l.clone())) as Box<dyn LecteurSeance>)
+            });
+            let mut p = PiloteSeance::nouveau(GenreSeance::Regarder, "moi", fabrique);
+            p.recevoir(Some(&seance(etat("file", VIDEO))), base());
+            assert!(p.lecteur().is_some());
+            p
+        };
+        let mut p = pilote();
+        moteur.vider_commandes();
+        p.ceder();
+        assert!(p.lecteur().is_none());
+        assert!(!moteur.commandes().contains(&CommandeMoteur::Arreter));
+        let mut p = pilote();
+        moteur.vider_commandes();
+        p.detruire();
+        assert!(moteur.commandes().contains(&CommandeMoteur::Arreter));
     }
 
     #[test]

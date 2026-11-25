@@ -56,6 +56,7 @@ pub mod temps_reel;
 pub mod transcription;
 pub mod version;
 pub mod video;
+pub mod videos;
 pub mod virtualisation;
 pub mod vocal;
 pub use genere::types;

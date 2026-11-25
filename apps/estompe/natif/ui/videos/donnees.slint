@@ -1,0 +1,177 @@
+export enum OngletVideos { videos, listes, seances }
+
+export struct CarteVideo {
+    id: string,
+    titre: string,
+    sous-titre: string,
+    source: string,
+    miniature: image,
+    a-miniature: bool,
+    musique: bool,
+    vue: bool,
+    ensemble: bool,
+    solo: bool,
+    en-cours: bool,
+    reactions: string,
+    aime: bool,
+    reponses: string,
+    peut-lister: bool,
+    peut-organiser: bool,
+    peut-supprimer: bool,
+    ajout-file: bool,
+    ajout-solo: bool,
+}
+
+export struct ElementListeVideo {
+    id: string,
+    rang: string,
+    source: string,
+    titre: string,
+    monter: bool,
+    descendre: bool,
+}
+
+export struct ListeVideoVue {
+    id: string,
+    nom: string,
+    meta: string,
+    collaborative: bool,
+    modifiable: bool,
+    supprimable: bool,
+    regarder: bool,
+    ecouter: bool,
+    planifiable: bool,
+    elements: [ElementListeVideo],
+}
+
+export struct SeanceVideoVue {
+    id: string,
+    titre: string,
+    mois: string,
+    jour: string,
+    detail: string,
+    statut: string,
+    en-cours: bool,
+    annulable: bool,
+    videos: [string],
+    oui: string,
+    peut-etre: string,
+    non: string,
+    reponse: int,
+    rejoindre: bool,
+    presents: string,
+}
+
+export struct ProchaineSeanceVideo {
+    id: string,
+    titre: string,
+    quand: string,
+}
+
+export struct VueVideos {
+    musique: bool,
+    charge: bool,
+    onglet: OngletVideos,
+    peut-publier: bool,
+    grille: bool,
+    filtre-source: string,
+    filtre-vues: string,
+    filtre-auteur: string,
+    filtre-liste: string,
+    filtre-artiste: string,
+    tri: string,
+    listes-existent: bool,
+    vide: string,
+    peut-creer-liste: bool,
+    peut-planifier: bool,
+    avis: string,
+}
+
+export struct VueSoloVideo {
+    actif: bool,
+    ancre: bool,
+    youtube: bool,
+    titre: string,
+    sous-titre: string,
+    a-suivre: string,
+    lecture: bool,
+    position: float,
+    duree: float,
+    texte-position: string,
+    texte-duree: string,
+    texte-restant: string,
+    volume: int,
+    erreur: string,
+    cede: bool,
+    partage: bool,
+}
+
+export struct ChoixPlanVideo {
+    id: string,
+    titre: string,
+    coche: bool,
+}
+
+export struct PlanSeanceVideo {
+    ouvert: bool,
+    titre: string,
+    date: string,
+    salon: string,
+    rappel: string,
+    file: string,
+    choisir: bool,
+    pret: bool,
+    erreur: string,
+    occupe: bool,
+}
+
+export global DonneesVideos {
+    in property <VueVideos> vue;
+    in property <[CarteVideo]> cartes;
+    in property <[ListeVideoVue]> listes;
+    in property <[SeanceVideoVue]> seances;
+    in property <[ProchaineSeanceVideo]> prochaines;
+    in property <VueSoloVideo> solo;
+    in property <PlanSeanceVideo> plan;
+    in property <[ChoixPlanVideo]> choix-plan;
+    callback onglet(OngletVideos);
+    callback publier(string);
+    callback disposition(bool);
+    callback menu-filtre(string, length, length);
+    callback ensemble(string);
+    callback lire(string);
+    callback ajouter-solo(string);
+    callback ajouter-file(string);
+    callback aimer(string);
+    callback menu-listes(string, length, length);
+    callback marquer-vue(string);
+    callback menu-carte(string, length, length);
+    callback ouvrir-lien(string);
+    callback creer-liste(string, bool);
+    callback renommer-liste(string);
+    callback basculer-collaborative(string);
+    callback supprimer-liste(string);
+    callback deplacer-element(string, int, bool);
+    callback retirer-element(string, string);
+    callback regarder-liste(string);
+    callback ecouter-liste(string);
+    callback ecouter-liste-solo(string, bool);
+    callback planifier-liste(string);
+    callback repondre(string, int);
+    callback annuler-seance(string);
+    callback rejoindre(string);
+    callback ouvrir-plan();
+    callback fermer-plan();
+    callback plan-titre(string);
+    callback plan-date(string);
+    callback menu-plan(string, length, length);
+    callback plan-choix(string, bool);
+    callback planifier();
+    callback solo-basculer();
+    callback solo-suivant();
+    callback solo-arreter();
+    callback solo-aller(float);
+    callback solo-volume(int);
+    callback solo-ouvrir();
+    callback solo-partager();
+}

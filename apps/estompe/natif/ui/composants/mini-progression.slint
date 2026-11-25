@@ -1,0 +1,115 @@
+import { Theme, Typo, Mouvement, Courbes } from "../jetons.slint";
+
+export component MiniProgression inherits HorizontalLayout {
+    in property <float> position;
+    in property <float> duree;
+    in property <string> texte-position;
+    in property <string> texte-duree;
+    in property <string> texte-restant;
+    in property <bool> utilisable: true;
+    in property <color> couleur: Theme.encre;
+    callback aller(float);
+    property <bool> restant: false;
+    property <bool> glisse: false;
+    property <float> tenue: 0;
+    property <bool> active: root.utilisable && root.duree > 0;
+    property <float> affichee: root.glisse ? root.tenue : Math.clamp(root.position, 0, Math.max(root.duree, 0.001));
+    property <float> part: root.duree > 0 ? root.affichee / root.duree : 0;
+    spacing: 6px;
+    Text {
+        min-width: 38px;
+        text: root.texte-position == "" ? "0:00" : root.texte-position;
+        color: root.couleur;
+        opacity: 0.72;
+        font-family: Typo.mono;
+        font-size: 10.5px;
+        vertical-alignment: center;
+        accessible-role: text;
+    }
+    barre := Rectangle {
+        horizontal-stretch: 1;
+        min-width: 40px;
+        height: 14px;
+        opacity: root.active ? 1 : 0.6;
+        accessible-role: slider;
+        accessible-label: "Position dans le morceau";
+        accessible-value: root.texte-position;
+        accessible-value-minimum: 0;
+        accessible-value-maximum: root.duree;
+        accessible-value-step: 5;
+        accessible-enabled: root.active;
+        accessible-action-increment => {
+            root.aller(Math.min(root.duree, root.position + 5));
+        }
+        accessible-action-decrement => {
+            root.aller(Math.max(0, root.position - 5));
+        }
+        accessible-action-set-value(v) => {
+            root.aller(Math.clamp(v.to-float(), 0, root.duree));
+        }
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 3px;
+            border-radius: 2px;
+            background: root.couleur.with-alpha(0.2);
+        }
+        Rectangle {
+            x: 0;
+            y: (parent.height - self.height) / 2;
+            width: root.part * parent.width;
+            height: 3px;
+            border-radius: 2px;
+            background: Theme.rose-fonce;
+        }
+        Rectangle {
+            x: root.part * (parent.width - self.width);
+            y: (parent.height - self.height) / 2;
+            width: zone.has-hover || root.glisse ? 13px : 8px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: root.couleur;
+            animate width { duration: Mouvement.d; easing: Courbes.sortie; }
+        }
+        zone := TouchArea {
+            enabled: root.active;
+            mouse-cursor: pointer;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                    root.glisse = true;
+                    root.tenue = Math.clamp(self.mouse-x / Math.max(barre.width, 1px), 0, 1) * root.duree;
+                }
+                if (e.kind == PointerEventKind.up && root.glisse) {
+                    root.glisse = false;
+                    root.aller(root.tenue);
+                }
+            }
+            moved => {
+                if (root.glisse) {
+                    root.tenue = Math.clamp(self.mouse-x / Math.max(barre.width, 1px), 0, 1) * root.duree;
+                }
+            }
+        }
+    }
+    fin := Text {
+        min-width: 38px;
+        text: root.duree <= 0 ? "--:--" : root.restant ? root.texte-restant : root.texte-duree;
+        color: root.couleur;
+        opacity: 0.72;
+        font-family: Typo.mono;
+        font-size: 10.5px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        accessible-role: button;
+        accessible-label: root.restant ? "Afficher la durée" : "Afficher le temps restant";
+        accessible-action-default => {
+            root.restant = !root.restant;
+        }
+        TouchArea {
+            enabled: root.duree > 0;
+            mouse-cursor: root.duree > 0 ? pointer : default;
+            clicked => {
+                root.restant = !root.restant;
+            }
+        }
+    }
+}

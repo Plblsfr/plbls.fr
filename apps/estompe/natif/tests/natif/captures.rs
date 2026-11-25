@@ -322,6 +322,13 @@ const ECRANS: &[Ecran] = ecrans![
     "seance-sombre", Sombre, seance_pause;
     "seance-attente-clair", Clair, seance_attente;
     "seance-sans-acces-clair", Clair, seance_sans_acces;
+    "videos-clair", Clair, videos_salon;
+    "videos-sombre", Sombre, videos_salon;
+    "videos-listes-clair", Clair, videos_listes;
+    "videos-seances-clair", Clair, videos_seances;
+    "videos-lecteur-clair", Clair, videos_lecteur;
+    "videos-mini-clair", Clair, videos_mini;
+    "videos-mini-sombre", Sombre, videos_mini;
 ];
 
 fn bob() -> Compte {
@@ -1094,6 +1101,68 @@ fn seance_choix(f: &Principale) {
         |_| {},
     );
     pont.vocal().seance().ouvrir_choix(f);
+    stabiliser(f);
+}
+
+fn videos_avec(f: &Principale) -> Pont {
+    let image = estompe_natif::video::convertir(&Mire::nouvelle(640, 360).image(12), (0, 0), false)
+        .map(slint::Image::from_rgba8);
+    if let Some(image) = image {
+        for id in ["1006", "1005", "1003"] {
+            estompe_natif::videos::installer_miniature(id, image.clone());
+        }
+    }
+    coquille(f, commun::coquille::etat_videos(), salon("s1", Some("w1")))
+}
+
+fn videos_salon(f: &Principale) {
+    videos_avec(f);
+}
+
+fn videos_listes(f: &Principale) {
+    let pont = videos_avec(f);
+    pont.videos().onglet(f, estompe_natif::OngletVideos::Listes);
+    stabiliser(f);
+}
+
+fn videos_seances(f: &Principale) {
+    let pont = videos_avec(f);
+    pont.videos()
+        .onglet(f, estompe_natif::OngletVideos::Seances);
+    stabiliser(f);
+}
+
+fn videos_solo(f: &Principale) -> Pont {
+    use estompe_client::lecteur::{Lecteur, MediaFactice};
+    let pont = videos_avec(f);
+    let (lecteur, moteur) = Lecteur::factice();
+    moteur.ajouter_media(commun::coquille::VIDEO_SOLO, MediaFactice::video(1820.0));
+    std::mem::forget(moteur);
+    let gestion = Arc::new(estompe_natif::video::lecteur::GestionLecteur::nouvelle(
+        f, lecteur,
+    ));
+    pont.videos()
+        .definir_outils(estompe_natif::videos::OutilsVideos {
+            lecteur: Some(gestion.clone()),
+            navigateur: Arc::new(commun::FauxNavigateur::default()),
+            journal: None,
+        });
+    let v = pont.videos();
+    v.lire(f, "1006");
+    v.solo_aller(f, 754.0);
+    v.solo_basculer(f);
+    v.actualiser_solo(f);
+    image_de_seance(f, &gestion);
+    pont
+}
+
+fn videos_lecteur(f: &Principale) {
+    videos_solo(f);
+}
+
+fn videos_mini(f: &Principale) {
+    let pont = videos_solo(f);
+    pont.naviguer(f, salon("s1", Some("c1")));
     stabiliser(f);
 }
 
