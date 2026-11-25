@@ -9,6 +9,7 @@ case "$(uname -s)" in
 esac
 
 bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+if command -v cygpath >/dev/null; then bin="$(cygpath -u "$bin")"; fi
 if [ -x "$bin/$exe" ] && "$bin/$exe" nextest --version 2>/dev/null | grep -q " $version "; then
   echo "installer-nextest : cargo-nextest $version déjà installé"
   exit 0
