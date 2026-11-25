@@ -940,9 +940,11 @@ mod tests {
         assert_eq!((image.largeur(), image.hauteur()), (160, 120));
         let mut rgba = vec![0; 160 * 120 * 4];
         image.vers_rgba(160, 120, &mut rgba);
-        assert!(rgba.chunks_exact(4).all(|p| p[3] == 255));
+        assert!(rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
         assert!(rgba
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|p| p[0] > 100 || p[1] > 100 || p[2] > 100));
         lecteur.choisir_audio(Some(2));
         lecteur.choisir_sous_titres(Some(1));

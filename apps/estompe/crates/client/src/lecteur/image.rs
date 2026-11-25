@@ -65,8 +65,8 @@ impl TrameVideo for ImageLecteur {
         let (sl, sh) = (self.largeur as usize, self.hauteur as usize);
         for (y, ligne) in sortie.chunks_exact_mut(l * 4).take(h).enumerate() {
             let sy = y * sh / h;
-            for (x, pixel) in ligne.chunks_exact_mut(4).enumerate() {
-                pixel.copy_from_slice(&self.rgba(x * sl / l, sy));
+            for (x, pixel) in ligne.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                *pixel = self.rgba(x * sl / l, sy);
             }
         }
     }
