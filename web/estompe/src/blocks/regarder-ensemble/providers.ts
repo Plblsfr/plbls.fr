@@ -280,7 +280,12 @@ const film: Factory = async (el, h) => {
     savedAt = Date.now()
     void filmsApi.progress(ref, position, duration).catch(() => {})
   }
-  const showSubtitle = () => { for (let i = 0; i < video.textTracks.length; i++) video.textTracks[i].mode = i === sub ? 'showing' : 'disabled' }
+  const showSubtitle = () => {
+    for (let i = 0; i < video.textTracks.length; i++) {
+      const mode = i === sub ? 'showing' : 'disabled'
+      if (video.textTracks[i].mode !== mode) video.textTracks[i].mode = mode
+    }
+  }
   const open = async (start: number, play: boolean) => {
     const turn = ++opening
     clearTimeout(guet)
@@ -424,6 +429,7 @@ const film: Factory = async (el, h) => {
     if (stream && saveDue(savedAt, Date.now())) save()
   })
   video.addEventListener('pause', () => { if (stream && !video.seeking) save() })
+  video.textTracks.addEventListener('change', showSubtitle)
   const leave = () => { if (stream) filmsApi.closeOnExit(stream.stream_id) }
   window.addEventListener('pagehide', leave)
   return {
