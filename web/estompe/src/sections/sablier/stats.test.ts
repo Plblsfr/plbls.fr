@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AUJOURDHUI, entracte, messagerie, series, sillon, statsPleines, statsVides, trophees, usage } from './essais'
-import { aucuneActivite, barresParJour, carteEntracte, carteMessagerie, carteSillon, carteUsage, cartes, cartesSeries, estVide, SALON_SUPPRIME, vueTrophees, type NomSalon } from './stats'
+import { aucuneActivite, barresParJour, carteEntracte, carteMessagerie, carteSillon, carteUsage, cartes, cartesSeries, collection, estVide, grilleActivite, matiereDe, quatreSemaines, SALON_SUPPRIME, vueTrophees, type NomSalon } from './stats'
 
 const nom: NomSalon = (_s, salon) => ({ c1: 'général', v1: 'Canapé' })[salon] ?? null
 const labels = (c: { lignes: { label: string }[] }) => c.lignes.map((l) => l.label)
@@ -86,6 +86,55 @@ describe('choix des stats à afficher', () => {
     expect(v.debloques).toBe(3)
     expect(v.total).toBe(8)
     expect(vueTrophees(trophees(), 'month', '2026-08-15').recents).toEqual([])
+  })
+
+  it('matière d’une médaille : bronze, argent, or selon le palier, exploit sans palier ou caché', () => {
+    expect(matiereDe({ tier: 0, tiers: 4 })).toBe('aucune')
+    expect([1, 2, 3, 5].map((tier) => matiereDe({ tier, tiers: 5 }))).toEqual(['bronze', 'argent', 'or', 'or'])
+    expect(matiereDe({ tier: 1, tiers: 1 })).toBe('exploit')
+    expect(matiereDe({ tier: 2, tiers: 4, hidden: true })).toBe('exploit')
+  })
+
+  it('collection : un trophée par carte, les plus proches d’abord, puis les débloqués du plus récent au plus ancien', () => {
+    const c = collection(trophees())
+    expect(c.pieces.map((p) => p.key)).toEqual(['cinephile', 'encore_un_episode', 'premier_jour', 'signature'])
+    expect(c.pieces[0]).toMatchObject({ matiere: 'bronze', vers: 'argent', cible: 'Vers l’argent', pct: 76, avancement: '38 / 50', palier: 'Palier 1 sur 4', palierVise: 2, debloque: null })
+    expect(c.pieces[1]).toMatchObject({ matiere: 'argent', vers: 'or', pct: 28, debloque: '2026-11-14' })
+    expect(c.pieces[2]).toMatchObject({ matiere: 'exploit', pct: null, cible: '', description: 'Ta première journée d’activité' })
+    expect(c.pieces[3]).toMatchObject({ matiere: 'exploit', cache: true })
+    expect(c.proches.map((p) => p.key)).toEqual(['cinephile', 'encore_un_episode'])
+    expect(c.compte.map((x) => `${x.nom} ${x.n}`)).toEqual(['Bronze 1', 'Argent 1', 'Or 0', 'Exploits 2'])
+    expect([c.debloques, c.total, c.cachesRestants]).toEqual([3, 8, 4])
+    const haut = collection({ unlocked: [], in_progress: [{ id: 1, key: 'k', name: 'N', description: '', icon: 'film', tier: 3, tiers: 5, value: 1, next_threshold: 2, unit: 'count' }], hidden_remaining: 0 })
+    expect(haut.pieces[0].cible).toBe('Vers le palier 4')
+  })
+
+  it('grille d’activité : 53 semaines du lundi au dimanche jusqu’à la semaine en cours, quatre niveaux selon le temps actif', () => {
+    const g = grilleActivite([{ day: '2025-11-16', seconds: 999 }, { day: '2025-11-17', seconds: 100 }, { day: '2026-11-17', seconds: 4000 }, { day: '2026-11-18', seconds: 1000 }, { day: '2026-11-19', seconds: 50 }], AUJOURDHUI)
+    expect(g.cases).toHaveLength(371)
+    expect(g.du).toBe('2025-11-17')
+    expect(g.cases[0]).toMatchObject({ jour: '2025-11-17', niveau: 1, futur: false })
+    expect(g.cases.at(-1)).toMatchObject({ jour: '2026-11-22', futur: true, niveau: 0 })
+    const jour = (j: string) => g.cases.find((c) => c.jour === j)!
+    expect(jour('2026-11-17')).toMatchObject({ niveau: 4, titre: 'mar. 17 nov. · 1 h 06' })
+    expect(jour(AUJOURDHUI)).toMatchObject({ niveau: 1, aujourdhui: true })
+    expect(jour('2026-11-19')).toMatchObject({ niveau: 0, futur: true })
+    expect(jour('2026-11-10').titre).toBe('mar. 10 nov. · pas d’activité')
+    expect(g.actifs).toBe(3)
+    expect(g.mois).toHaveLength(53)
+    expect(g.mois.filter(Boolean)).toEqual(['déc.', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.'])
+  })
+
+  it('quatre dernières semaines : la série part d’aujourd’hui, ou d’hier si la journée n’a pas encore compté', () => {
+    const jours = ['2026-11-10', '2026-11-15', '2026-11-16', '2026-11-17'].map((day) => ({ day, seconds: 60 }))
+    const q = quatreSemaines(jours, AUJOURDHUI, 3)
+    expect(q).toHaveLength(28)
+    expect([q[0].jour, q.at(-1)?.jour]).toEqual(['2026-10-26', '2026-11-22'])
+    const etats = (liste: typeof q) => Object.fromEntries(liste.filter((j) => j.jour >= '2026-11-10' && j.jour <= '2026-11-19').map((j) => [j.jour.slice(8), j.etat]))
+    expect(etats(q)).toEqual({ '10': 'actif', '11': 'vide', '12': 'vide', '13': 'vide', '14': 'vide', '15': 'serie', '16': 'serie', '17': 'serie', '18': 'vide', '19': 'futur' })
+    expect(q.find((j) => j.aujourdhui)?.numero).toBe(18)
+    expect(etats(quatreSemaines(jours, AUJOURDHUI, 2))['15']).toBe('actif')
+    expect(etats(quatreSemaines([...jours, { day: AUJOURDHUI, seconds: 60 }], AUJOURDHUI, 4))['18']).toBe('serie')
   })
 
   it('reconnaît une personne sans aucune activité', () => {

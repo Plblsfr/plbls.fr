@@ -1,6 +1,6 @@
-import { ajouterJours, avancement, duree, jourCourt, jourLong, joursEntre, nombre, part, pluriel, versDate } from './formats'
-import { contient } from './periodes'
-import type { Domaine, Entracte, Messagerie, Periode, Salon, SansAcces, Serie, Series, Sillon, Stats, TropheeDebloque, TropheeEnCours, Trophees, Usage } from './sablier'
+import { ajouterJours, avancement, duree, jourCourt, jourLong, joursEntre, MOIS_COURTS, nombre, part, pluriel, versDate } from './formats'
+import { contient, debutDe } from './periodes'
+import type { Domaine, Entracte, JourDuree, Messagerie, Periode, Salon, SansAcces, Serie, Series, Sillon, Stats, TropheeDebloque, TropheeEnCours, Trophees, Usage } from './sablier'
 
 export type NomSalon = (serveur: string, salon: string) => string | null
 
@@ -224,6 +224,124 @@ export const dateDeblocage = (jour: string, aujourdhui: string): string => {
   const d = versDate(jour)
   const memeAnnee = d.getUTCFullYear() === versDate(aujourdhui).getUTCFullYear()
   return `le ${memeAnnee ? jourCourt(jour).split(' ').slice(1).join(' ') : jourLong(jour)}`
+}
+
+export type Matiere = 'aucune' | 'bronze' | 'argent' | 'or' | 'exploit'
+export const MATIERES: Exclude<Matiere, 'aucune'>[] = ['bronze', 'argent', 'or', 'exploit']
+export const NOM_MATIERE: Record<Matiere, string> = { aucune: 'Pas encore de médaille', bronze: 'Bronze', argent: 'Argent', or: 'Or', exploit: 'Exploit' }
+const VERS: Record<Matiere, string> = { aucune: '', bronze: 'Vers le bronze', argent: 'Vers l’argent', or: 'Vers l’or', exploit: 'Vers l’exploit' }
+
+export const matiereDe = (t: { tier: number; tiers: number; hidden?: boolean }): Matiere => {
+  if (t.tier <= 0) return 'aucune'
+  if (t.hidden || t.tiers <= 1) return 'exploit'
+  return t.tier === 1 ? 'bronze' : t.tier === 2 ? 'argent' : 'or'
+}
+
+export interface Piece {
+  id: number
+  key: string
+  nom: string
+  description: string
+  icone: string
+  matiere: Matiere
+  vers: Matiere
+  cible: string
+  pct: number | null
+  avancement: string
+  palier: string
+  palierVise: number
+  debloque: string | null
+  cache: boolean
+}
+
+export interface Collection {
+  pieces: Piece[]
+  proches: Piece[]
+  compte: { matiere: Matiere; nom: string; n: number }[]
+  cachesRestants: number
+  debloques: number
+  total: number
+}
+
+type Base = { id: number; key: string; name: string; description: string; icon: string; tier: number; tiers: number }
+
+function piece(t: Base, p: { value: number; next_threshold: number; unit: TropheeEnCours['unit'] } | undefined, debloque: string | null, cache: boolean): Piece {
+  const matiere = matiereDe({ tier: t.tier, tiers: t.tiers, hidden: cache })
+  const suite = !!p && p.next_threshold > 0
+  const vers = suite ? matiereDe({ tier: t.tier + 1, tiers: t.tiers, hidden: cache }) : matiere
+  return {
+    id: t.id, key: t.key, nom: t.name, description: t.description.replace(/\.$/, ''), icone: t.icon, matiere, vers,
+    cible: !suite ? '' : vers === matiere ? `Vers le palier ${t.tier + 1}` : VERS[vers],
+    pct: suite && p ? pourcentage(p.value, p.next_threshold) : null,
+    avancement: suite && p ? texteAvancement(p) : '',
+    palier: t.tier > 0 ? textePalier(t) : '',
+    palierVise: t.tier + 1,
+    debloque,
+    cache,
+  }
+}
+
+export function collection(t: Trophees): Collection {
+  const vue = vueTrophees(t, 'all', '')
+  const suites = new Map(t.in_progress.map((x) => [x.id, x]))
+  const acquis = new Set(t.unlocked.map((x) => x.id))
+  const pieces = [
+    ...[...vue.tous, ...vue.cachesTrouves].map((u) => piece(u, u.progress ?? suites.get(u.id), u.unlocked_at, u.hidden)),
+    ...t.in_progress.filter((e) => !acquis.has(e.id)).map((e) => piece(e, e, null, false)),
+  ].sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1))
+  return {
+    pieces,
+    proches: pieces.filter((p) => p.pct !== null).slice(0, 3),
+    compte: MATIERES.map((m) => ({ matiere: m, nom: m === 'exploit' ? 'Exploits' : NOM_MATIERE[m], n: pieces.filter((p) => p.matiere === m).length })),
+    cachesRestants: vue.cachesRestants,
+    debloques: vue.debloques,
+    total: vue.total,
+  }
+}
+
+export interface CaseJour { jour: string; niveau: 0 | 1 | 2 | 3 | 4; futur: boolean; aujourdhui: boolean; titre: string }
+export interface GrilleActivite { cases: CaseJour[]; mois: string[]; actifs: number; du: string }
+
+export function grilleActivite(jours: JourDuree[], aujourdhui: string, semaines = 53): GrilleActivite {
+  const du = ajouterJours(debutDe('week', aujourdhui), -(semaines - 1) * 7)
+  const parJour = new Map(jours.filter((j) => j.seconds > 0 && j.day >= du && j.day <= aujourdhui).map((j) => [j.day, j.seconds]))
+  const max = Math.max(1, ...parJour.values())
+  const cases: CaseJour[] = Array.from({ length: semaines * 7 }, (_, i) => {
+    const jour = ajouterJours(du, i)
+    const s = parJour.get(jour) ?? 0
+    const futur = jour > aujourdhui
+    return {
+      jour, futur, aujourdhui: jour === aujourdhui,
+      niveau: s > 0 ? (Math.min(4, Math.max(1, Math.ceil((s / max) * 4))) as CaseJour['niveau']) : 0,
+      titre: futur ? jourCourt(jour) : `${jourCourt(jour)} · ${s > 0 ? duree(s) : 'pas d’activité'}`,
+    }
+  })
+  let precedent = -1
+  const mois = Array.from({ length: semaines }, (_, s) => {
+    const d = versDate(ajouterJours(du, s * 7))
+    const m = d.getUTCMonth()
+    const nouveau = s === 0 ? d.getUTCDate() <= 7 : m !== precedent
+    precedent = m
+    return nouveau ? MOIS_COURTS[m] : ''
+  })
+  return { cases, mois, actifs: parJour.size, du }
+}
+
+export interface JourCalendrier { jour: string; numero: number; etat: 'serie' | 'actif' | 'vide' | 'futur'; aujourdhui: boolean }
+
+export function quatreSemaines(jours: JourDuree[], aujourdhui: string, serie: number): JourCalendrier[] {
+  const du = ajouterJours(debutDe('week', aujourdhui), -21)
+  const actifs = new Set(jours.filter((j) => j.seconds > 0).map((j) => j.day))
+  const enSerie = new Set<string>()
+  let jour = actifs.has(aujourdhui) ? aujourdhui : ajouterJours(aujourdhui, -1)
+  while (enSerie.size < serie && actifs.has(jour)) {
+    enSerie.add(jour)
+    jour = ajouterJours(jour, -1)
+  }
+  return Array.from({ length: 28 }, (_, i) => {
+    const j = ajouterJours(du, i)
+    return { jour: j, numero: versDate(j).getUTCDate(), etat: j > aujourdhui ? 'futur' : enSerie.has(j) ? 'serie' : actifs.has(j) ? 'actif' : 'vide', aujourdhui: j === aujourdhui }
+  })
 }
 
 export const aucuneActivite = (stats: Stats | null, trophees: Trophees | null): boolean => !!stats && !!trophees && stats.usage.first_day === null && trophees.unlocked.length === 0

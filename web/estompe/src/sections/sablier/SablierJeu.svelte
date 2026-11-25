@@ -5,13 +5,14 @@
   import { hrefs } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
   import { pluriel } from './formats'
-  import { intitule, titre } from './periodes'
+  import { titre } from './periodes'
+  import SablierActivite from './SablierActivite.svelte'
   import SablierAnnonce from './SablierAnnonce.svelte'
   import SablierCarte from './SablierCarte.svelte'
   import SablierErreur from './SablierErreur.svelte'
   import SablierPeriode from './SablierPeriode.svelte'
-  import SablierSeries from './SablierSeries.svelte'
-  import SablierTrophees from './SablierTrophees.svelte'
+  import SablierSerieJours from './SablierSerieJours.svelte'
+  import SablierVitrine from './SablierVitrine.svelte'
   import { sablier } from './sablier.svelte'
   import { aucuneActivite, cartes, vueTrophees, type NomSalon } from './stats'
 
@@ -52,20 +53,19 @@
         </div>
       {/if}
     {:else if sablier.stats && sablier.trophees && sablier.series}
-      <header class="sab-sec">
-        <h1 class="sab-h1">{t.avant}<span class="sab-hl">{t.fort}</span></h1>
-        <SablierPeriode />
-      </header>
-      {#if sablier.erreur}
-        <div class="plbls-alert plbls-alert--erreur" role="alert">
-          <p class="plbls-alert__corps">{sablier.erreur}</p>
-          <button class="plbls-button plbls-button--compact plbls-button--contour" type="button" onclick={() => void sablier.chargerStats()}>Réessayer</button>
-        </div>
-      {/if}
-      <SablierSeries series={sablier.series} />
-      <SablierTrophees trophees={sablier.trophees} periode={sablier.periode} date={sablier.date} aujourdhui={sablier.aujourdhui} />
+      <h1 class="sab-h1">Ta <span class="sab-hl">vitrine</span></h1>
+      <SablierSerieJours series={sablier.series} activite={sablier.activite} aujourdhui={sablier.aujourdhui} />
+      {#if sablier.activite}<SablierActivite activite={sablier.activite} aujourdhui={sablier.aujourdhui} />{/if}
+      <SablierVitrine trophees={sablier.trophees} aujourdhui={sablier.aujourdhui} />
       <section class="sab-sec" aria-label="Stats par domaine">
-        <h2 class="sab-h2">{intitule(sablier.periode, sablier.date, sablier.aujourdhui)}, domaine par domaine</h2>
+        <h2 class="sab-h2">{t.avant}<span class="sab-hl">{t.fort}</span>, domaine par domaine</h2>
+        <SablierPeriode />
+        {#if sablier.erreur}
+          <div class="plbls-alert plbls-alert--erreur" role="alert">
+            <p class="plbls-alert__corps">{sablier.erreur}</p>
+            <button class="plbls-button plbls-button--compact plbls-button--contour" type="button" onclick={() => void sablier.chargerStats()}>Réessayer</button>
+          </div>
+        {/if}
         <div class="sab-g sab-g2">
           {#each liste as c (c.domaine)}
             <SablierCarte carte={c} periode={sablier.periode} date={sablier.date} aujourdhui={sablier.aujourdhui} ailleurs={sablier.ailleurs[c.domaine] ?? null} onaller={(a) => sablier.aller(a.periode, a.date)} />

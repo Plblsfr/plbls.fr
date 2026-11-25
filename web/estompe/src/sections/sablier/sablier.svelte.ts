@@ -1,7 +1,7 @@
 import { messageDe } from './admin.svelte'
-import { jourLocal } from './formats'
+import { ajouterJours, jourLocal } from './formats'
 import { borner, precedente, suivante } from './periodes'
-import { sablierApi, type ChoixPartage, type ClientSablier, type Domaine, type NonVus, type Partage, type Periode, type Recap, type RecapResume, type Series, type Stats, type TropheeDebloque, type Trophees } from './sablier'
+import { sablierApi, type ChoixPartage, type ClientSablier, type Domaine, type JourDuree, type NonVus, type Partage, type Periode, type Recap, type RecapResume, type Series, type Stats, type TropheeDebloque, type Trophees } from './sablier'
 import { estVide, PLUS_LARGE } from './stats'
 
 export interface Ailleurs { periode: Periode; date: string }
@@ -55,6 +55,7 @@ export class EtatSablier extends NavigationPeriode {
   ailleurs = $state.raw<Partial<Record<Domaine, Ailleurs | null>>>({})
   trophees = $state.raw<Trophees | null>(null)
   series = $state.raw<Series | null>(null)
+  activite = $state.raw<JourDuree[] | null>(null)
   charge = $state(false)
   erreur = $state('')
   annonces = $state.raw<TropheeDebloque[]>([])
@@ -83,6 +84,7 @@ export class EtatSablier extends NavigationPeriode {
     this.ailleurs = {}
     this.trophees = null
     this.series = null
+    this.activite = null
     this.premierJour = null
     this.charge = false
     this.erreur = ''
@@ -138,10 +140,25 @@ export class EtatSablier extends NavigationPeriode {
     }
   }
 
+  private async lireActivite(): Promise<JourDuree[] | null> {
+    if (this.consultation) return null
+    try {
+      const aujourdhui = this.jour()
+      const debut = `${aujourdhui.slice(0, 4)}-01-01`
+      const annee = await this.api.usage('year', aujourdhui)
+      if (!annee.first_day || annee.first_day >= debut) return annee.by_day
+      const avant = await this.api.usage('year', ajouterJours(debut, -1))
+      return [...avant.by_day, ...annee.by_day]
+    } catch {
+      return null
+    }
+  }
+
   private async chargerJeu() {
-    const [trophees, series] = await Promise.all([this.api.trophees(), this.api.series()])
+    const [trophees, series, activite] = await Promise.all([this.api.trophees(), this.api.series(), this.lireActivite()])
     this.trophees = trophees
     this.series = series
+    this.activite = activite
     this.annonces = this.consultation ? [] : trophees.unlocked.filter((t) => !t.seen)
   }
 
