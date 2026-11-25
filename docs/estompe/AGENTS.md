@@ -250,3 +250,5 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   passer par des états explicites et des évènements. Le moteur de séance (`regarder_ensemble::MoteurSynchro`) n'a aucun minuteur : le temps lui est passé
   à chaque appel et `prochaine_echeance()` dit quand le rappeler. `Lecteur::position()` extrapole avec l'horloge réelle (`Instant::now()`) : un test en
   temps simulé fait avancer `MoteurFactice::avancer`, qui émet la position, au lieu de compter sur l'extrapolation.
+- **Lecteur partagé de l'app native** : un média qui perd `GestionLecteur` au profit d'un autre (pièce jointe, séance, lecture en solo) lâche son
+  `LecteurSeance` sans appeler `detruire()` : `LecteurFichier::detruire` arrête le lecteur, donc le média qui vient de le prendre (`Solo::ceder`, `SeanceActive::ceder`).

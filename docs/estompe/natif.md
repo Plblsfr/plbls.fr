@@ -9,7 +9,7 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia (logiciel pour les overlays, `src/overlay/`), branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`), lecteur vidéo et audio (`lecteur/`), synchronisation de « regarder ensemble » (`regarder_ensemble/`) et mesures (`mesures.rs`) |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`), lecteur vidéo et audio (`lecteur/`), synchronisation de « regarder ensemble » (`regarder_ensemble/`), salons vidéos et lecture en solo (`videos/`) et mesures (`mesures.rs`) |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) ; capture d'écran et de fenêtre (`capture/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
@@ -208,8 +208,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 | Élément | Interface (`ui/coquille/`) | Contenu |
 |---|---|---|
 | Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Créer ou rejoindre un serveur », entrées des sections ouvertes |
-| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`, « + » de création avec le droit de gérer les salons), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
-| Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper avec « Tout marquer lu », vocaux en cours, contacts en ligne) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
+| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`, « + » de création avec le droit de gérer les salons), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; mini-lecteur de la lecture en solo ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
+| Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper avec « Tout marquer lu », vocaux en cours, contacts en ligne) ; salon vidéos ou musique (`../videos/vue.slint`) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
 | Marge | `marge.slint`, `membres.slint`, `carte-profil.slint`, `../messagerie/epingles.slint` | `EmplacementMarge` ; onglets « Membres » sur un serveur (voir [Membres](#membres)) et « Épinglés » dans une conversation (voir [Épinglés](#épinglés)), carte de profil |
 
 - Données : global `DonneesCoquille` (`ui/coquille/donnees.slint`) : modèles des lignes (`serveurs`, `salons`, `prives`, `sections`, `rattrapage`,
@@ -228,9 +228,9 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 - Sections : Entracte, Sillon, Stats (Sablier) et Régie apparaissent sur le rail si le `GET /me` de leur service les ouvre (`permissions.access`,
   `permissions.admin` pour Régie), comme le front. Adresses : `ESTOMPE_ENTRACTE_URL`, `ESTOMPE_SILLON_URL`, `ESTOMPE_SABLIER_URL`, `ESTOMPE_REGIE_URL`
   (vide : section coupée) ; sans variable, celles de production pour le serveur de production (Régie n'en a pas). Leur contenu arrive au lot 10.
-- Salons vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon vocal ou cinéma ouvre la vue du vocal et le rejoint (voir [Interface du salon vocal](#interface-du-salon-vocal)). Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
+- Un salon vidéos ou musique ouvre sa vue (voir [Salon vidéos et lecture en solo](#salon-vidéos-et-lecture-en-solo)). Un salon vocal ou cinéma ouvre la vue du vocal et le rejoint (voir [Interface du salon vocal](#interface-du-salon-vocal)). Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
 - Menu contextuel d'un salon texte ou d'une conversation privée du panneau (`src/coquille/pont/menus.rs`) : « Marquer comme lu » s'il y a des non-lus ou des mentions
-  (`Store::lire_conversation`), « Copier le lien » (`https://<serveur>/#/s/…` ou `#/dm/…`) ; un salon « bientôt » n'a que le lien.
+  (`Store::lire_conversation`), « Copier le lien » (`https://<serveur>/#/s/…` ou `#/dm/…`).
 - Messages privés du panneau : triés par activité (`lignes_privees` du store, une conversation qui reçoit un message remonte), avec non-lus, mentions et présence par formes sur l'avatar.
 
 ### Membres
@@ -1312,7 +1312,7 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
   le menu contextuel commun. `LecteurPlein` (`ui/video/lecteur.slint`, global `DonneesLecteur`) l'ouvre sur toute la fenêtre ; `natif/src/video/lecteur.rs`
   (`GestionLecteur::nouvelle`, `ouvrir(titre, source)`, `lire_piece`, `agrandir`, `suivre`, `arreter`, `fermer`) branche le global, suit l'état et pose les images.
   `LecteurPlein` prend le niveau de calque du moment où il s'ouvre (il passe au-dessus de la fenêtre « Clips ») et ne règle la zone de l'image que tant qu'il est ouvert.
-  Écrans qui l'ouvrent : pièces jointes et visionneuse de la messagerie, galerie des clips ; restent le salon vidéos, le cinéma et la musique.
+  Écrans qui l'ouvrent : pièces jointes et visionneuse de la messagerie, galerie des clips, lecture en solo du salon vidéos (lecteur ancré) ; restent le cinéma et la musique.
 - Livraison : sous Linux, la libmpv du système (`libmpv2`) ; sous Windows, `libmpv-2.dll` dans l'installeur (voir [Livraison](#livraison)). La crate client
   trouve la bibliothèque d'import par `ESTOMPE_MPV_DIR` (`build.rs`). libmpv refuse de démarrer si `LC_NUMERIC` n'est pas `C` (`Lecteur::mpv` rend alors
   `ErreurLecteur::Indisponible`).
@@ -1409,7 +1409,7 @@ Seule webview de l'app (#375) : une vue `wry` créée à l'ouverture d'un lecteu
   `readYouTube`), `LecteurYoutube` (`LecteurSeance` piloté par le protocole `postMessage` de l'API IFrame, sans son script : `listening` après le chargement,
   commandes gardées jusqu'à `onReady`, `loadVideoById`/`cueVideoById`, `seekTo`, `setPlaybackRate`, `setVolume`) et `LienVue`, file partagée entre ce lecteur
   (fil de la séance) et la vue (fil de l'interface) : page à ouvrir, messages à envoyer, messages reçus, runtime absent, fermeture.
-- App (`apps/estompe/natif/src/video/youtube.rs`) : vues tenues par le fil de l'interface (une pour la séance, une pour la visionneuse), placées par
+- App (`apps/estompe/natif/src/video/youtube.rs`) : vues tenues par le fil de l'interface (une pour la séance, une pour la visionneuse, une pour la lecture en solo), placées par
   `ZoneVueWeb` (`ui/composants/vue-web.slint`, qui signale sa position, sa taille et sa visibilité, et se rappelle toutes les 200 ms : une zone qui ne se signale
   plus depuis 600 ms, page quittée ou scène masquée, cache la vue). Une vue native passe par-dessus l'interface Slint : elle est masquée dès qu'une fenêtre ou
   un menu s'ouvre au-dessus (`Calques`), tant que la page du lecteur n'a pas fini de charger (le chargement de la séance reste visible) et sur une erreur.
@@ -1422,6 +1422,46 @@ Seule webview de l'app (#375) : une vue `wry` créée à l'ouverture d'un lecteu
   native ne se découpe pas au bord de la liste des messages).
 - La première ouverture démarre le runtime WebView2 (création synchrone de l'environnement, quelques centaines de millisecondes, non mesurée) ; à la fermeture,
   la vue et son environnement sont libérés, les processus `msedgewebview2` du runtime s'arrêtent ensuite.
+
+## Salon vidéos et lecture en solo
+
+Salons « Vidéos » et « Musique » (#372), portage de `blocks/videos/` : cartes, listes, séances planifiées et lecture en solo ; les séances synchronisées
+sont dans [Regarder ensemble](#regarder-ensemble).
+
+- Client (`apps/estompe/crates/client/src/videos/`) : `mod.rs` (types du tableau `GET /channels/{id}/videos` : `TableauVideos`, `PostVideo`, `ListeVideos`,
+  `SeanceVideos`, `Rsvp` ; portage de `videos.ts` : `jouable`, `titre_video`, `lien_lecture`, `source_de`, `artiste_de`, `est_morceau`, `lien_musique`,
+  `melange`, `filtrer` avec `Filtre` et `Tri`, `elements_de_liste`, `deplace`, `compte_rsvp`, `phase_seance`, `seances_proches`, `echeance`, `valeur_locale` ;
+  plus `appliquer_reaction` (portage de `Videos.reaction`), `nouvelle_seance` (formulaire « Planifier une séance »), `horloge` et `textes_temps` de la barre des
+  mini-lecteurs) ; `appels.rs` (tableau, miniature d'une carte, vue ou non, listes, séances, réponse, `GET /music/resolve` pour développer une playlist) ;
+  `solo.rs` (`Solo` : file d'écoute personnelle d'au plus 200 titres, morceau en cours, lecture, volume propre, position de reprise par titre, cession du lecteur).
+- Store : `Etat::videos` (tableau par salon), `Store::charger_videos` (chargé à l'ouverture du salon et à la reconnexion), `videos.changed` recharge un salon
+  déjà chargé (`Effet::RechargerVideos`), `reaction.updated` met à jour le compte et mon 👍, `Changement::Videos`, tableau retiré avec le salon.
+- App (`apps/estompe/natif/src/videos.rs`, `PontVideos` tenu par `Pont`) : vue `SalonVideos` (`ui/videos/vue.slint`, global `DonneesVideos` de
+  `ui/videos/donnees.slint`) avec les onglets Vidéos (Morceaux), Listes (Playlists) et Séances (Écoutes), les deux séances proches en tête :
+  - Vidéos : champ de publication (le lien part en message dans le salon, le serveur en fait la carte), filtres par menus (source ou artiste, vue, auteur,
+    liste, tri ; « Titre (A→Z) » dans un salon musique), grille ou liste ; carte avec miniature (`GET /channels/{id}/videos/posts/{message}/thumb`, adresse
+    `data:` décodée hors du fil de l'interface), étiquette de la source, « Vue », « Regarder ensemble » (choix du salon de la séance avec le lien,
+    Music2gether pour un morceau), « Regarder » ou « Écouter » seul, « À ma file », « Ajouter à la file » de la session du vocal où l'on est, 👍, réponses,
+    listes (menu coché), vue par le groupe, suppression ; le titre ouvre le lien dans le navigateur.
+  - Listes : création (collaborative ou non), renommage, collaborative ou réservée, suppression confirmée, ordre et retrait, « Regarder » et « Écouter » (la
+    liste devient la file de la séance), « Écouter seul » et « Mélanger », « Planifier ».
+  - Séances : réponses (je viens, peut-être, non) avec les noms, annulation confirmée, « Rejoindre » le salon vocal d'une séance en cours, fenêtre
+    « Planifier une séance » (`ui/videos/plan.slint` : titre, date `JJ/MM/AAAA HH:MM`, rappel, salon vocal, liste ou vidéos cochées).
+- Lecture en solo : un fichier (« page », « file ») passe par libmpv (`GestionLecteur`, origine `solo`, `LecteurFichier`), une vidéo YouTube ou un morceau
+  YouTube Music par la vue de la [lecture YouTube](#lecteur-youtube) (`LecteurYoutube`, place `solo`), dans le navigateur sans la vue (Linux, version sans la
+  feature `youtube`) ; Vimeo, Twitch et Dailymotion s'ouvrent dans le navigateur (écart assumé). Lecteur ancré en tête du salon de la vidéo
+  (`LecteurMedia` ou la vue YouTube, suivant, arrêt) ; ailleurs, `MiniLecteurSolo` (`ui/videos/mini.slint`) dans le bas du panneau : titre (clic : retour au
+  salon), lecture ou pause, suivant, arrêt, barre `MiniProgression` (`ui/composants/mini-progression.slint`, portage de `MiniProgress.svelte`, réutilisable
+  par Sillon : position, durée ou temps restant au clic, glisser sans appliquer avant le relâchement), volume propre, « Partager dans le vocal » (le morceau
+  et la suite deviennent une session Music2gether). La vidéo d'un fichier est coupée (`definir_visible(false)`) dans le mini-lecteur, le son continue.
+  Changer de salon ne touche pas la lecture. Une pièce jointe ou une séance qui prend le lecteur le fait céder sans l'arrêter : « Reprendre ici » relit le
+  titre à la position retenue. La position de chaque titre est retenue (5 s au moins, oubliée à moins de 10 s de la fin) et reprise au retour sur ce titre
+  pendant la session de l'app. Un minuteur de 250 ms, actif seulement pendant une lecture en solo, relève la position et passe au titre suivant à la fin.
+- Tests : `videos::tests` (cas de `videos.test.ts`), `videos::solo::tests` (file, fin, reprise, cession, navigateur, YouTube, changement de salon),
+  `videos::appels::tests`, `store::tests::les_tableaux_videos_suivent_les_evenements_et_les_reactions` ; test d'interaction `videos::` (changement de salon
+  et de serveur : lecture gardée dans le mini-lecteur, ni arrêt ni pause du moteur) ; captures `videos-*`.
+- Écarts : pas d'onglet « Discussion » (les messages du salon ne s'affichent pas dans l'app), pas de lecture d'une carte YouTube dans la carte elle-même
+  (lecteur ancré en tête du salon), les cartes de la grille ne sont pas virtualisées, positions de reprise non gardées après la fermeture de l'app.
 
 ## Intégration au bureau
 
