@@ -33,8 +33,7 @@
     if (id === app.meId) return
     try {
       const dm = await api.openDM(pseudo)
-      if (dm.online) app.online[dm.other.id] = true
-      if (!app.dms.some((d) => d.id === dm.id)) app.dms.unshift(dm)
+      app.addDm(dm)
       router.go(hrefs.dm(dm.id))
     } catch (e) {
       notify.error(e, 'Impossible d\'ouvrir la conversation')
