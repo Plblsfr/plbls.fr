@@ -653,7 +653,7 @@ impl PontVideos {
                         None => 0,
                     },
                     rejoindre: en_cours,
-                    presents: v::reponses_par_groupe(s, &nom_de)
+                    presents: v::reponses_par_groupe(s, nom_de)
                         .into_iter()
                         .map(|(r, noms)| format!("{} : {}", r.groupe(), noms.join(", ")))
                         .collect::<Vec<_>>()
@@ -931,12 +931,9 @@ impl PontVideos {
                     .await;
             }
             for l in &liens {
-                if let Err(e) = client
+                client
                     .ajouter_a_la_file(&salon, GenreSeance::Musique, l)
-                    .await
-                {
-                    return Err(e);
-                }
+                    .await?;
             }
             Ok(())
         });

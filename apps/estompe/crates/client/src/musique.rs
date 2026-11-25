@@ -45,7 +45,7 @@ pub fn cadrage_pochette(largeur: u32, hauteur: u32) -> Cadrage {
 
 pub fn couleur_moyenne(pixels: &[u8]) -> Option<[u8; 3]> {
     let (mut somme, mut n) = ([0u64; 3], 0u64);
-    for p in pixels.chunks_exact(4).filter(|p| p[3] >= 128) {
+    for p in pixels.as_chunks::<4>().0.iter().filter(|p| p[3] >= 128) {
         for (s, v) in somme.iter_mut().zip(p) {
             *s += u64::from(*v);
         }

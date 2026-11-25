@@ -1340,8 +1340,8 @@ mod tests {
         );
         assert!(serveur > 5.0);
         let rev = m.serveur.etat.rev;
-        for client in 0..2 {
-            m.clients[client]
+        for client in &mut m.clients[..2] {
+            client
                 .pilote
                 .actions
                 .push(ActionPilote::Appel(AppelSeance::Action {

@@ -279,7 +279,7 @@ fn un_encodeur_muet_rend_le_replay_indisponible() {
         assert!(Instant::now() < fin, "délai dépassé");
     };
     assert_eq!(erreur.code, ENCODEUR_MUET);
-    assert!(matches!(b.service.actuel().etat, Etat::Indisponible(_)));
+    attendre(|| matches!(b.service.actuel().etat, Etat::Indisponible(_)));
     assert!(b.encodage.images() > 0);
 }
 

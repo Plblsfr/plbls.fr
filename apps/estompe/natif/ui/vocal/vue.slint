@@ -227,6 +227,8 @@ component Scene inherits Rectangle {
     if !root.plein && !DonneesVocal.vue.cinema: HorizontalLayout {
         x: parent.width - self.width - 24px;
         y: barre.y + (barre.height - self.height) / 2;
+        width: self.preferred-width;
+        height: self.preferred-height;
         spacing: Espace.e2;
         if root.seance-presente && DonneesMusique.vue.active: Bouton {
             texte: root.musique ? "Vidéo" : "Musique";
