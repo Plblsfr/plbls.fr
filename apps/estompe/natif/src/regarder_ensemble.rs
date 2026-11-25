@@ -221,12 +221,6 @@ impl PontSeance {
         self.lien_youtube.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn maintenant(&self) -> i64 {
-        self.store
-            .maintenant_ms()
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis())
-    }
-
     fn gestion(&self) -> Option<Arc<GestionLecteur>> {
         self.verrou()
             .outils
