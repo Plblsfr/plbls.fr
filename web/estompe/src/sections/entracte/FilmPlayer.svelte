@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { filmsApi, requestAt } from '../../lib/api'
-  import { hrefs } from '../../lib/route.svelte'
+  import { hrefs, router } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
   import { platform } from '../../lib/platform'
   import { notify } from '../../lib/ui'
@@ -9,7 +9,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { AUDIO_PREFS, BUFFER_PREFS, bufferedAhead, clock, IDLE_MS, fullTitle, inIntro, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type BufferPref, type CastState, type FilmDetail, type FilmTracks, type Range, type SubtitlePref } from './films'
+  import { AUDIO_PREFS, BUFFER_PREFS, bufferedAhead, clock, episodeAfter, IDLE_MS, fullTitle, inIntro, nearEnd, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seasonAfter, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type BufferPref, type CastState, type FilmDetail, type FilmItem, type FilmTracks, type Range, type SubtitlePref } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -39,6 +39,7 @@
   let idle = $state(false)
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let cast = $state<CastState | null>(null)
+  let next = $state<FilmItem | null>(null)
 
   const playing = $derived(st === 'playing' || st === 'buffering')
   const ahead = $derived(Math.floor(bufferedAhead(position, buffered)))
@@ -52,6 +53,17 @@
     if (!intro || !skippable) return
     seek(intro.fin)
     void requestAt<void>(filmsApi.base, 'POST', `/titles/${encodeURIComponent(id)}/intro-skipped`).catch(() => {})
+  }
+  const nextDue = $derived(!!next && !error && (st === 'ended' || nearEnd(position, duration)))
+  const playNext = () => { if (next) router.go(hrefs.films('watch', next.id)) }
+  const findNext = async (it: FilmDetail): Promise<FilmItem | null> => {
+    if (it.kind !== 'episode' || !it.series_id || it.season == null) return null
+    const seasons = (await filmsApi.seasons(it.series_id)).items
+    const current = seasons.find((s) => s.season === it.season)
+    const after = current ? episodeAfter((await filmsApi.episodes(current.id)).items, it.id) : undefined
+    if (after) return after
+    const season = seasonAfter(seasons, it.season)
+    return (season && (await filmsApi.episodes(season.id)).items.find((e) => e.available !== false)) || null
   }
   const fullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root?.requestFullscreen().catch(() => {}) }
 
@@ -132,9 +144,6 @@
     let gone = false
     let poll: ReturnType<typeof setInterval> | undefined
     void (async () => {
-      const it = await filmsApi.item(id)
-      if (gone) return
-      item = it
       const a = await providers.film(host!, {
         onState: (s) => { if (s === 'playing' && st !== 'playing' && st !== 'buffering') medias.demarre('film'); st = s; if (s === 'playing') error = '' },
         onError: (m) => { error = m },
@@ -143,10 +152,34 @@
       })
       if (gone) { a.destroy(); return }
       player = a
-      a.load(id, resumeAt(it), true)
-      poll = setInterval(() => { position = a.time(); duration = a.duration?.() || it.duration; buffered = a.buffered?.() ?? [] }, 500)
+      poll = setInterval(() => { position = a.time(); duration = a.duration?.() || item?.duration || 0; buffered = a.buffered?.() ?? [] }, 500)
     })().catch((e) => { if (!gone) notify.error(e, 'La lecture n’a pas pu démarrer'); error = 'La lecture n’a pas pu démarrer.' })
     return () => { gone = true; clearInterval(poll); clearTimeout(idleTimer); player?.destroy(); player = null }
+  })
+
+  $effect(() => {
+    const wanted = id
+    const a = player
+    if (!a) return
+    let gone = false
+    item = null
+    tracks = null
+    next = null
+    error = ''
+    st = 'unstarted'
+    position = 0
+    duration = 0
+    buffered = []
+    panel = false
+    void (async () => {
+      const it = await filmsApi.item(wanted)
+      if (gone) return
+      item = it
+      a.load(wanted, resumeAt(it), true)
+      const n = await findNext(it).catch(() => null)
+      if (!gone) next = n
+    })().catch((e) => { if (!gone) { notify.error(e, 'La lecture n’a pas pu démarrer'); error = 'La lecture n’a pas pu démarrer.' } })
+    return () => { gone = true }
   })
 </script>
 
@@ -171,6 +204,8 @@
     {/if}
     {#if skippable && !panel}
       <button class="plbls-button film-skip" onclick={skip} title="S" aria-keyshortcuts="S"><Icon name="suivant" size={16} /> Passer l’intro</button>
+    {:else if nextDue && next && !panel}
+      <button class="plbls-button film-skip" onclick={playNext} title={fullTitle(next)}><Icon name="suivant" size={16} /> Épisode suivant</button>
     {/if}
     {#if panel && tracks}
       <section class="film-tracks-panel" aria-label="Pistes">
