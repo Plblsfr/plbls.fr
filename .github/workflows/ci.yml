@@ -79,7 +79,7 @@ jobs:
         run: |
           node scripts/check-node.mjs
           npm run ui:check
-          node --test "scripts/*.test.mjs" "scripts/estompe/*.test.mjs"
+          node --test "scripts/*.test.mjs"
           node scripts/check-links.mjs
       - name: just, shellcheck et ruff
         if: needs.changements.outputs.lint == 'true'
@@ -306,168 +306,6 @@ jobs:
             apps/estompe/android/src-tauri/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
-  # App native (Slint, sans webview) : workspace Cargo à part (apps/estompe/natif), toolchain stable. Mêmes contrôles que
-  # scripts/estompe/natif-check.sh, puis lancement réel de l'app sous Xvfb.
-  estompe-natif-linux:
-    needs: changements
-    if: needs.changements.outputs.estompe_natif == 'true'
-    runs-on: ubuntu-latest
-    env:
-      ESTOMPE_COFFRE_EXIGE: 1
-      CXX: clang++-21
-      ESTOMPE_LIVEKIT_URL: ws://127.0.0.1:7880
-      ESTOMPE_DBUS_EXIGE: 1
-      ESTOMPE_FFMPEG_EXIGE: 1
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev ffmpeg
-      - name: clang 21 (libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium)
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list >/dev/null
-          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang-21
-      - name: Swap de 16 Go (rustc monte à 14 Go sur la crate de l'app, voir docs/estompe/ci.md)
-        run: |
-          sudo swapoff -a
-          sudo fallocate -l 16G /mnt/swap-natif
-          sudo chmod 600 /mnt/swap-natif
-          sudo mkswap -q /mnt/swap-natif
-          sudo swapon /mnt/swap-natif
-          free -g
-      - name: Serveur LiveKit de dev (test d'intégration du vocal)
-        run: docker compose -f deploy/docker-compose.dev.yml up -d livekit
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: rustfmt, clippy
-      - id: cargo
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin/cargo-deny
-            apps/estompe/natif/target
-          key: natif-linux-v1-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
-          restore-keys: natif-linux-v1-
-      - name: cargo-deny
-        run: command -v cargo-deny || cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
-      - name: cargo-nextest (binaire de la release, somme SHA-256 vérifiée)
-        shell: bash
-        run: scripts/estompe/installer-nextest.sh
-      - name: Portabilité, fichiers générés, fmt, clippy, cargo deny, tests (coffre de secrets réel, captures de rendu ; le binaire de l'app en sort)
-        run: dbus-run-session -- bash -c 'echo -n ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && scripts/estompe/natif-check.sh'
-      - name: Lancement de l'app (fenêtre réelle sous Xvfb, moteur Skia)
-        working-directory: apps/estompe/natif
-        run: ESTOMPE_NATIF_DOSSIER="$RUNNER_TEMP/estompe-natif" timeout 120 xvfb-run -a -s "-screen 0 1400x900x24" target/debug/estompe-natif --essai-de-lancement
-      - name: Captures obtenues, références et différences
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: estompe-natif-captures
-          path: apps/estompe/natif/target/tmp/captures
-          if-no-files-found: ignore
-      - if: steps.cargo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin/cargo-deny
-            apps/estompe/natif/target
-          key: ${{ steps.cargo.outputs.cache-primary-key }}
-
-  # Cible Windows MSVC (imposée par le SDK Rust LiveKit du lot vocal) : build et tests sur un runner Windows.
-  # CRT statique (apps/estompe/natif/.cargo/config.toml) : Skia n'a pas de binaires précompilés pour lui et se compile depuis ses sources,
-  # une fois par version de skia-bindings : ses binaires sont gardés dans un petit cache à part (skia-windows-v1-), relu par SKIA_BINARIES_URL.
-  # Les captures de rendu ne sont comparées que sous Linux.
-  estompe-natif-windows:
-    needs: changements
-    if: needs.changements.outputs.estompe_natif == 'true'
-    runs-on: windows-latest
-    env:
-      ESTOMPE_COFFRE_EXIGE: 1
-      ESTOMPE_CAPTURES: ignorer
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - name: ninja (Skia compilé depuis ses sources en CRT statique, voir docs/estompe/natif.md)
-        run: python -m pip install --disable-pip-version-check ninja==1.13.0
-      - name: Chemins longs (dépendances de Skia clonées par git-sync-deps)
-        run: git config --global core.longpaths true
-      - name: LLVM 22.1.8 (clang-cl et libclang pour Skia, le STL de MSVC refuse le clang 20 du runner)
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $installeur = Join-Path $env:RUNNER_TEMP 'LLVM-22.1.8-win64.exe'
-          Invoke-WebRequest -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-win64.exe' -OutFile $installeur
-          $empreinte = (Get-FileHash -Algorithm SHA256 -Path $installeur).Hash.ToLowerInvariant()
-          if ($empreinte -ne '16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c') { throw "empreinte inattendue de l'installeur LLVM : $empreinte" }
-          $dossier = Join-Path $env:RUNNER_TEMP 'llvm-22'
-          Start-Process -FilePath $installeur -ArgumentList '/S', "/D=$dossier" -Wait -NoNewWindow
-          if (-not (Test-Path (Join-Path $dossier 'bin\clang-cl.exe'))) { throw "clang-cl absent de $dossier" }
-          & (Join-Path $dossier 'bin\clang-cl.exe') --version
-          "LLVM_HOME=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "LIBCLANG_PATH=$(Join-Path $dossier 'bin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Join-Path $dossier 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-      - id: skia
-        name: Binaires de Skia (version de skia-bindings, SKIA_BINARIES_URL)
-        shell: bash
-        run: |
-          echo "version=$(sed -n '/^name = "skia-bindings"$/{n;s/^version = "\(.*\)"$/\1/p;}' apps/estompe/natif/Cargo.lock)" >> "$GITHUB_OUTPUT"
-          echo "SKIA_BINARIES_URL=file://$(cygpath -m "$HOME/skia-binaires")/skia-binaries-{key}.tar.gz" >> "$GITHUB_ENV"
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/skia-binaires
-          key: skia-windows-v1-${{ steps.skia.outputs.version }}-${{ github.run_id }}
-          restore-keys: skia-windows-v1-${{ steps.skia.outputs.version }}-
-      - id: cargo
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            apps/estompe/natif/target
-          key: natif-windows-v2-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
-          restore-keys: natif-windows-v2-
-      - name: Build (x86_64-pc-windows-msvc)
-        working-directory: apps/estompe/natif
-        run: cargo build --locked --target x86_64-pc-windows-msvc
-      - name: cargo-nextest (binaire de la release, somme SHA-256 vérifiée)
-        shell: bash
-        run: scripts/estompe/installer-nextest.sh
-      - name: Tests, dont le coffre de secrets (Credential Manager)
-        working-directory: apps/estompe/natif
-        run: cargo nextest run --workspace --locked --target x86_64-pc-windows-msvc
-      - id: skia-archive
-        name: Binaires de Skia archivés s'ils viennent d'être compilés, sorties intermédiaires de Skia retirées
-        shell: bash
-        run: scripts/estompe/natif-skia-binaires.sh apps/estompe/natif/target/x86_64-pc-windows-msvc/debug "$HOME/skia-binaires"
-      - if: steps.skia-archive.outputs.nouvelle == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/skia-binaires
-          key: skia-windows-v1-${{ steps.skia.outputs.version }}-${{ github.run_id }}
-      - if: steps.cargo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            apps/estompe/natif/target
-          key: ${{ steps.cargo.outputs.cache-primary-key }}
-
   estompe-api-image:
     needs: changements
     if: needs.changements.outputs.estompe_api == 'true'
@@ -662,7 +500,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-natif-linux, estompe-natif-windows, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

@@ -11,12 +11,12 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - **Ne jamais ajouter de ligne `Co-Authored-By: Claude …` dans les messages de commit.**
 - Ne pas ajouter non plus de mention « Generated with Claude Code » dans les commits.
 - Ne jamais forcer un push ; ne pas pousser directement sur `main`, passer par une PR.
-- Tags de livraison : `<composant>-vX.Y.Z` (`security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `ui`, `estompe-api`, `estompe-app`, `estompe-natif` ; `keycloak` dans `plbls.fr-infra`).
+- Tags de livraison : `<composant>-vX.Y.Z` (`security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
 
 ## CI
 - Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
   `scripts/ci-changements.sh`), puis des jobs conditionnés à ces sorties (`front` générique pour les projets npm, `rust-lint` une fois pour tout
-  le workspace, `rust-test`, `estompe-tauri`, `estompe-natif-linux` et `estompe-natif-windows`, images), et le job final `ci`, contrôle obligatoire. Nouveau projet : un groupe de chemins dans
+  le workspace, `rust-test`, `estompe-tauri`, images), et le job final `ci`, contrôle obligatoire. Nouveau projet : un groupe de chemins dans
   `_changements.yml`, un job (ou un espace npm pour `front`) dans `ci.yml`, ajouté aux `needs` de `ci` ; le ruleset ne change pas.
 - Pas de tests sur `main` : `livraison.yml` (push `main`, tags `<composant>-vX.Y.Z`) publie seulement ce que la fusion a changé (images `:edge`,
   PR de version d'Estompe, caches partagés). Les apps natives d'Estompe (`estompe-livraison-app.yml`) partent de leur tag ou d'un lancement manuel.

@@ -33,7 +33,7 @@ Chaque trame texte est un JSON `{"type": "...", "data": ...}`. Pour garder la co
 | --- | --- | --- |
 | `ready` | l'utilisateur | `{user_id}` — premier évènement |
 | `presence.snapshot` | l'utilisateur | `{online: [user_id], activities: {user_id: jeu}}` — connectés parmi les personnes qui partagent un serveur ou une conversation avec lui, et le jeu en cours de ceux qui en partagent un |
-| `avatar.updated` | personnes qui partagent un serveur ou une conversation (et soi-même) | `{user_id, version}` — `version` 0 = avatar supprimé ; l'image se charge par `GET /users/{id}/avatar` |
+| `avatar.updated` | personnes qui partagent un serveur ou une conversation (et soi-même) | `{user_id, version}` — `version` 0 = avatar supprimé ; l'image se charge par `GET /users/{id}/avatar?v=<version>` (voir « Images versionnées ») |
 | `typing` | autres participants de la conversation | `{channel_id|dm_id, user_id, pseudo}` — à afficher environ 5 s |
 | `read.updated` | participants de la conversation | `{channel_id|dm_id, user_id, pseudo, last_id, read_at}` — `user_id` a vu les messages jusqu'à `last_id` ; émis seulement quand `last_id` avance ; reçu pour son propre `user_id`, les autres appareils vident pastille et mentions de la conversation |
 | `status.updated` | personnes qui partagent un serveur ou une conversation (et soi-même) | `{user_id, status}` (`online`, `idle`, `dnd`) |
@@ -55,9 +55,9 @@ Chaque trame texte est un JSON `{"type": "...", "data": ...}`. Pour garder la co
 | `banner.updated` | la personne et ses contacts | `{user_id, color}` — couleur de bannière du profil (`#rrggbb`, vide : couleur du rôle le plus élevé) (EST-124) |
 | `channel.deleted` | membres qui voyaient le salon | `{server_id, id}` — un membre qui perd la vue d'un salon ne reçoit rien : `roles.updated` lui fait recharger `GET /servers/{id}`, et le client oublie les salons absents de la réponse |
 | `server.updated` | membres du serveur | `{id, name}` |
-| `server_icon.updated` | membres du serveur | `{id, version}` — `version` 0 = icône retirée (initiales) ; l'image se charge par `GET /servers/{id}/icon` |
+| `server_icon.updated` | membres du serveur | `{id, version}` — `version` 0 = icône retirée (initiales) ; l'image se charge par `GET /servers/{id}/icon?v=<version>` |
 | `server.deleted` | membres, juste avant la suppression | `{id}` |
-| `member.joined` | membres (dont le nouvel arrivant) | `{server_id, member: {id, pseudo, online}}` — `online` évite d'attendre un évènement `presence` pour un arrivant déjà connecté |
+| `member.joined` | membres (dont le nouvel arrivant) | `{server_id, member: {id, pseudo, online}}` — `online` évite d'attendre un évènement `presence` pour un arrivant déjà connecté ; le reste du profil de l'arrivant n'y est pas : le client recharge `GET /servers/{id}`, `GET /avatars` et `GET /statuses` (de même quand il rejoint lui-même un serveur) |
 | `member.left` | membres restants et la personne partie | `{server_id, user_id, kind?, reason?, until?}` — `kind` vaut `kick` ou `ban` quand la personne a été expulsée ou bannie (`reason` : raison donnée, `until` : fin du ban, nul si définitif) ; absent pour un départ volontaire (EST-106) |
 | `member.timeout` | membres du serveur | `{server_id, user_id, until, reason}` — exclusion temporaire posée (`until` : fin) ou levée (`until` nul). Le client de la personne recharge `GET /servers/{id}` (permissions réduites) et recharge à l'échéance |
 | `member.warned` | le membre averti | `{server_id, reason}` |
@@ -65,7 +65,7 @@ Chaque trame texte est un JSON `{"type": "...", "data": ...}`. Pour garder la co
 | `messages.deleted` | membres qui voient le salon | `{channel_id, ids}` — suppression en masse (modération, purge d'un ban) |
 | `voice.moved` | le membre déplacé | `{server_id, from, to, by, to_name}` — le serveur l'a retiré du salon `from` ; son client rejoint `to` aussitôt (la salle `from` n'est quittée qu'une fois `to` connectée, même si le retrait précède l'évènement), en gardant son état micro et son ; `by` = pseudo du modérateur, `to_name` = nom du salon cible |
 | `voice.disconnected` | le membre déconnecté | `{server_id, channel_id}` |
-| `server_avatar.updated` | membres du serveur | `{server_id, user_id, version}` — `version` 0 = photo du serveur retirée (retour à la photo globale) ; l'image se charge par `GET /servers/{id}/users/{uid}/avatar` |
+| `server_avatar.updated` | membres du serveur | `{server_id, user_id, version}` — `version` 0 = photo du serveur retirée (retour à la photo globale) ; l'image se charge par `GET /servers/{id}/users/{uid}/avatar?v=<version>` |
 | `roles.updated` | membres du serveur | `{server_id, user_id?}` — rôles, permissions ou exceptions de salon modifiés (`user_id` : un seul membre concerné). Le client recharge `GET /servers/{id}` ; en vocal, le serveur ajuste ou coupe aussitôt les droits des présents (EST-104) |
 | `voice.state` | membres qui voient le salon | `{server_id, channel_id, user_id, pseudo, joined, at}` — arrivée ou départ dans un salon vocal (via les webhooks LiveKit) ; `at` sert de point de départ à la durée de présence, et un départ met à jour `GET /servers/{id}/voice/stats` |
 | `voice.mod` | membres qui voient le salon | `{server_id, channel_id, user_id, mic_off, sound_off}` — un modérateur (« Couper le micro / le son des membres ») coupe ou rétablit le micro et/ou le son d'un participant (EST-102) ; l'état est aussi porté par `GET /servers/{id}/voice` |
@@ -83,7 +83,12 @@ Chaque trame texte est un JSON `{"type": "...", "data": ...}`. Pour garder la co
 **Réactions et `me`** : dans `message.created`/`message.updated`, le champ `reactions[].me` est calculé pour l'auteur du message, pas pour le destinataire. Le client garde ses propres réactions (mises à jour par `reaction.updated`) et ne reprend du message reçu que le contenu, les pièces jointes, les mentions et `edited_at`.
 
 Une nouvelle conversation privée n'a pas d'évènement dédié : le premier `message.created` porte un `dm_id` inconnu du
-client, qui recharge alors `GET /dms`.
+client, qui recharge alors `GET /dms`, puis `GET /avatars` et `GET /statuses` pour le nouveau correspondant.
+
+**Images versionnées** : avatars, icônes de serveur et de badge sont servis avec `Cache-Control: private, max-age=86400` sous une
+adresse qui ne change pas. Le client ajoute donc la version à l'adresse (`?v=<version>`, ignoré par le serveur) : sans cela, le cache
+HTTP du navigateur ou de la webview rend l'ancienne image pendant un jour après un évènement `avatar.updated`,
+`server_avatar.updated` ou `server_icon.updated`.
 
 ## Vocal
 

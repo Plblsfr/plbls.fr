@@ -13,11 +13,7 @@ en bêta tant qu'elle ne couvre pas toutes les fonctions de l'app actuelle. Cett
 
 ## Mise à jour
 
-- Une PR qui ajoute une fonction visible au front web (composant, bloc, section, fonction de l'app Windows) ajoute sa ligne ici, à l'état `absent`,
-  et ouvre l'issue native correspondante (label `natif`), citée dans la colonne « Issue ».
-- Une PR de l'app native met à jour l'état des lignes qu'elle couvre.
-- Un composant supprimé ou renommé : sa ligne suit dans la même PR.
-- Un écart assumé se décide dans une issue ; la note en donne la raison.
+Projet abandonné : cette matrice est une archive, plus tenue à jour. Aucune PR n'a à y ajouter de ligne ni à ouvrir d'issue native.
 
 ## Format
 
@@ -33,7 +29,7 @@ en bêta tant qu'elle ne couvre pas toutes les fonctions de l'app actuelle. Cett
 node scripts/estompe/natif-parite.mjs
 ```
 
-ou `just estompe-natif-parite` ; `scripts/estompe/check.sh` le lance aussi. Le script échoue si un composant `.svelte` de `web/estompe/src/`,
+ou `just estompe-natif-parite`, à la main seulement (ni `scripts/estompe/check.sh` ni la CI ne le lancent). Le script échoue si un composant `.svelte` de `web/estompe/src/`,
 un bloc ou une section n'a pas de ligne, si une ligne désigne un fichier disparu, si une ligne est en double ou si un état est hors de la liste.
 Sinon il affiche le nombre de composants et leur répartition par état.
 
@@ -255,7 +251,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `sections/entracte/FilmsNav.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
 | `sections/entracte/FilmsLibrary.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
 | `sections/entracte/FilmDetail.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
-| `sections/entracte/FilmPlayer.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | lecteur HLS, sous-titres, passer l'intro, diffusion sur une télé |
+| `sections/entracte/FilmPlayer.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | lecteur HLS, sous-titres, passer l'intro, épisode suivant, diffusion sur une télé |
 | `sections/entracte/FilmPoster.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
 | `sections/entracte/FilmNoAccess.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | salon cinéma sans accès au titre |
 | `sections/entracte/EntractePoster.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |

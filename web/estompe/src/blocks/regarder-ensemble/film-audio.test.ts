@@ -49,6 +49,28 @@ describe('lecteur de films : son', () => {
     a.destroy()
   })
 
+  it('rétablit les sous-titres choisis quand le navigateur active une autre piste', async () => {
+    localStorage.setItem('entracte.lecture', JSON.stringify({ subtitles: 'forced' }))
+    const audio = [{ n: 0, label: 'VFF', language: 'fre' }]
+    const subtitles = [{ n: 0, label: 'Français', language: 'fre', url: '/s/0' }, { n: 1, label: 'Forcés', language: 'fre', forced: true, url: '/s/1' }]
+    vi.spyOn(filmsApi, 'playback').mockResolvedValue({ ...flux(1), audio, subtitles })
+    const liste = Object.assign(new EventTarget(), { 0: { mode: 'disabled' }, 1: { mode: 'disabled' }, length: 2 })
+    vi.spyOn(HTMLMediaElement.prototype, 'textTracks', 'get').mockReturnValue(liste as unknown as TextTrackList)
+    const pistes = vi.fn()
+    const a = await providers.film(document.createElement('div'), { onState: () => {}, onError: () => {}, onTracks: pistes })
+    a.load('f', 0, true)
+    await vi.waitFor(() => expect(pistes).toHaveBeenCalled())
+    expect([liste[0].mode, liste[1].mode]).toEqual(['disabled', 'showing'])
+    liste[0].mode = 'showing'
+    liste.dispatchEvent(new Event('change'))
+    expect([liste[0].mode, liste[1].mode]).toEqual(['disabled', 'showing'])
+    a.setSubtitle?.(null)
+    liste[0].mode = 'showing'
+    liste.dispatchEvent(new Event('change'))
+    expect([liste[0].mode, liste[1].mode]).toEqual(['disabled', 'disabled'])
+    a.destroy()
+  })
+
   it('garde la piste choisie à la main pendant l’ouverture', async () => {
     localStorage.setItem('entracte.lecture', JSON.stringify({ audio: 'vff' }))
     vi.spyOn(filmsApi, 'item').mockResolvedValue({ audio: [{ n: 0, label: null, language: 'eng' }, { n: 1, label: 'VFF', language: 'fre' }, { n: 2, label: null, language: 'jpn' }] } as unknown as FilmDetail)

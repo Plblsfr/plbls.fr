@@ -57,7 +57,7 @@ Règles du cycle :
 
 ## Nom de la branche = numéro de version
 
-Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android`, `natif`), stockée dans `.version` et mise à jour
+Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android`), stockée dans `.version` et mise à jour
 par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version` de `livraison.yml`) :
 
 | Branche | Effet à la fusion dans `main` |
@@ -70,27 +70,27 @@ par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version
 Détails :
 - Éléments concernés = dossiers modifiés par la fusion : `api/estompe/` → api ; `web/estompe/plateforme/` → web ; `apps/estompe/windows/` → windows ;
   `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android,
-  sauf `crates/client` et `crates/plateforme` qui, comme `apps/estompe/natif/`, montent natif (l'app native). Un élément absent de `.version`
-  part de 0.0.0 : la première fusion `feat/` de l'app native ajoute `"natif": "0.1.0"` par la PR `ci/version`.
+  sauf `crates/client` et `crates/plateforme` qui, comme `apps/estompe/natif/` (app native abandonnée), ne montent aucune version. Un élément absent de `.version`
+  part de 0.0.0. Le calcul retire de `.version` une ancienne clé `natif`, que `version-seule` accepte encore.
   Une fusion qui ne touche que `docs/`, `scripts/`, la CI… ne change rien.
 - À chaque fusion, la CI recalcule `.version` (toutes les fusions depuis la dernière modification de `.version` sur `main`) et met à jour une PR
   unique `ci/version` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Cette PR ne modifie que `.version` : dans `ci.yml`, seul le job
   `version-seule` tourne et vérifie qu'aucun autre fichier ne change. Fusionner cette PR (« merge ») avant de poser un tag de livraison.
   Ne pas modifier `.version` dans une autre PR, sauf pour une version majeure (les fusions pas encore comptées repartent alors de cette valeur).
   Au build, `bump-version.mjs --apply` recopie les versions de `windows` et `android` dans `tauri.conf.json`, `Cargo.toml` et `Cargo.lock`
-  (l'espace de travail seulement), et celle de `natif` dans `apps/estompe/natif/Cargo.toml` et son `Cargo.lock` ; l'app ne propose la mise à jour que si la version publiée a augmenté.
+  (l'espace de travail seulement) ; l'app ne propose la mise à jour que si la version publiée a augmenté.
 - Le nom de la branche est lu dans le message du commit de fusion de GitHub (« … from feat/x into main »). **Fusionner en
   « merge » classique** : en squash ou rebase, le nom est perdu et la version monte en patch.
 - Choisir le préfixe selon l'effet voulu : une fonctionnalité visible par les utilisateurs → `feat/`.
 
 ## Release et livraison
 
-Branche `release/…`, `changelog.json`, forçage de mise à jour, tags `estompe-api-v*`, `estompe-app-v*` et `estompe-natif-v*` (app native) : voir `docs/estompe/release.md` (lu par `/estompe-release`).
+Branche `release/…`, `changelog.json`, forçage de mise à jour, tags `estompe-api-v*` et `estompe-app-v*` : voir `docs/estompe/release.md` (lu par `/estompe-release`).
 Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push origin <tag>`), jamais `--tags`.
 
 ## Git et GitHub
 
-- Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe est réparti entre `api/estompe/`, `web/estompe/`, `apps/estompe/`, `docs/estompe/`, `deploy/estompe/` et `scripts/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`, `estompe-natif-v*`.
+- Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe est réparti entre `api/estompe/`, `web/estompe/`, `apps/estompe/`, `docs/estompe/`, `deploy/estompe/` et `scripts/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`.
 - **Seul `gh` parle à GitHub** (PR, issues, releases…), ou à défaut les outils MCP GitHub de la session pour lire et commenter une issue (`issue_read`, `add_issue_comment`). Interdits : `curl`/`wget` vers `api.github.com`, appel à l'API à la main,
   bibliothèque HTTP. Les règles `deny` de `.claude/settings.json` le font respecter.
 - `gh` doit être connecté : `gh auth status` doit répondre. Sinon, s'arrêter et le dire à l'utilisateur.
@@ -111,7 +111,7 @@ Depuis la racine du worktree, sans `cd … &&` :
 scripts/estompe/check.sh
 ```
 
-Le script lance, dans l'ordre : `TEST_DATABASE_URL` défini, `node scripts/estompe/natif-parite.mjs`, `cargo fmt --check`, `clippy -D warnings` (tout le workspace racine), `cargo test` des crates d'Estompe, `cargo deny check`, `npm --prefix web/estompe run check`, `npm --prefix web/estompe test`, puis `scripts/estompe/natif-check.sh` (app native : portabilité, fichiers générés, fmt, clippy, `cargo deny`, tests, qui construisent aussi le binaire `target/debug/estompe-natif`). Il est la seule liste de contrôles : skills et CI s'y réfèrent.
+Le script lance, dans l'ordre : `TEST_DATABASE_URL` défini, `cargo fmt --check`, `clippy -D warnings` (tout le workspace racine), `cargo test` des crates d'Estompe, `cargo deny check`, `npm --prefix web/estompe run check`, puis `npm --prefix web/estompe test`. L'app native (abandonnée) n'y est plus vérifiée. Il est la seule liste de contrôles : skills et CI s'y réfèrent.
 
 Pendant le développement, du plus rapide au plus complet : `cargo check $(scripts/estompe/paquets-cargo.sh) --all-targets`, `cargo build $(scripts/estompe/paquets-cargo.sh)`, `cargo test $(scripts/estompe/paquets-cargo.sh) --no-run`, `cargo test $(scripts/estompe/paquets-cargo.sh)`. En local, `blaze` (indexable-inc) remplace `cargo` pour `build`, `check`, `run` et `test` (recompilation incrémentale en mémoire, voir `api/estompe/README.md`) ; `scripts/estompe/check.sh` et la CI restent sur `cargo` et la toolchain épinglée, qui font foi. Aucun linker à configurer : mesuré, mold n'apporte rien sur le linker par défaut (`api/estompe/README.md`, « Développement »).
 
@@ -127,8 +127,6 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - Dans un nouveau worktree, installer d'abord les dépendances front : `npm ci` (workspace npm à la racine du dépôt, un seul `package-lock.json`, Node du `.nvmrc` racine).
 - Chaque PR ajoute un fichier `changelog.d/<slug-court>.md` (voir `changelog.d/README.md`) qui cite l'issue `(#<n>)`, sauf branches `ci/`, `docs/`,
   `release/` : la CI échoue sinon. Elle lance les tests de tout (backend, front, Rust).
-- Parité de l'app native : une PR qui ajoute une fonction visible au front web (composant, bloc, section, fonction de l'app Windows) ajoute sa ligne à
-  `docs/estompe/natif-parite.md` et ouvre l'issue native correspondante (label `natif`) ; `scripts/estompe/natif-parite.mjs` échoue si un composant `.svelte` n'a pas sa ligne.
 - Dire clairement ce qui n'a **pas** été vérifié (rendu visuel, build Tauri/Windows, vrai partage d'écran…) dans la réponse et dans la PR.
 
 ## Tests
@@ -156,7 +154,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   (`isDesktop`, agent) : il appelle `platform` ; un comportement propre à une plateforme s'ajoute dans son dossier (voir `web/estompe/README.md`).
 - `apps/estompe/natif/` : app de bureau native en Slint, sans webview, en beta à côté de l'app Tauri ; `apps/estompe/crates/client/` (logique sans
   interface) et `apps/estompe/crates/plateforme/` (seul endroit où du code propre à un OS est permis). Workspace Cargo à part. Voir `docs/estompe/natif.md`.
-- `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android, natif).
+- `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
 - Permissions : toute nouvelle route est rattachée à une permission de `api/estompe/core/src/catalogue.rs` (ou, avec un motif, à `HORS_PERMISSION`), et tout nouveau droit de serveur est plafonné par une permission ; les tests `estompe-api` et `estompe-core` l'imposent. Après un changement du catalogue : `AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour` régénère `docs/aegis/fonctionnalites.md`.
 - Déploiement : services `estompe-*` et `livekit` de `deploy/docker-compose.yml` (voir `deploy/README.md`, « Variables ») : `estompe-api` charge tout le `.env`, `estompe-web` et `livekit` ne reçoivent que les variables de leur section `environment` (interpolées `${VAR}`) ; la base est `estompe` sur le PostgreSQL partagé (`postgres-main`), le Redis est le service `redis` commun. Nouvelle variable : valeur non secrète dans `plbls.env` (section Estompe), secret dans `deploy/estompe/.env.example` (valeur dans `secret/estompe` de Vault, référence `${{vault.plbls.estompe:CLE}}`), jamais en valeur dans le compose ; une variable lue par `estompe-web` ou `livekit` s'ajoute aussi à sa section `environment` ; aucun nom déjà utilisé par un autre projet de la stack, sauf les communes (`DATABASE_*`, `REDIS_*`, `VAPID_*`…).
@@ -164,7 +162,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`
   (entrée `changelog.d/` exigée), chacun seulement si la PR touche ses chemins. Après fusion, `livraison.yml` calcule `.version` (`estompe-version`),
   publie l'image `:edge` de l'API si `api/estompe/` a changé et l'image de job de `deploy/estompe/ci/` ; tag `estompe-api-v*` : image versionnée de l'API.
-  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK. `estompe-livraison-natif.yml` (tag `estompe-natif-v*` ou lancement manuel) : installeur de l'app native.
+  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK. L'app native (`apps/estompe/natif/`) n'est ni construite, ni testée, ni livrée par la CI.
 
 ## Conventions
 
@@ -197,6 +195,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Salon cinéma** : les titres sont ceux d'Entracte (`ENTRACTE_INTERNE_URL`, `ENTRACTE_SERVICE_TOKEN`) ; Estompe ne sert aucun flux ni fichier vidéo et ne garde aucune progression. Il vérifie le titre et le droit de l'hôte de serveur à serveur (`GET /internal/titles/{id}?sub=`) ; au départ de l'hôte, le suivant est un participant à qui Entracte ouvre le titre.
 - **Carte Sillon** : un lien vers `#/musique/…` de l'app devient une carte dans `GET /link-preview` (bloc `apercu-liens`, trait `Musiques`, `SILLON_INTERNE_URL`, `SILLON_SERVICE_TOKEN`), vérifiée avec le `sub` de l'auteur du message (`GET /internal/preview?sub=`), jamais du lecteur seul : le front passe `message`. Estompe ne relaie aucune pochette (l'app du lecteur la demande à Sillon) ; une playlist ne donne jamais de carte.
 - **Lecteur d'Entracte** : les sous-titres natifs se dessinent en bas de la vidéo, sous la barre de commandes ; ils sont remontés tant qu'elle est visible (`::-webkit-media-text-track-container`), et la barre se masque sans geste pendant la lecture. Les horaires d'une piste sont ceux du titre : pour un flux HLS qui commence à `offset`, les répliques sont ramenées au temps du lecteur (`shiftCues`).
+- **Pistes de sous-titres** : après l'ajout d'éléments `<track>`, le navigateur choisit lui-même une piste parmi celles dont le script n'a pas changé le mode (remettre `disabled` sur une piste déjà `disabled` ne compte pas) et l'affiche en plus de la piste voulue. Le lecteur d'Entracte réapplique son choix à chaque évènement `change` de `video.textTracks` (`showSubtitle` de `providers.ts`).
 - **Passer l'intro** (`docs/entracte/README.md`, « Intros ») : les bornes arrivent avec le flux (`intro` de la réponse de lecture, transmises par `onTracks`) et sont en secondes du titre, pas du lecteur. Dans le lecteur seul (`FilmPlayer.svelte`) le bouton déplace la lecture ; dans le salon cinéma (`WatchTogether.svelte`) il envoie un déplacement de séance (`command({ action: 'seek' })`, donc pour tout le monde) et n'existe que pour qui peut piloter : jamais de saut local, il désynchroniserait la séance. Côté API, la date d'un fichier se compare à la microseconde (précision de PostgreSQL), sinon chaque synchronisation le croit modifié et efface ses bornes.
 - **Diffusion sur une télé** (`docs/entracte/transcodage.md`) : uniquement l'API Remote Playback du navigateur (`video.remote`), jamais le script du SDK Google Cast (`script-src` reste `'self'`). Une source MSE (hls.js) ne se diffuse pas : un flux est rouvert à la position en cours dans le lecteur natif avant `prompt()`, qui exige un geste récent, et seulement si le navigateur annonce un appareil. Le lecteur natif ne peut pas se déplacer dans une playlist HLS sans `ENDLIST` (`seekable` vide) : ne jamais y recharger un flux en comptant sur `currentTime`. La télé lit l'URL elle-même : sans cookie ni en-tête, et en CORS depuis sa propre origine.
 - **Reprise d'un flux HLS d'Entracte** : `ffmpeg -ss` avec `-c:v copy` commence à une image clé, pas à la position demandée, et ajuste cette position (début du fichier, images B) avant de chercher. `offset` est donc l'image clé réellement servie (`ffprobe::depart_de_copie`), jamais `start` supposé ; toute vérification se fait sur l'image (source horodatée), pas sur le temps affiché.
@@ -228,7 +227,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Plein écran dans l'app Android** : le `WebChromeClient` de wry (`RustWebChromeClient`) annule tout passage en plein écran (`onShowCustomView` rend la main aussitôt) et wry l'installe après `onWebViewCreate`. `FullscreenChrome` (`Fullscreen.kt`) l'enveloppe au tour suivant de la boucle principale : il affiche la vue plein écran, masque les barres système et délègue au client de wry les méthodes que celui-ci redéfinit. À chaque montée de wry, vérifier que cette liste de méthodes déléguées est toujours complète.
 - **App native** (`docs/estompe/natif.md`) : `ui/genere/*.slint` et `crates/client/src/genere/types.rs` sont générés (`just estompe-natif-generer`), ne pas
   les modifier à la main. Un changement visuel voulu régénère les captures de référence (`just estompe-natif-captures`). Le backend de test de Slint
-  ne s'installe qu'une fois par processus : les tests d'intégration forment un seul binaire (`tests/natif/main.rs`, un module par fichier) lancé par `cargo nextest run`, un processus par test ; `cargo test` sur ce binaire les ferait tourner dans le même processus et échouerait. cargo-nextest s'installe avec `scripts/estompe/installer-nextest.sh` (version et sommes SHA-256 épinglées dans le script, celui de la CI).
+  ne s'installe qu'une fois par processus : les tests d'intégration forment un seul binaire (`tests/natif/main.rs`, un module par fichier) lancé par `cargo nextest run`, un processus par test ; `cargo test` sur ce binaire les ferait tourner dans le même processus et échouerait. cargo-nextest s'installe avec `scripts/estompe/installer-nextest.sh` (version et sommes SHA-256 épinglées dans le script).
   Une tabulation qui arrive sur un champ sélectionne tout son texte. Lancer l'app sous Linux demande `libxkbcommon-x11-0`.
   Slint ne virtualise un `for` que dans un composant nommé `ListView` (`ui/composants/liste-virtuelle.slint`, exporté en `ListeVirtuelle`) ; avec le temps simulé du backend de test,
   les gestionnaires `changed` ne tournent que si le test appelle `slint::platform::update_timers_and_animations()`.

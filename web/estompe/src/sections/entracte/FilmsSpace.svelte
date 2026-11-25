@@ -30,7 +30,7 @@
 </script>
 
 {#if section === 'watch' && id}
-  {#key id}<FilmPlayer {id} />{/key}
+  <FilmPlayer {id} />
 {:else}
   <header class="main-head film-head">
     <button class="ib burger" onclick={onmenu} aria-label="Menu"><Icon name="menu" /></button>
