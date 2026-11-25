@@ -13,6 +13,7 @@ pub mod mesures;
 pub mod mise_a_jour;
 pub mod overlay;
 pub mod parametres;
+pub mod regarder_ensemble;
 pub mod replay;
 pub mod session;
 pub mod video;
@@ -279,6 +280,7 @@ pub fn demarrer(
         }),
         conversions: conversions.clone(),
         lecteur: lecteur.clone(),
+        dossier_cache: Some(session.dossiers.cache.clone()),
         medias: messagerie::medias::Medias::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(

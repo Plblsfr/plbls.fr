@@ -1,0 +1,112 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Icone } from "../composants.slint";
+import { DonneesSeance } from "donnees.slint";
+
+export component SansAccesVue inherits Rectangle {
+    accessible-role: groupbox;
+    accessible-label: "Séance en cours";
+    VerticalLayout {
+        alignment: center;
+        padding: Espace.e8;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: Math.min(560px, root.width - 2 * Espace.e8);
+                height: disposition.preferred-height;
+                border-radius: Rayon.l;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.trait;
+                clip: true;
+                disposition := VerticalLayout {
+                    Rectangle {
+                        height: 160px;
+                        background: @linear-gradient(135deg, #2a1d2e 0%, #6b2f4a 100%);
+                        HorizontalLayout {
+                            padding: Espace.e5;
+                            spacing: Espace.e4;
+                            Rectangle {
+                                y: (parent.height - self.height) / 2;
+                                width: 72px;
+                                height: 72px;
+                                border-radius: 36px;
+                                background: #f1ece6;
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    border-radius: 9px;
+                                    background: #2a1d2e;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: Espace.e1;
+                                Text {
+                                    text: "SESSION EN COURS DANS " + DonneesSeance.sans-acces.salon;
+                                    color: #f1ece6b3;
+                                    font-family: Typo.mono;
+                                    font-size: 10.5px;
+                                    letter-spacing: 0.8px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: DonneesSeance.sans-acces.titre;
+                                    color: #f1ece6;
+                                    font-family: Typo.titre;
+                                    font-size: 26px;
+                                    font-weight: Typo.gras;
+                                    wrap: word-wrap;
+                                    accessible-role: text;
+                                }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        padding: Espace.e5;
+                        spacing: Espace.e4;
+                        Text {
+                            text: DonneesSeance.sans-acces.texte;
+                            color: Theme.encre;
+                            font-size: Typo.corps;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                        }
+                        if DonneesSeance.sans-acces.demande-envoyee: Rectangle {
+                            height: envoyee.preferred-height;
+                            border-radius: Rayon.s;
+                            background: Theme.ok-fond;
+                            accessible-role: text;
+                            accessible-label: "Demande envoyée aux administrateurs d'Estompe.";
+                            envoyee := HorizontalLayout {
+                                padding: Espace.e3;
+                                spacing: Espace.e2;
+                                Icone {
+                                    nom: "ok";
+                                    taille: 16px;
+                                    couleur: Theme.ok;
+                                }
+                                Text {
+                                    text: "Demande envoyée aux administrateurs d'Estompe.";
+                                    color: Theme.encre;
+                                    font-size: Typo.compact;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                        if !DonneesSeance.sans-acces.demande-envoyee && DonneesSeance.sans-acces.demande-possible: HorizontalLayout {
+                            alignment: start;
+                            Bouton {
+                                texte: "Demander l'accès";
+                                variante: VarianteBouton.primaire;
+                                en-cours: DonneesSeance.sans-acces.occupe;
+                                clique => {
+                                    DonneesSeance.demander-acces();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

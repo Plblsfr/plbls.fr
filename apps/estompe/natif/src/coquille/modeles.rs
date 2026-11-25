@@ -263,6 +263,7 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
             | Changement::Notification(_)
             | Changement::Avis(_)
             | Changement::Emojis { .. }
+            | Changement::Seance { .. }
             | Changement::Messages(_) => {}
         }
     }

@@ -1,0 +1,144 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Modal, Icone, Avatar, Champ } from "../composants.slint";
+import { DonneesSeance, SalonChoixSeance } from "donnees.slint";
+
+component SalonPropose inherits Rectangle {
+    in property <SalonChoixSeance> s;
+    in property <bool> cinema;
+    callback choisi();
+    property <bool> utilisable: Calques.ouverts <= 1 && !DonneesSeance.choix.occupe;
+    height: Math.max(56px, disposition.preferred-height);
+    border-radius: Rayon.m;
+    background: root.s.ici ? Theme.rose-doux : zone.has-hover && root.utilisable ? Theme.papier-2 : transparent;
+    opacity: DonneesSeance.choix.occupe ? 0.6 : 1;
+    accessible-role: button;
+    accessible-label: root.s.nom;
+    accessible-enabled: root.utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.choisi();
+        }
+    }
+    disposition := HorizontalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e3;
+        Icone {
+            y: (parent.height - self.height) / 2;
+            nom: root.cinema ? "film" : "vol";
+            taille: 22px;
+            couleur: Theme.gris;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Text {
+                text: root.s.nom;
+                color: Theme.encre;
+                font-size: Typo.compact;
+                font-weight: Typo.demi-gras;
+                overflow: elide;
+            }
+            if root.s.nom-serveur != "": Text {
+                text: root.s.nom-serveur;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                overflow: elide;
+            }
+            if root.s.en-cours != "": Text {
+                text: "Session en cours : " + root.s.en-cours;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                overflow: elide;
+            }
+        }
+        if root.s.ici: Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: ici.preferred-width + 12px;
+            height: 20px;
+            border-radius: Rayon.pilule;
+            background: Theme.rose;
+            ici := Text {
+                text: "Tu y es";
+                color: Theme.rose-texte;
+                font-family: Typo.mono;
+                font-size: 10.5px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        if root.s.personnes.length > 0: HorizontalLayout {
+            spacing: 2px;
+            for p[i] in root.s.personnes: Avatar {
+                y: (parent.height - self.height) / 2;
+                visible: i < 3;
+                width: i < 3 ? 24px : 0;
+                nom: p.nom;
+                initiales: p.initiales;
+                teinte: p.teinte;
+                taille: 24px;
+            }
+            if root.s.plus != "": Text {
+                text: root.s.plus;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+            }
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.choisi();
+        }
+    }
+}
+
+export component ChoixSalonSeance inherits Modal {
+    titre: DonneesSeance.choix.titre;
+    ouvert: DonneesSeance.choix.ouvert;
+    largeur: 480px;
+    property <string> lien-texte;
+    changed ouvert => {
+        root.lien-texte = "";
+    }
+    ferme => {
+        DonneesSeance.fermer-choix();
+    }
+    if DonneesSeance.choix.ouvert: VerticalLayout {
+        spacing: Espace.e3;
+        if DonneesSeance.choix.lien: Champ {
+            etiquette: "Lien de la vidéo";
+            indice: "YouTube, Twitch, Vimeo, Dailymotion ou fichier";
+            calque: 1;
+            modifie(v) => {
+                root.lien-texte = v;
+            }
+        }
+        if DonneesSeance.choix.erreur != "": Text {
+            text: DonneesSeance.choix.erreur;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        VerticalLayout {
+            spacing: 6px;
+            for s in DonneesSeance.salons: SalonPropose {
+                s: s;
+                cinema: DonneesSeance.choix.cinema;
+                choisi => {
+                    DonneesSeance.lancer(s.id, root.lien-texte);
+                }
+            }
+            if DonneesSeance.salons.length == 0: Text {
+                text: DonneesSeance.choix.vide;
+                color: Theme.gris;
+                font-size: Typo.compact;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+    }
+}

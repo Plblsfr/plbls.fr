@@ -100,6 +100,12 @@ pub trait Fabrique: Send + Sync + 'static {
     fn lecteur(&self) -> Option<Arc<GestionLecteur>> {
         None
     }
+    fn entracte(&self) -> Option<Client> {
+        None
+    }
+    fn dossier_cache(&self) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 pub struct FabriqueReelle {
@@ -116,6 +122,7 @@ pub struct FabriqueReelle {
     pub conversions: Arc<Conversions>,
     pub son: SonPeripheriques,
     pub lecteur: Option<Arc<GestionLecteur>>,
+    pub dossier_cache: Option<std::path::PathBuf>,
 }
 
 fn son_par_defaut() -> SonPeripheriques {
@@ -240,6 +247,22 @@ impl Fabrique for FabriqueReelle {
 
     fn lecteur(&self) -> Option<Arc<GestionLecteur>> {
         self.lecteur.clone()
+    }
+
+    fn entracte(&self) -> Option<Client> {
+        let (_, adresse) = self
+            .adresses_sections
+            .iter()
+            .find(|(s, _)| *s == Section::Entracte)?;
+        let jeton = self.jeton.clone();
+        Client::nouveau(adresse).ok().map(|c| {
+            c.avec_plateforme(crate::entree::PLATEFORME, crate::VERSION)
+                .avec_jeton(move || jeton())
+        })
+    }
+
+    fn dossier_cache(&self) -> Option<std::path::PathBuf> {
+        self.dossier_cache.clone()
     }
 }
 
@@ -1568,6 +1591,15 @@ async fn session(
             pont.vocal().fenetre_active(false);
         }
     }
+    pont.vocal()
+        .seance()
+        .definir_outils(crate::regarder_ensemble::OutilsSeanceApp {
+            lecteur: contexte.fabrique.lecteur(),
+            entracte: contexte.fabrique.entracte(),
+            racine: contexte.fabrique.dossier_cache(),
+            navigateur: contexte.fabrique.navigateur(),
+            journal: contexte.fabrique.journal(),
+        });
     let mut jeux = contexte.fabrique.jeux();
     let annonce = crate::jeux::Annonce::default();
     let mut etat_vocal = outils.as_ref().map(|o| o.session.etat());
@@ -1609,6 +1641,7 @@ async fn session(
     let p = pont.clone();
     let etat_vocal_initial = etat_vocal.as_mut().map(|e| e.borrow_and_update().clone());
     contexte.sur_l_interface(move |f| {
+        p.vocal().seance().brancher(f);
         p.definir_reseau(f, reseau_initial);
         p.demarrer(f);
         if let Some(etat) = etat_vocal_initial {

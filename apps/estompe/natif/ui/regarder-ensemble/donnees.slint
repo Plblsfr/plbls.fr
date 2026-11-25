@@ -1,0 +1,119 @@
+export enum GenreMessageSeance { aucun, erreur, lent, bloque, attente }
+
+export struct VueSeance {
+    active: bool,
+    sans-acces: bool,
+    cinema: bool,
+    titre: string,
+    sous-titre: string,
+    ajoute-par: string,
+    statut: string,
+    suspendu: bool,
+    avis: string,
+    peut-piloter: bool,
+    hote-seul: bool,
+    bascule-hote: bool,
+    suivant: string,
+    arreter: bool,
+    direct: bool,
+    lecture: bool,
+    message: string,
+    genre-message: GenreMessageSeance,
+    passer-suivante: bool,
+    grand-bouton: bool,
+    chargement: bool,
+    passer-intro: bool,
+    barre: bool,
+    position: float,
+    duree: float,
+    temps: string,
+    vitesse: string,
+    navigateur: string,
+    compte-file: string,
+    en-lecture: string,
+    pistes-audio: bool,
+    pistes-sous-titres: bool,
+    qualites: bool,
+    prechargement: bool,
+    avance: float,
+    compte: string,
+}
+
+export struct ParticipantSeance {
+    id: string,
+    nom: string,
+    initiales: string,
+    teinte: int,
+    pret: string,
+    charge: bool,
+    ok: bool,
+}
+
+export struct ElementFileSeance {
+    id: string,
+    libelle: string,
+    monter: bool,
+    descendre: bool,
+    retirer: bool,
+}
+
+export struct SalonChoixSeance {
+    id: string,
+    nom: string,
+    nom-serveur: string,
+    en-cours: string,
+    ici: bool,
+    personnes: [ParticipantSeance],
+    plus: string,
+}
+
+export struct ChoixSeance {
+    ouvert: bool,
+    titre: string,
+    vide: string,
+    occupe: bool,
+    erreur: string,
+    lien: bool,
+    cinema: bool,
+}
+
+export struct SansAcces {
+    salon: string,
+    titre: string,
+    texte: string,
+    demande-possible: bool,
+    demande-envoyee: bool,
+    occupe: bool,
+}
+
+export global DonneesSeance {
+    in property <VueSeance> vue;
+    in property <[ParticipantSeance]> participants;
+    in property <[ElementFileSeance]> file;
+    in property <ChoixSeance> choix;
+    in property <[SalonChoixSeance]> salons;
+    in property <SansAcces> sans-acces;
+    callback basculer();
+    callback aller(float);
+    callback menu-vitesse(length, length);
+    callback menu-audio(length, length);
+    callback menu-sous-titres(length, length);
+    callback menu-qualite(length, length);
+    callback menu-prechargement(length, length);
+    callback suivant();
+    callback arreter();
+    callback recharger();
+    callback reprendre();
+    callback hote-seul(bool);
+    callback passer-intro();
+    callback touche(string, bool, bool, bool) -> bool;
+    callback retirer(string);
+    callback monter(int);
+    callback descendre(int);
+    callback ajouter(string);
+    callback ouvrir-navigateur();
+    callback ouvrir-choix();
+    callback fermer-choix();
+    callback lancer(string, string);
+    callback demander-acces();
+}

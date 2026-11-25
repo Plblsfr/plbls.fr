@@ -22,7 +22,7 @@ export struct EtatLecteurVue {
     sous-titres-actifs: bool,
 }
 
-component BoutonLecteur inherits Rectangle {
+export component BoutonLecteur inherits Rectangle {
     in property <string> icone;
     in property <string> texte;
     in property <string> description;
@@ -67,7 +67,7 @@ component BoutonLecteur inherits Rectangle {
     }
 }
 
-component BarreLecteur inherits Rectangle {
+export component BarreLecteur inherits Rectangle {
     in property <float> valeur;
     in property <float> maximum: 1;
     in property <float> avance: 0;

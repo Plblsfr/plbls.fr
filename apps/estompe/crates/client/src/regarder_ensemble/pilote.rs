@@ -586,6 +586,65 @@ impl Client {
         self.delete(&chemin(salon, genre)).await
     }
 
+    pub async fn options_seance(
+        &self,
+        salon: &str,
+        genre: GenreSeance,
+        hote_seul: bool,
+    ) -> Result<(), ErreurApi> {
+        let corps = serde_json::json!({ "host_only": hote_seul });
+        self.envoyer(
+            Method::PUT,
+            &format!("{}/options", chemin(salon, genre)),
+            &Corps::json(&corps)?,
+        )
+        .await
+    }
+
+    pub async fn ajouter_a_la_file(
+        &self,
+        salon: &str,
+        genre: GenreSeance,
+        video: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = serde_json::json!({ "video": video });
+        self.envoyer(
+            Method::POST,
+            &format!("{}/queue", chemin(salon, genre)),
+            &Corps::json(&corps)?,
+        )
+        .await
+    }
+
+    pub async fn reordonner_file(
+        &self,
+        salon: &str,
+        genre: GenreSeance,
+        ids: &[String],
+    ) -> Result<(), ErreurApi> {
+        let corps = serde_json::json!({ "ids": ids });
+        self.envoyer(
+            Method::PUT,
+            &format!("{}/queue", chemin(salon, genre)),
+            &Corps::json(&corps)?,
+        )
+        .await
+    }
+
+    pub async fn retirer_de_la_file(
+        &self,
+        salon: &str,
+        genre: GenreSeance,
+        id: &str,
+    ) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "{}/queue/{}",
+            chemin(salon, genre),
+            encoder_composant(id)
+        ))
+        .await
+    }
+
     pub async fn executer_appel_seance(
         &self,
         salon: &str,
@@ -1420,6 +1479,11 @@ mod tests {
             Reponse::json(200, json!({"v3": {"state": null, "now": "2026-01-01T00:00:00Z"}})),
             Reponse::vide(204),
             Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
         ])
         .await;
         let client = serveur.client();
@@ -1484,5 +1548,31 @@ mod tests {
         assert_eq!(r[4].ligne(), ("/voice/v1/watch", "PUT"));
         assert_eq!(r[4].json(), json!({"video": "abc", "queue": ["def"]}));
         assert_eq!(r[5].ligne(), ("/voice/v1/music", "DELETE"));
+        client
+            .options_seance("v1", GenreSeance::Regarder, true)
+            .await
+            .unwrap();
+        client
+            .ajouter_a_la_file("v1", GenreSeance::Regarder, "https://x.test/v.mp4")
+            .await
+            .unwrap();
+        client
+            .reordonner_file("v1", GenreSeance::Regarder, &["b".into(), "a".into()])
+            .await
+            .unwrap();
+        client
+            .retirer_de_la_file("v1", GenreSeance::Regarder, "a b")
+            .await
+            .unwrap();
+        client.intro_passee("t 1").await.unwrap();
+        let r = serveur.requetes();
+        assert_eq!(r[6].ligne(), ("/voice/v1/watch/options", "PUT"));
+        assert_eq!(r[6].json(), json!({"host_only": true}));
+        assert_eq!(r[7].ligne(), ("/voice/v1/watch/queue", "POST"));
+        assert_eq!(r[7].json(), json!({"video": "https://x.test/v.mp4"}));
+        assert_eq!(r[8].ligne(), ("/voice/v1/watch/queue", "PUT"));
+        assert_eq!(r[8].json(), json!({"ids": ["b", "a"]}));
+        assert_eq!(r[9].ligne(), ("/voice/v1/watch/queue/a%20b", "DELETE"));
+        assert_eq!(r[10].ligne(), ("/titles/t%201/intro-skipped", "POST"));
     }
 }

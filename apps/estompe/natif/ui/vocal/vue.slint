@@ -5,6 +5,9 @@ import { Tuile } from "tuile.slint";
 import { CommandesVocal, AvisVocal } from "commandes.slint";
 import { DonneesVideo } from "../video/flux.slint";
 import { BandeauPartage } from "partage.slint";
+import { DonneesSeance } from "../regarder-ensemble/donnees.slint";
+import { SeanceVue } from "../regarder-ensemble/seance.slint";
+import { SansAccesVue } from "../regarder-ensemble/sans-acces.slint";
 
 component Rejoindre inherits VerticalLayout {
     alignment: center;
@@ -151,6 +154,7 @@ component Scene inherits Rectangle {
     property <length> debut-bande: (self.width - (bande * largeur-bande + (bande - 1) * ecart)) / 2;
     property <length> largeur-vedette: plein ? self.width : self.width - 48px;
     property <length> hauteur-vedette: plein ? self.height : self.height - 20px - marge-bas - (DonneesVocal.vue.bande > 0 ? hauteur-bande + ecart : 0);
+    property <bool> seance: DonneesSeance.vue.active || DonneesSeance.vue.sans-acces;
     init => {
         DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
         DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
@@ -168,7 +172,7 @@ component Scene inherits Rectangle {
         DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
     }
     for p in DonneesVocal.tuiles: Tuile {
-        visible: !root.plein || p.cle == DonneesVocal.vue.plein-ecran;
+        visible: !root.seance && (!root.plein || p.cle == DonneesVocal.vue.plein-ecran);
         x: root.plein ? 0 : root.vedette ? (p.vedette ? 24px : root.debut-bande + p.rang * (root.largeur-bande + root.ecart)) : (root.width - root.largeur-grille) / 2 + Math.mod(p.rang, root.colonnes) * (root.largeur-tuile + root.ecart);
         y: root.plein ? 0 : root.vedette ? (p.vedette ? 20px : 20px + root.hauteur-vedette + root.ecart) : 20px + Math.floor(p.rang / root.colonnes) * (root.hauteur-tuile + root.ecart);
         width: root.plein ? root.width : root.vedette ? (p.vedette ? root.largeur-vedette : root.largeur-bande) : root.largeur-tuile;
@@ -202,11 +206,31 @@ component Scene inherits Rectangle {
             }
         }
     }
-    if !root.plein && (DonneesVocal.vue.seul || DonneesVocal.vue.cinema): Text {
+    if root.seance && DonneesSeance.vue.active && !root.plein: SeanceVue {
+        width: 100%;
+        height: 100%;
+        marge-bas: root.marge-bas;
+    }
+    if root.seance && DonneesSeance.vue.sans-acces && !root.plein: SansAccesVue {
+        width: 100%;
+        height: parent.height - root.marge-bas;
+    }
+    if !root.seance && !root.plein && !DonneesVocal.vue.cinema: Bouton {
+        x: parent.width - self.width - 24px;
+        y: barre.y + (barre.height - self.height) / 2;
+        texte: "Regarder ensemble";
+        icone: "tele";
+        description: "Regarder ensemble (vidéo)";
+        variante: VarianteBouton.secondaire;
+        clique => {
+            DonneesSeance.ouvrir-choix();
+        }
+    }
+    if !root.seance && !root.plein && (DonneesVocal.vue.seul || DonneesVocal.vue.cinema): Text {
         x: 24px;
         y: parent.height - root.marge-bas - 4px;
         width: parent.width - 48px;
-        text: DonneesVocal.vue.seul ? "Tu es seul·e ici. Invite quelqu'un : tout le monde apparaîtra sur cette scène." : "La séance de film n'est pas encore dans l'app native.";
+        text: DonneesVocal.vue.cinema ? "Aucune séance en cours : les films se lancent depuis la bibliothèque d'Entracte, sur le site ou l'app web." : "Tu es seul·e ici. Invite quelqu'un : tout le monde apparaîtra sur cette scène.";
         color: Theme.gris;
         font-size: Typo.petit;
         horizontal-alignment: center;

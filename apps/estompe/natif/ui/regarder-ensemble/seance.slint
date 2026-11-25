@@ -1,0 +1,577 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Icone, Avatar, Chargement, Case, Etiquette, Champ } from "../composants.slint";
+import { BoutonLecteur, BarreLecteur } from "../composants/lecteur.slint";
+import { DonneesLecteur } from "../video/lecteur.slint";
+import { DonneesSeance, GenreMessageSeance, ParticipantSeance, ElementFileSeance } from "donnees.slint";
+
+component Pilule inherits Rectangle {
+    in property <string> texte;
+    in property <bool> alerte: false;
+    height: 28px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: root.alerte ? Theme.attention-fond : Theme.ok-fond;
+    accessible-role: text;
+    accessible-label: root.texte;
+    contenu := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 6px;
+        Icone {
+            y: (parent.height - self.height) / 2;
+            nom: root.alerte ? "alerte" : "ok";
+            taille: 14px;
+            couleur: root.alerte ? Theme.attention : Theme.ok;
+        }
+        Text {
+            text: root.texte;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.moyen;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Encart inherits Rectangle {
+    in property <string> texte;
+    in property <bool> erreur: false;
+    in property <bool> attente: false;
+    height: disposition.preferred-height;
+    border-radius: Rayon.m;
+    background: root.erreur ? Theme.danger-fond : Theme.surface;
+    accessible-role: text;
+    accessible-label: root.texte;
+    disposition := VerticalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            if root.attente: Chargement {
+                taille: 16px;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.texte;
+                color: root.erreur ? Theme.danger : Theme.encre;
+                font-size: Typo.compact;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Espace.e2;
+            @children
+        }
+    }
+}
+
+component LignePersonne inherits HorizontalLayout {
+    in property <ParticipantSeance> p;
+    spacing: Espace.e2;
+    height: 32px;
+    opacity: root.p.charge ? 0.7 : 1;
+    Avatar {
+        y: (parent.height - self.height) / 2;
+        nom: root.p.nom;
+        initiales: root.p.initiales;
+        teinte: root.p.teinte;
+        taille: 26px;
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: root.p.nom;
+        color: Theme.encre;
+        font-size: Typo.compact;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: etat.preferred-width + 12px;
+        height: 18px;
+        border-radius: Rayon.pilule;
+        background: root.p.ok ? Theme.ok-fond : root.p.charge ? Theme.attention-fond : Theme.papier-3;
+        etat := Text {
+            text: root.p.pret;
+            color: root.p.ok ? Theme.ok : root.p.charge ? Theme.attention : Theme.gris;
+            font-family: Typo.mono;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component LigneFile inherits HorizontalLayout {
+    in property <ElementFileSeance> e;
+    in property <int> rang;
+    spacing: Espace.e1;
+    height: 32px;
+    Text {
+        horizontal-stretch: 1;
+        text: root.e.libelle;
+        color: Theme.encre-2;
+        font-size: Typo.petit;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.e.monter || root.e.descendre: Bouton {
+        icone: "envoi";
+        description: "Monter";
+        variante: VarianteBouton.fantome;
+        actif: root.e.monter;
+        clique => {
+            DonneesSeance.monter(root.rang);
+        }
+    }
+    if root.e.monter || root.e.descendre: Bouton {
+        icone: "bas";
+        description: "Descendre";
+        variante: VarianteBouton.fantome;
+        actif: root.e.descendre;
+        clique => {
+            DonneesSeance.descendre(root.rang);
+        }
+    }
+    if root.e.retirer: Bouton {
+        icone: "x";
+        description: "Retirer de la file";
+        variante: VarianteBouton.fantome;
+        clique => {
+            DonneesSeance.retirer(root.e.id);
+        }
+    }
+}
+
+component Carte inherits Rectangle {
+    in property <string> titre;
+    in property <string> compte;
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    height: disposition.preferred-height;
+    disposition := VerticalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Text {
+                text: root.titre;
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: Typo.corps;
+                font-weight: Typo.demi-gras;
+                accessible-role: text;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.compte;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+            }
+        }
+        @children
+    }
+}
+
+component Lecteur inherits Rectangle {
+    property <bool> utilisable: Calques.ouverts == 0;
+    border-radius: Rayon.l;
+    background: #0e0c0b;
+    clip: true;
+    accessible-role: groupbox;
+    accessible-label: DonneesSeance.vue.titre;
+    init => {
+        DonneesLecteur.zone-image(self.width, self.height);
+    }
+    changed width => {
+        DonneesLecteur.zone-image(self.width, self.height);
+    }
+    changed height => {
+        DonneesLecteur.zone-image(self.width, self.height);
+    }
+    if DonneesLecteur.etat.video && DonneesLecteur.etat.image-prete: Image {
+        width: 100%;
+        height: 100%;
+        source: DonneesLecteur.etat.image;
+        image-fit: ImageFit.contain;
+        accessible-role: image;
+        accessible-label: DonneesSeance.vue.titre;
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        clicked => {
+            clavier.focus();
+        }
+    }
+    clavier := FocusScope {
+        enabled: root.utilisable;
+        key-pressed(e) => {
+            if (DonneesSeance.touche(e.text, e.modifiers.control, e.modifiers.meta, e.modifiers.alt)) {
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if DonneesSeance.vue.navigateur != "": Encart {
+        width: Math.min(parent.width - 2 * Espace.e4, 460px);
+        texte: "Cette vidéo se regarde dans le navigateur : elle n'est pas synchronisée ici.";
+        Bouton {
+            texte: "Ouvrir dans le navigateur";
+            icone: "external";
+            variante: VarianteBouton.primaire;
+            clique => {
+                DonneesSeance.ouvrir-navigateur();
+            }
+        }
+    }
+    if DonneesSeance.vue.genre-message == GenreMessageSeance.erreur: Encart {
+        width: Math.min(parent.width - 2 * Espace.e4, 460px);
+        texte: DonneesSeance.vue.message;
+        erreur: true;
+        Bouton {
+            texte: "Recharger";
+            clique => {
+                DonneesSeance.recharger();
+            }
+        }
+        if DonneesSeance.vue.passer-suivante: Bouton {
+            texte: "Passer à la suivante";
+            clique => {
+                DonneesSeance.suivant();
+            }
+        }
+    }
+    if DonneesSeance.vue.genre-message == GenreMessageSeance.lent: Encart {
+        width: Math.min(parent.width - 2 * Espace.e4, 460px);
+        texte: "La vidéo ne se charge pas.";
+        Bouton {
+            texte: "Recharger";
+            icone: "lecture";
+            clique => {
+                DonneesSeance.recharger();
+            }
+        }
+    }
+    if DonneesSeance.vue.genre-message == GenreMessageSeance.bloque: Bouton {
+        texte: "Lancer la lecture";
+        icone: "lecture";
+        variante: VarianteBouton.primaire;
+        clique => {
+            DonneesSeance.reprendre();
+        }
+    }
+    if DonneesSeance.vue.genre-message == GenreMessageSeance.attente: Encart {
+        width: Math.min(parent.width - 2 * Espace.e4, 460px);
+        y: Espace.e4;
+        texte: DonneesSeance.vue.message;
+        attente: true;
+    }
+    if DonneesSeance.vue.grand-bouton: Rectangle {
+        width: 72px;
+        height: 72px;
+        border-radius: 36px;
+        background: grand.has-hover ? #0e0c0bcc : #0e0c0b99;
+        accessible-role: button;
+        accessible-label: "Lecture";
+        accessible-action-default => {
+            DonneesSeance.basculer();
+        }
+        Icone {
+            nom: "lecture";
+            taille: 34px;
+            couleur: #f1ece6;
+        }
+        grand := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                clavier.focus();
+                DonneesSeance.basculer();
+            }
+        }
+    }
+    if DonneesSeance.vue.chargement: Chargement {
+        taille: 36px;
+        couleur: #f1ece6;
+        description: "Chargement";
+    }
+    if DonneesSeance.vue.passer-intro: Bouton {
+        x: parent.width - self.width - Espace.e4;
+        y: parent.height - self.height - (DonneesSeance.vue.barre ? 64px : Espace.e4);
+        texte: "Passer l’intro";
+        icone: "suivant";
+        description: "Passer l’intro (S)";
+        variante: VarianteBouton.primaire;
+        clique => {
+            DonneesSeance.passer-intro();
+        }
+    }
+    if DonneesSeance.vue.barre: Rectangle {
+        y: parent.height - self.height;
+        height: 52px;
+        background: @linear-gradient(0deg, #0e0c0bd9 0%, #0e0c0b00 100%);
+        TouchArea {
+            enabled: root.utilisable;
+        }
+        HorizontalLayout {
+            padding-left: Espace.e2;
+            padding-right: Espace.e2;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 4px;
+            BoutonLecteur {
+                icone: DonneesSeance.vue.lecture ? "pause" : "lecture";
+                description: DonneesSeance.vue.lecture ? "Pause" : "Lecture";
+                utilisable: root.utilisable && DonneesSeance.vue.peut-piloter;
+                clique => {
+                    DonneesSeance.basculer();
+                }
+            }
+            Text {
+                text: DonneesSeance.vue.temps;
+                color: #f1ece6;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+                accessible-role: text;
+            }
+            BarreLecteur {
+                horizontal-stretch: 4;
+                valeur: DonneesSeance.vue.position;
+                maximum: DonneesSeance.vue.duree;
+                avance: DonneesSeance.vue.avance;
+                pas: 5;
+                utilisable: root.utilisable && DonneesSeance.vue.peut-piloter && DonneesSeance.vue.duree > 0;
+                description: "Position dans la vidéo";
+                texte-valeur: DonneesSeance.vue.temps;
+                regle(v) => {
+                    DonneesSeance.aller(v);
+                }
+            }
+            BoutonLecteur {
+                icone: DonneesLecteur.etat.muet || DonneesLecteur.etat.volume == 0 ? "casqueoff" : "volmax";
+                description: DonneesLecteur.etat.muet ? "Rétablir le son" : "Couper le son";
+                eteint: DonneesLecteur.etat.muet || DonneesLecteur.etat.volume == 0;
+                utilisable: root.utilisable;
+                clique => {
+                    DonneesLecteur.muet();
+                }
+            }
+            BarreLecteur {
+                horizontal-stretch: 1;
+                max-width: 96px;
+                valeur: DonneesLecteur.etat.muet ? 0 : DonneesLecteur.etat.volume;
+                maximum: 100;
+                pas: 5;
+                utilisable: root.utilisable;
+                description: "Volume";
+                texte-valeur: "\{DonneesLecteur.etat.muet ? 0 : DonneesLecteur.etat.volume} %";
+                suit(v) => {
+                    DonneesLecteur.volume(Math.round(v));
+                }
+                regle(v) => {
+                    DonneesLecteur.volume(Math.round(v));
+                }
+            }
+            if DonneesSeance.vue.pistes-audio: BoutonLecteur {
+                icone: "vol";
+                description: "Piste audio";
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    DonneesSeance.menu-audio(x, y);
+                }
+            }
+            if DonneesSeance.vue.pistes-sous-titres: BoutonLecteur {
+                icone: "bulle";
+                description: "Sous-titres";
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    DonneesSeance.menu-sous-titres(x, y);
+                }
+            }
+            if DonneesSeance.vue.qualites: BoutonLecteur {
+                icone: "sliders";
+                description: "Qualité";
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    DonneesSeance.menu-qualite(x, y);
+                }
+            }
+            if DonneesSeance.vue.prechargement: BoutonLecteur {
+                icone: "telecharge";
+                description: "Préchargement sur cet appareil";
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    DonneesSeance.menu-prechargement(x, y);
+                }
+            }
+            BoutonLecteur {
+                texte: DonneesSeance.vue.vitesse;
+                description: "Vitesse";
+                utilisable: root.utilisable && DonneesSeance.vue.peut-piloter;
+                clique(x, y) => {
+                    DonneesSeance.menu-vitesse(x, y);
+                }
+            }
+        }
+    }
+}
+
+export component SeanceVue inherits Rectangle {
+    in property <length> marge-bas: 0;
+    property <bool> utilisable: Calques.ouverts == 0;
+    accessible-role: groupbox;
+    accessible-label: DonneesSeance.vue.cinema ? "Cinéma" : "Regarder ensemble";
+    HorizontalLayout {
+        padding: Espace.e4;
+        padding-bottom: root.marge-bas;
+        spacing: Espace.e4;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Espace.e3;
+            HorizontalLayout {
+                spacing: Espace.e2;
+                Pilule {
+                    y: (parent.height - self.height) / 2;
+                    texte: DonneesSeance.vue.statut;
+                    alerte: DonneesSeance.vue.suspendu;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+                if DonneesSeance.vue.bascule-hote: Case {
+                    y: (parent.height - self.height) / 2;
+                    texte: "Seul l'hôte pilote";
+                    cochee: DonneesSeance.vue.hote-seul;
+                    bascule(v) => {
+                        DonneesSeance.hote-seul(v);
+                    }
+                }
+                if !DonneesSeance.vue.bascule-hote && DonneesSeance.vue.hote-seul: Etiquette {
+                    y: (parent.height - self.height) / 2;
+                    texte: "Seul l'hôte pilote";
+                }
+                if DonneesSeance.vue.suivant != "": Bouton {
+                    texte: DonneesSeance.vue.suivant;
+                    icone: "suivant";
+                    clique => {
+                        DonneesSeance.suivant();
+                    }
+                }
+                if DonneesSeance.vue.navigateur == "": Bouton {
+                    texte: "Recharger";
+                    description: "Recharger la vidéo chez moi seulement";
+                    clique => {
+                        DonneesSeance.recharger();
+                    }
+                }
+                if DonneesSeance.vue.arreter: Bouton {
+                    texte: "Arrêter";
+                    clique => {
+                        DonneesSeance.arreter();
+                    }
+                }
+            }
+            if DonneesSeance.vue.avis != "": Text {
+                text: DonneesSeance.vue.avis;
+                color: Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+                accessible-role: text;
+            }
+            Lecteur {
+                vertical-stretch: 1;
+            }
+            HorizontalLayout {
+                spacing: Espace.e3;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: DonneesSeance.vue.titre;
+                        color: Theme.encre;
+                        font-family: Typo.titre;
+                        font-size: Typo.titre-section;
+                        font-weight: Typo.demi-gras;
+                        overflow: elide;
+                        accessible-role: text;
+                    }
+                    Text {
+                        text: DonneesSeance.vue.sous-titre;
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            width: 300px;
+            spacing: Espace.e3;
+            alignment: start;
+            Carte {
+                titre: "Sur scène";
+                compte: DonneesSeance.vue.compte;
+                for p in DonneesSeance.participants: LignePersonne {
+                    p: p;
+                }
+            }
+            Carte {
+                titre: "File d'attente";
+                compte: DonneesSeance.vue.compte-file;
+                if !DonneesSeance.vue.cinema: HorizontalLayout {
+                    spacing: Espace.e1;
+                    lien := Champ {
+                        indice: "Lien ou fichier à ajouter";
+                        valide(v) => {
+                            DonneesSeance.ajouter(v);
+                            self.valeur = "";
+                        }
+                    }
+                    Bouton {
+                        icone: "plus";
+                        description: "Ajouter";
+                        actif: lien.valeur != "";
+                        clique => {
+                            DonneesSeance.ajouter(lien.valeur);
+                            lien.valeur = "";
+                        }
+                    }
+                }
+                if !DonneesSeance.vue.cinema: Text {
+                    text: "YouTube · Twitch · Vimeo · Dailymotion · fichier";
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 10.5px;
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    height: 28px;
+                    Icone {
+                        y: (parent.height - self.height) / 2;
+                        nom: "lecture";
+                        taille: 14px;
+                        couleur: Theme.rose-fonce;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "En lecture · " + DonneesSeance.vue.en-lecture;
+                        color: Theme.encre;
+                        font-size: Typo.petit;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                for e[i] in DonneesSeance.file: LigneFile {
+                    e: e;
+                    rang: i;
+                }
+            }
+        }
+    }
+}

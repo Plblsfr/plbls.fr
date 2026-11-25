@@ -1100,17 +1100,25 @@ impl Pont {
     }
 
     pub fn definir_reseau(&self, f: &Principale, reseau: EtatReseau) {
-        let etat = {
+        let (etat, retabli) = {
             let mut interne = self.verrou();
+            let retabli = interne.deja_connecte
+                && interne.reseau != EtatReseau::Connecte
+                && reseau == EtatReseau::Connecte;
             interne.reseau = reseau;
             interne.deja_connecte |= reseau == EtatReseau::Connecte;
-            bandeau(interne.reseau, interne.deja_connecte)
+            (bandeau(interne.reseau, interne.deja_connecte), retabli)
         };
         f.global::<DonneesCoquille>().set_bandeau(etat);
+        if retabli {
+            self.vocal.seance().reconnecte(f);
+        }
     }
 
     pub fn definir_sections(&self, f: &Principale, sections: Vec<Section>) {
+        let films = sections.contains(&Section::Entracte);
         self.verrou().sections = sections;
+        self.vocal.seance().definir_acces_films(f, films);
         self.projeter(f, &Cibles::default(), true);
     }
 

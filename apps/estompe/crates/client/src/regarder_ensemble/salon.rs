@@ -1,5 +1,6 @@
 use crate::store::{id_de, Etat, GenreSalon};
 
+use super::film::{PistesFilm, PrefTampon, Qualite};
 use super::fournisseurs::libelle_fournisseur;
 use super::pilote::VuePilote;
 use super::seance::{derniere_action, salon_auto, texte_attente, GenreSeance, SeanceEnCours};
@@ -22,6 +23,92 @@ pub fn horloge_seance(t: f64) -> String {
 
 pub fn libelle_vitesse_seance(v: f64) -> String {
     format!("×{}", v).replace('.', ",")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Choix {
+    pub id: String,
+    pub libelle: String,
+    pub coche: bool,
+}
+
+fn choix(id: impl Into<String>, libelle: impl Into<String>, coche: bool) -> Choix {
+    Choix {
+        id: id.into(),
+        libelle: libelle.into(),
+        coche,
+    }
+}
+
+pub const SANS_SOUS_TITRES: &str = "aucune";
+
+pub fn choix_audio(p: &PistesFilm) -> Vec<Choix> {
+    p.audio
+        .iter()
+        .map(|a| choix(a.n.to_string(), a.nom(), a.n == p.audio_n))
+        .collect()
+}
+
+pub fn choix_sous_titres(p: &PistesFilm) -> Vec<Choix> {
+    let mut v = vec![choix(
+        SANS_SOUS_TITRES,
+        "Sans sous-titres",
+        p.sous_titres_n.is_none(),
+    )];
+    v.extend(
+        p.sous_titres
+            .iter()
+            .map(|t| choix(t.n.to_string(), t.nom(), Some(t.n) == p.sous_titres_n)),
+    );
+    v
+}
+
+pub fn choix_qualites(p: &PistesFilm) -> Vec<Choix> {
+    p.qualites
+        .iter()
+        .map(|q| choix(q.libelle(), q.libelle(), *q == p.qualite))
+        .collect()
+}
+
+pub fn qualite_choisie(p: &PistesFilm, id: &str) -> Option<Qualite> {
+    p.qualites.iter().copied().find(|q| q.libelle() == id)
+}
+
+pub fn choix_prechargement(actuel: PrefTampon) -> Vec<Choix> {
+    PrefTampon::TOUS
+        .iter()
+        .map(|t| {
+            choix(
+                t.cle(),
+                format!("Préchargement : {}", t.libelle()),
+                *t == actuel,
+            )
+        })
+        .collect()
+}
+
+pub fn prechargement_choisi(id: &str) -> Option<PrefTampon> {
+    PrefTampon::TOUS.into_iter().find(|t| t.cle() == id)
+}
+
+pub fn choix_vitesses(actuelle: f64) -> Vec<Choix> {
+    VITESSES_SEANCE
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            choix(
+                i.to_string(),
+                libelle_vitesse_seance(*v),
+                (v - actuelle).abs() < 1e-6,
+            )
+        })
+        .collect()
+}
+
+pub fn vitesse_choisie(id: &str) -> Option<f64> {
+    id.parse::<usize>()
+        .ok()
+        .and_then(|i| VITESSES_SEANCE.get(i).copied())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -571,6 +658,45 @@ mod tests {
         );
         assert_eq!(v.statut, SUSPENDUE);
         assert!(v.passer_suivante);
+    }
+
+    #[test]
+    fn menus_des_pistes_de_la_qualite_du_prechargement_et_de_la_vitesse() {
+        use crate::regarder_ensemble::film::PisteFilm;
+        let piste = |n: i64, label: &str| PisteFilm {
+            n,
+            label: Some(label.into()),
+            ..PisteFilm::default()
+        };
+        let p = PistesFilm {
+            audio: vec![piste(0, "Français"), piste(1, "Anglais")],
+            sous_titres: vec![piste(0, "Français (forcés)")],
+            audio_n: 1,
+            sous_titres_n: None,
+            qualites: vec![Qualite::Originale, Qualite::P720],
+            qualite: Qualite::P720,
+            intro: None,
+        };
+        let a = choix_audio(&p);
+        assert_eq!(
+            (a[1].id.as_str(), a[1].libelle.as_str(), a[1].coche),
+            ("1", "Anglais", true)
+        );
+        let st = choix_sous_titres(&p);
+        assert_eq!((st[0].id.as_str(), st[0].coche), (SANS_SOUS_TITRES, true));
+        assert_eq!(st[1].libelle, "Français (forcés)");
+        let q = choix_qualites(&p);
+        assert!(q[1].coche && !q[0].coche);
+        assert_eq!(qualite_choisie(&p, "720p"), Some(Qualite::P720));
+        assert_eq!(qualite_choisie(&p, "1080p"), None);
+        let t = choix_prechargement(PrefTampon::Long);
+        assert_eq!(t[1].libelle, "Préchargement : Long (15 min)");
+        assert!(t[1].coche);
+        assert_eq!(prechargement_choisi("all"), Some(PrefTampon::Tout));
+        let v = choix_vitesses(1.25);
+        assert_eq!(v.iter().filter(|c| c.coche).count(), 1);
+        assert_eq!(vitesse_choisie("3"), Some(1.25));
+        assert_eq!(vitesse_choisie("9"), None);
     }
 
     #[test]

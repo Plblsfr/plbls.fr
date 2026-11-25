@@ -317,6 +317,11 @@ const ECRANS: &[Ecran] = ecrans![
     "parametres-recherche-clair", Clair, parametres_recherche;
     "lecteur-clair", Clair, lecteur_pause;
     "lecteur-erreur-sombre", Sombre, lecteur_erreur;
+    "seance-choix-clair", Clair, seance_choix;
+    "seance-clair", Clair, seance_pause;
+    "seance-sombre", Sombre, seance_pause;
+    "seance-attente-clair", Clair, seance_attente;
+    "seance-sans-acces-clair", Clair, seance_sans_acces;
 ];
 
 fn bob() -> Compte {
@@ -905,6 +910,191 @@ fn lecteur_pause(f: &Principale) {
 
 fn lecteur_erreur(f: &Principale) {
     lecteur_ouvert(f, &lecteur_etat(true), false);
+}
+
+const VIDEO_DE_SEANCE: &str = "https://videos.plbls.fr/vacances-2026.mp4";
+
+fn seance_dans(
+    etat: &mut estompe_client::store::Etat,
+    id: &str,
+    cinema: bool,
+    preparer: impl FnOnce(&mut estompe_client::temps_reel::evenements::EtatSeance),
+) {
+    use estompe_client::regarder_ensemble::GenreSeance;
+    use estompe_client::temps_reel::evenements::{ElementFile, EtatSeance, Seance};
+    let mut e = EtatSeance {
+        rev: 4,
+        provider: "file".into(),
+        video: VIDEO_DE_SEANCE.into(),
+        playing: false,
+        pos: 754.0,
+        rate: 1.0,
+        at: "2026-11-19T09:30:00Z".into(),
+        host: "carol".into(),
+        by_id: "carol".into(),
+        by: "carol".into(),
+        act: "pause".into(),
+        ready: [("u1", true), ("carol", true), ("dave", false)]
+            .into_iter()
+            .map(|(u, p)| (u.to_string(), p))
+            .collect(),
+        queue: vec![
+            ElementFile {
+                id: "q1".into(),
+                provider: "youtube".into(),
+                video: "dQw4w9WgXcQ".into(),
+                by: "dave".into(),
+                by_id: "dave".into(),
+                meta: None,
+            },
+            ElementFile {
+                id: "q2".into(),
+                provider: "file".into(),
+                video: "https://videos.plbls.fr/betisier.mp4".into(),
+                by: "bob".into(),
+                by_id: "u1".into(),
+                meta: None,
+            },
+        ],
+        ..EtatSeance::default()
+    };
+    preparer(&mut e);
+    let genre = if cinema {
+        GenreSeance::Cinema
+    } else {
+        GenreSeance::Regarder
+    };
+    etat.seances.appliquer(
+        genre,
+        &Seance {
+            server_id: "s1".into(),
+            channel_id: id.into(),
+            state: Some(e),
+            now: None,
+        },
+        true,
+        MAINTENANT_MS,
+    );
+}
+
+fn seance_avec(
+    f: &Principale,
+    id: &str,
+    cinema: bool,
+    preparer: impl FnOnce(&mut estompe_client::temps_reel::evenements::EtatSeance),
+) -> (Pont, Arc<estompe_natif::video::lecteur::GestionLecteur>) {
+    use estompe_client::lecteur::{Lecteur, MediaFactice};
+    let autres: Vec<&str> = PRENOMS.iter().take(3).copied().collect();
+    let mut etat = commun::coquille::etat();
+    etat.vocal.insert(
+        id.into(),
+        autres
+            .iter()
+            .map(|u| ParticipantVocal {
+                utilisateur: u.to_string(),
+                pseudo: u.to_string(),
+                depuis: Some(DEBUT_DU_VOCAL.into()),
+                ..ParticipantVocal::default()
+            })
+            .collect(),
+    );
+    seance_dans(&mut etat, id, cinema, preparer);
+    let pont = coquille_avec(f, etat, salon("s1", Some(id)), profils_du_vocal());
+    let (lecteur, moteur) = Lecteur::factice();
+    moteur.ajouter_media(VIDEO_DE_SEANCE, MediaFactice::video(5400.0));
+    std::mem::forget(moteur);
+    let gestion = Arc::new(estompe_natif::video::lecteur::GestionLecteur::nouvelle(
+        f, lecteur,
+    ));
+    pont.vocal()
+        .seance()
+        .definir_outils(estompe_natif::regarder_ensemble::OutilsSeanceApp {
+            lecteur: Some(gestion.clone()),
+            entracte: None,
+            racine: None,
+            navigateur: Arc::new(estompe_plateforme::NavigateurSysteme),
+            journal: None,
+        });
+    pont.vocal()
+        .definir_etat(f, etat_vocal(id, &autres, |_| {}));
+    stabiliser(f);
+    (pont, gestion)
+}
+
+fn image_de_seance(f: &Principale, gestion: &estompe_natif::video::lecteur::GestionLecteur) {
+    let image =
+        estompe_natif::video::convertir(&Mire::nouvelle(1280, 720).image(30), (0, 0), false)
+            .map(slint::Image::from_rgba8);
+    f.global::<estompe_natif::DonneesLecteur>()
+        .set_etat(estompe_natif::video::lecteur::vue(
+            &gestion.lecteur().etat(),
+            image.clone().unwrap_or_default(),
+            image.is_some(),
+        ));
+    stabiliser(f);
+}
+
+fn seance_pause(f: &Principale) {
+    let (_pont, gestion) = seance_avec(f, "v1", false, |_| {});
+    image_de_seance(f, &gestion);
+}
+
+fn seance_attente(f: &Principale) {
+    let (_pont, gestion) = seance_avec(f, "v1", false, |e| {
+        e.act = "wait".into();
+        e.by = "dave".into();
+        e.waiting = vec!["dave".into()];
+    });
+    image_de_seance(f, &gestion);
+}
+
+fn seance_sans_acces(f: &Principale) {
+    let (pont, _gestion) = seance_avec(f, "k1", true, |e| {
+        e.provider = "film".into();
+        e.video = "t1".into();
+        e.queue.clear();
+        e.meta = Some(estompe_client::temps_reel::evenements::MetaMorceau {
+            title: "Le Voyage de Chihiro".into(),
+            ..Default::default()
+        });
+    });
+    pont.vocal().seance().definir_acces_films(f, false);
+    stabiliser(f);
+}
+
+fn seance_choix(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        2,
+        |e| {
+            if let Some(salons) = e.details.get_mut("s1").and_then(|d| d.channels.as_mut()) {
+                salons.push(
+                    serde_json::from_value(serde_json::json!({"id": "v2", "name": "Soirée jeux", "kind": "voice", "position": 3}))
+                        .unwrap(),
+                );
+            }
+            e.vocal.insert(
+                "v2".into(),
+                ["dave", "Élise", "frank", "gina", "hugo"]
+                    .iter()
+                    .map(|u| ParticipantVocal {
+                        utilisateur: u.to_string(),
+                        pseudo: u.to_string(),
+                        ..ParticipantVocal::default()
+                    })
+                    .collect(),
+            );
+            seance_dans(e, "v2", false, |s| {
+                s.meta = Some(estompe_client::temps_reel::evenements::MetaMorceau {
+                    title: "Bêtisier 2025".into(),
+                    ..Default::default()
+                });
+            });
+        },
+        |_| {},
+    );
+    pont.vocal().seance().ouvrir_choix(f);
+    stabiliser(f);
 }
 
 fn cameras_du_poste() -> Vec<estompe_plateforme::InfoCamera> {

@@ -31,6 +31,7 @@ use crate::coquille::modeles::synchroniser;
 use crate::coquille::pont::vec_de;
 use crate::messagerie::pont::SystemeFichiers;
 use crate::overlay::voix as overlay_voix;
+use crate::regarder_ensemble::PontSeance;
 use crate::session::Memoire;
 use crate::video::{self, FluxVoulu, GestionVideo};
 use crate::{
@@ -197,6 +198,7 @@ pub struct PontVocal {
     horloge: HorlogeMs,
     profils: Arc<Profils>,
     videos_hors_session: Arc<Videos>,
+    seance: PontSeance,
 }
 
 pub fn installer_modeles(f: &Principale) {
@@ -493,6 +495,12 @@ impl PontVocal {
                 zone_vedette: (0.0, 0.0),
                 menu_partage: false,
             })),
+            seance: PontSeance::nouveau(
+                store.clone(),
+                fenetre.clone(),
+                runtime.clone(),
+                memoire.clone(),
+            ),
             store,
             fenetre,
             runtime,
@@ -501,6 +509,10 @@ impl PontVocal {
             profils,
             videos_hors_session: Videos::nouvelles(),
         }
+    }
+
+    pub fn seance(&self) -> &PontSeance {
+        &self.seance
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
@@ -599,6 +611,7 @@ impl PontVocal {
                 outils.session.quitter();
             }
         }
+        self.seance.arreter();
     }
 
     pub fn outils(&self) -> Option<OutilsVocaux> {
@@ -1050,6 +1063,8 @@ impl PontVocal {
         for cle in demandes {
             self.telecharger_avatar(cle);
         }
+        self.seance
+            .suivre(f, salon_vue.as_deref(), serveur.as_deref(), ici);
     }
 
     fn projeter_videos(

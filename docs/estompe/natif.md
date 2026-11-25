@@ -1325,8 +1325,9 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
 ## Regarder ensemble
 
 Synchronisation des séances (« Regarder ensemble », Music2gether, salon cinéma) dans `apps/estompe/crates/client/src/regarder_ensemble/`, portage de
-`watch.ts`, `watchsync.ts`, `watch.svelte.ts`, `providers.ts`, `avance.ts` et `depot.ts` ; aucune interface (#374). Le serveur fait foi : l'état reçu
-est appliqué au lecteur sans produire de commande, seules les actions de la personne en produisent.
+`watch.ts`, `watchsync.ts`, `watch.svelte.ts`, `providers.ts`, `avance.ts` et `depot.ts` ; interface du salon dans `apps/estompe/natif/src/regarder_ensemble.rs`
+et `apps/estompe/natif/ui/regarder-ensemble/`. Le serveur fait foi : l'état reçu est appliqué au lecteur sans produire de commande, seules les actions de la
+personne en produisent.
 
 - `seance.rs` : `GenreSeance` (`watch`, `music`, `cinema` ; salon cinéma ou vocal), `position_attendue` (position + temps écoulé depuis `at`, à la vitesse,
   corrigé du décalage d'horloge `decalage_horloge(now)`), `correction` (au-delà d'1 s : saut ; de 0,15 à 1 s : un cran de vitesse de 0,25 le temps de combler
@@ -1359,7 +1360,29 @@ est appliqué au lecteur sans produire de commande, seules les actions de la per
   et attente après un saut, horloge en avance de 1,5 s ; l'autre sur `Lecteur::factice()`, horloge en retard de 0,7 s, latence de 80 ms) restent à moins de 500 ms
   l'un de l'autre après chacune de dix commandes, et une coupure du réseau de 30 s d'un client, pendant laquelle l'autre met en pause, déplace, relance et
   accélère, est rattrapée à la reconnexion sans action de la personne.
-- Écarts : pas de diffusion sur une télé (API Remote Playback du navigateur) ; Vimeo, Twitch, Dailymotion dans le navigateur ; YouTube dans le navigateur jusqu'à #375.
+- Store : `watch.state`, `music.state` et `cinema.state` vont dans `Etat::seances` (`RegistreSeances`, décalage d'horloge pris à l'horloge du store) par
+  `Store::appliquer_seance`, qui publie `Changement::Seance` ; `Store::charger_seances` relit les séances d'un serveur (`GET /servers/{id}/{genre}`, salons
+  absents de la réponse vidés) quand un salon vocal de ce serveur s'ouvre et après une reconnexion. Un salon supprimé perd ses séances.
+- `execution.rs` : `SeanceActive`, boucle tokio d'une séance : exécute les `ActionPilote` (appels de séance, demandes à Entracte, préférences de film retenues,
+  dépôt et préchargement sur le relais, journal, refus et messages renvoyés à l'interface par `SignalSeance`), rappelle `tick` toutes les 500 ms ou à
+  `prochaine_echeance()`, suit l'état du lecteur (`Lecteur::observer`) et rend l'état frais d'une reconnexion au store. `arreter()` détruit le lecteur, ferme le
+  flux et le dépôt (segments du titre supprimés). Au démarrage, les restes d'une séance interrompue de plus de 24 h sont purgés.
+- `salon.rs` : vue de la séance (`vue_seance` : titre, état « Lecture synchronisée » ou dernière action, « Seul l'hôte pilote », « Suivante » ou « Épisode
+  suivant », attente des retardataires, erreur, chargement lent, lecture à lancer, grand bouton de lecture, « Passer l’intro », temps, spectateurs prêts ou en
+  chargement, file d'attente avec monter, descendre, retirer), choix du salon (`salons_possibles`, portage de `WatchPicker` : salons du genre où l'on peut se
+  connecter, celui où l'on est d'abord, séance en cours, participants), menus des pistes, de la qualité, du préchargement et de la vitesse, texte et demande
+  d'accès d'un spectateur sans accès aux films (portage de `FilmNoAccess`). « Passer l’intro » (`PiloteSeance::passer_intro`, touche S) n'existe que pour qui
+  pilote : c'est un déplacement de séance, puis `POST /titles/{id}/intro-skipped` à Entracte.
+- Interface (`PontSeance`, tenu par le pont du vocal) : dans un salon vocal ou cinéma où l'on est connecté, une séance en cours prend la scène à la place des
+  tuiles (`SeanceVue` : lecteur, barre de commandes partagées selon les droits, volume et pistes propres à chacun, préchargement sur cet appareil, liste des
+  spectateurs, file d'attente et ajout d'un lien) ; un salon cinéma sans accès aux films d'Entracte montre `SansAccesVue` (« Demander l'accès » envoie un
+  signalement, si le bloc est actif). Le bouton « Regarder ensemble » de la scène d'un salon vocal ouvre `ChoixSalonSeance` (lien de la vidéo et salons du
+  serveur) ; choisir un autre salon l'ouvre, le rejoint, puis lance la séance une fois connecté (le serveur exige d'être dans le vocal). La lecture passe par
+  `GestionLecteur::reserver` (origine `seance`) : la pièce jointe en cours s'arrête ; si une autre lecture prend le lecteur, la séance s'arrête ici (« Un autre
+  média joue sur cet appareil », « Recharger » la reprend). Le lien d'un film se lance depuis la bibliothèque d'Entracte (site ou app web, lot 10).
+- Écarts : pas de diffusion sur une télé (API Remote Playback du navigateur) ; Vimeo, Twitch, Dailymotion dans le navigateur ; YouTube dans le navigateur jusqu'à
+  #375 (`FabriqueLecteur` rend `None`) ; pas de « Wi-Fi seulement » (réseau inconnu sur le bureau) ; pas de lancement automatique quand un seul salon convient
+  (le lien est demandé d'abord) ; pas de mode plein cadre propre à la séance (celui du vocal s'applique).
 
 ## Intégration au bureau
 

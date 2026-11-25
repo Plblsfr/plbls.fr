@@ -152,6 +152,26 @@ pub enum PrefTampon {
     Tout,
 }
 
+impl PrefTampon {
+    pub const TOUS: [PrefTampon; 3] = [Self::Normal, Self::Long, Self::Tout];
+
+    pub fn libelle(self) -> &'static str {
+        match self {
+            Self::Normal => "Normal (1 à 3 min)",
+            Self::Long => "Long (15 min)",
+            Self::Tout => "Tout le film",
+        }
+    }
+
+    pub fn cle(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Long => "long",
+            Self::Tout => "all",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Reseau {
     #[default]

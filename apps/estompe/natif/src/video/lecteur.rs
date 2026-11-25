@@ -198,6 +198,35 @@ impl GestionLecteur {
         }
     }
 
+    pub fn reserver(&self, origine: Origine) {
+        if self.reservee_par(&origine) {
+            return;
+        }
+        if let Some(f) = self.fenetre.upgrade() {
+            poser_image(&f, None);
+            let g = f.global::<DonneesLecteur>();
+            g.set_ouvert(false);
+            g.set_telechargeable(false);
+        }
+        self.lecture.reserver(origine, GenreMedia::Video);
+        if let Some(f) = self.fenetre.upgrade() {
+            afficher_piece(&f, &self.lecture);
+        }
+    }
+
+    pub fn reservee_par(&self, origine: &Origine) -> bool {
+        self.lecture.actif().is_some_and(|a| &a.origine == origine)
+    }
+
+    pub fn liberer(&self, origine: &Origine) -> bool {
+        let libere = self.lecture.liberer(origine);
+        if let (true, Some(f)) = (libere, self.fenetre.upgrade()) {
+            poser_image(&f, None);
+            afficher_piece(&f, &self.lecture);
+        }
+        libere
+    }
+
     pub fn lire_piece(&self, message: &str, piece: &str, genre: GenreMedia, source: Source) {
         let nouvelle = self.lecture.piece_active().as_deref() != Some(piece);
         if let (true, Some(f)) = (nouvelle, self.fenetre.upgrade()) {
