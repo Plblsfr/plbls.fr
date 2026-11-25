@@ -235,5 +235,9 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   Ni `Text` ni `StyledText` ne sélectionnent du texte en Slint 1.18 : la copie d'un message passe par `texte_brut` et un `TextInput` caché.
   Toute compilation de l'app passe par le verrou de `scripts/estompe/natif-verrou.sh` (`natif-check.sh`, recettes `estompe-natif-…`) : deux builds en même temps saturent la mémoire.
   Une fenêtre n'a qu'un gestionnaire `on_winit_window_event` (focus et dépôt de fichiers passent par `suivre_la_fenetre` de `lib.rs`) ; winit ne signale aucun dépôt de fichier sous Wayland.
+- **Lecteur de l'app native (libmpv)** (`docs/estompe/natif.md`, « Lecteur vidéo et audio ») : mettre `http-header-fields` à `""` laisse une entrée vide, qui termine
+  les en-têtes HTTP avant le jeton ; vider par `change-list http-header-fields clr ""` puis `append`. Avec `keep-open`, `time-pos` peut arriver après `eof-reached` :
+  un test vérifie la fin par `fin`, pas par la position. Une image rendue en pause n'arrive qu'après la taille (`dwidth`, `dheight`) : le rendu est relancé quand elle change.
+  Le rendu logiciel écrit du `rgb0` : l'octet « 0 » n'est pas un alpha, l'image est rendue opaque à la conversion. Toute commande passe en asynchrone : le fil de l'interface n'attend jamais mpv.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.

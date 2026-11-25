@@ -9,7 +9,7 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia (logiciel pour les overlays, `src/overlay/`), branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`), lecteur vidéo et audio (`lecteur/`) et mesures (`mesures.rs`) |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) ; capture d'écran et de fenêtre (`capture/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
@@ -18,10 +18,11 @@ L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `d
 
 ## Construire et lancer
 
-Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev`, libclang (les en-têtes V4L2 de la capture de la caméra passent par bindgen), un pilote OpenGL (Mesa)
+Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev libmpv-dev`, libclang (les en-têtes V4L2 de la capture de la caméra passent par bindgen), un pilote OpenGL (Mesa)
 et clang 21 ou plus récent, désigné par `CXX` (par exemple `CXX=clang++-21`) : libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium,
 que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sys` le refuse). Sous Windows : la toolchain MSVC, LLVM, Python 3 et
-`ninja`, LLVM 22 ou plus récent (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
+`ninja`, LLVM 22 ou plus récent (voir [Vocal](#vocal), « CRT statique sous Windows »), et libmpv : `just estompe-natif-mpv` puis
+`ESTOMPE_MPV_DIR` vers `apps/estompe/natif/target/mpv` (bibliothèque d'import) et ce dossier dans le `PATH` (DLL) ; voir [Lecteur vidéo et audio](#lecteur-vidéo-et-audio). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
 `cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible). ffmpeg, s'il est présent, lit les messages vocaux en AAC.
 
 ```sh
@@ -1249,6 +1250,58 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
   `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`, `vocal-sons-perso` (« Mon fichier » choisi, refus d'un fichier),
   `vocal-glisser` (salons proposés pendant le glisser), `vocal-glisser-refus`.
 
+## Lecteur vidéo et audio
+
+Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision du propriétaire sur #370, à la place des bibliothèques FFmpeg).
+
+- Logique (`apps/estompe/crates/client/src/lecteur/`), testable sans moteur : `Lecteur` (commandes, état observable par `observer()`, un `tokio::sync::watch`),
+  `EtatLecteur` (phase `Vide`, `Chargement`, `Pret`, `Erreur` ; pause, attente du réseau ou d'un déplacement, fin, position et son horodatage, durée, cache,
+  volume, muet, vitesse, pistes, piste audio et sous-titres choisis, taille de l'image, plein écran, visibilité) mis à jour par les `Evenement` du moteur
+  (`EtatLecteur::appliquer`), `position_a(instant)` qui extrapole la position en lecture (vitesse comprise, jamais au-delà de la durée, figée en pause,
+  en attente et à la fin), `Source` (adresse ou fichier, jeton, départ, en pause), `Piste` (`pistes_de_mpv` lit `track-list`, `libelle()` : titre, langue
+  en clair, « forcés »), réglages (`reglages.rs` : vitesses 0,5× à 2×, bornes 0,25× à 4×, volume 0 à 100 par pas de 5, déplacement de 5 s comme `VideoPlayer.svelte`
+  ou 10 s comme `FilmPlayer.svelte` par `definir_pas`, `taille_de_rendu` qui contient l'image dans la zone sans l'agrandir, `peripherique_mpv` qui passe
+  l'identifiant de sortie de cpal à `audio-device` de mpv : `wasapi:{0.0.0.00000000}.{…}` → `wasapi/{…}`, `alsa:x` → `alsa/x`, sinon `auto`).
+- Moteur : trait `MoteurLecture` (charger, arrêter, pause, aller, volume, vitesse, pistes, vidéo active, sortie, zone, images) ; `MoteurFactice`
+  (`Lecteur::factice()`) répond tout de suite comme un vrai moteur, avance par `avancer(secondes)`, peut retenir ses réponses (`suspendre_reponses`), émettre
+  n'importe quel évènement et rend la liste des commandes reçues : c'est lui que la synchronisation de « regarder ensemble » et les écrans testent.
+- `MoteurMpv` (feature `mpv` de la crate client, activée par l'app ; `lecteur/mpv.rs`, crate `libmpv2-sys` sous LGPL-2.1, exception dans `deny.toml`) :
+  options `config=no`, `idle`, `keep-open` (la dernière image reste à la fin), sans raccourcis ni OSC ni scripts ni ytdl, `hwdec=auto-copy-safe` (décodage
+  matériel quand il existe, image recopiée en mémoire pour le rendu logiciel), `sw-fast`. Toutes les commandes sont asynchrones (`mpv_command_async`,
+  `mpv_set_property_async`) : le fil de l'interface n'attend jamais mpv. Un fil lit les évènements (`mpv_wait_event`) et les propriétés observées
+  (`pause`, `time-pos`, `duration`, `paused-for-cache`, `seeking`, `demuxer-cache-time`, `volume`, `mute`, `speed`, `track-list`, `aid`, `sid`, `dwidth`,
+  `dheight`, `eof-reached`) ; un échec de chargement donne `Phase::Erreur` avec le message de mpv et sa dernière ligne de journal (niveau `error`).
+- Sources : fichier local, HTTP(S) avec le jeton en en-tête `Authorization: Bearer` (jamais vers un fichier local ; liste `http-header-fields` vidée par
+  `change-list … clr` puis complétée par `append`, que mpv passe à chaque requête, segments HLS compris), HLS (démultiplexeur de FFmpeg dans libmpv).
+- Image : rendu logiciel de mpv (`MPV_RENDER_API_TYPE_SW`, format `rgb0`, pas aligné sur 64 octets) à la taille de la zone du lecteur (`definir_zone`, en pixels
+  physiques), dans une `ImageLecteur` poussée dans un `RecepteurVideo` ; l'app l'affiche par le chemin des flux vidéo (`natif/src/video/` : `Afficheur`, une image en
+  route à la fois, 60 images par seconde au plus, `SharedPixelBuffer`). La conversion en RGBA opaque se fait sur le fil de l'`Afficheur`, seulement pour les images affichées.
+- Rien ne tourne en pause ou masqué : en pause, mpv ne décode plus et le fil de rendu attend le signal de mpv ; masqué (`definir_visible(false)`), la piste vidéo
+  est désactivée (`vid=no`, le son continue) et rien n'est rendu ; rendue visible, elle revient (`vid=auto`).
+- Son : sortie choisie dans les réglages (`lecteur_du_systeme(sortie)`, puis `Lecteur::choisir_sortie`) passée à `audio-device` ; mpv joue le son par ses propres
+  sorties (WASAPI, PulseAudio, PipeWire, ALSA), pas par `SortieSon`.
+- Interface : composant `LecteurMedia` (`ui/composants/lecteur.slint`, état `EtatLecteurVue`) : image contenue, chargement, message d'erreur (« La lecture n’a pas pu
+  démarrer. »), grand bouton de lecture en pause, barre de commandes (lecture, temps « 1:05 / 3:20 », position avec la part en cache, son coupé, volume, vitesse,
+  piste audio s'il y en a plusieurs, sous-titres s'il y en a, plein écran), visible au survol, en pause ou à la fin ; clic : lecture ou pause, double clic :
+  plein écran. Raccourcis du front (`raccourci`) : espace et `k` lecture ou pause, ← et `j` reculer, → et `l` avancer, ↑ et ↓ volume, `m` son, `f` plein écran,
+  Échap quitte le plein écran ; `s` (passer l'intro) est rendu à l'écran qui le gère ; aucun avec Ctrl, Alt ou Méta. Les menus de vitesse et de pistes passent par
+  le menu contextuel commun. `LecteurPlein` (`ui/video/lecteur.slint`, global `DonneesLecteur`) l'ouvre sur toute la fenêtre ; `natif/src/video/lecteur.rs`
+  (`GestionLecteur::nouvelle`, `ouvrir(titre, source)`, `fermer`) branche le global, suit l'état et pose les images. Aucun écran ne l'ouvre encore : ce sont les
+  issues suivantes (pièces jointes, salon vidéos, cinéma, musique).
+- Livraison : sous Linux, la libmpv du système (`libmpv2`) ; sous Windows, `libmpv-2.dll` dans l'installeur (voir [Livraison](#livraison)). La crate client
+  trouve la bibliothèque d'import par `ESTOMPE_MPV_DIR` (`build.rs`). libmpv refuse de démarrer si `LC_NUMERIC` n'est pas `C` (`Lecteur::mpv` rend alors
+  `ErreurLecteur::Indisponible`).
+- Tests (`lecteur/mpv.rs`, feature `mpv`, ffmpeg avec libx264 exigé par `ESTOMPE_FFMPEG_EXIGE`, sans affichage ni sortie son) : une vidéo H.264/AAC à deux pistes
+  audio et des sous-titres, servie par un faux serveur HTTP qui exige le jeton (requêtes avec `Range`), est lue de bout en bout avec rendu logiciel (images
+  160 × 120 contenues et opaques), choix des pistes, pause, déplacement, vitesse et volume ; un flux HLS est lu jusqu'au bout, chaque segment demandé avec
+  le jeton ; un mauvais jeton donne une erreur ; un fichier local s'ouvre en pause, puis se lit masqué jusqu'à la fin.
+- Mesure (`just estompe-natif-mesure-lecteur` : `lecteur::mpv::tests::mesure_cpu_en_lecture_1080p_et_en_pause`, ignorée par défaut, release, `ESTOMPE_MESURE_LECTEUR_S`, 10 s par défaut) :
+  une vidéo 1080p à 30 images par seconde (H.264 à 6 Mb/s, AAC), sans sortie son, sur le conteneur de développement (4 cœurs Xeon 2,1 GHz, sans GPU, décodage
+  logiciel) : décodage seul 18 % d'un cœur, rendu logiciel en 1280 × 720 34 %, en 640 × 360 27 %, 0 % en pause ; sans l'affichage par Slint, non représentatif
+  d'un poste avec décodage matériel.
+- Écarts : rendu logiciel seulement (pas de texture partagée avec Skia, que Slint 1.18 n'expose pas pour une image de modèle) ; les sous-titres sont dessinés
+  par mpv dans l'image ; pas de masquage de la barre après un délai sans geste (visible au survol) ; pas de diffusion sur une télé.
+
 ## Intégration au bureau
 
 `src/bureau/` (`Bureau`), sur les traits de la crate plateforme ; les rappels qui viennent d'un autre fil (instance, zone) reviennent au fil de l'interface par `slint::invoke_from_event_loop`.
@@ -1826,23 +1879,29 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 - Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)).
 - Installeur NSIS `apps/estompe/natif/installeur/estompe-natif.nsi` → `Estompe-natif-beta-X.Y.Z-setup.exe` :
   - « Estompe natif (bêta) », par utilisateur sans droits d'administrateur (`RequestExecutionLevel user`), dans `%LOCALAPPDATA%\Programs\Estompe natif` :
-    `estompe-natif.exe`, `ffmpeg.exe` (conversion des vidéos et lecture des messages vocaux AAC, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)), `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
+    `estompe-natif.exe`, `ffmpeg.exe` (conversion des vidéos et lecture des messages vocaux AAC, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)), `libmpv-2.dll` (lecteur, voir [Lecteur vidéo et audio](#lecteur-vidéo-et-audio)), `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
   - raccourci du menu Démarrer, et sur le bureau (case cochée par défaut, sautée en mode silencieux) ;
   - registre (`HKCU`) : `Software\EstompeNatif` (dossier), désinstallation `Software\Microsoft\Windows\CurrentVersion\Uninstall\EstompeNatif`,
     identité des toasts `Software\Classes\AppUserModelId\fr.plbls.estompe.natif` (`DisplayName`, `IconUri`, mêmes valeurs que l'app).
     L'app Tauri garde son dossier, sa clé de désinstallation et l'identifiant `fr.plbls.estompe` : les deux cohabitent.
   - mode silencieux de mise à jour, `/S /RELANCER` : attend que `estompe-natif.exe` soit libre (l'app a quitté ; 120 × 500 ms au plus, en
     interactif un message « Fermez Estompe natif » avec Réessayer), installe, puis relance l'app si `/RELANCER` est passé ; en cas d'échec, relance l'exe en place.
-  - désinstallation (refusée tant que l'app tourne) : programme, `ffmpeg.exe`, icône, raccourcis, clés ci-dessus, valeur `EstompeNatif` de `Run` (démarrage
+  - désinstallation (refusée tant que l'app tourne) : programme, `ffmpeg.exe`, `libmpv-2.dll`, icône, raccourcis, clés ci-dessus, valeur `EstompeNatif` de `Run` (démarrage
     avec la session) et cache `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` (mises à jour téléchargées comprises) ; garde les préférences et
     brouillons (`%APPDATA%\fr.plbls.estompe.natif`), les journaux et le coffre de secrets.
   - non signé Authenticode pendant la bêta : SmartScreen avertit à la première installation.
 - ffmpeg : le workflow lance `fetch-ffmpeg.mjs` (`TAURI_ENV_PLATFORM=windows`) avant `makensis`, qui prend
   `apps/estompe/windows/src-tauri/binaries/ffmpeg.exe` (autre chemin : `-DFFMPEG=<chemin>`). Sous Windows, le script lit l'archive avec le `tar`
   du système (bsdtar), `unzip` n'y étant pas garanti.
-- Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 90 Mo : 41 Mo pour
-  ffmpeg compressé, mesurés, plus les 45 Mo prévus pour l'app, pas encore mesurée sur un build release), contenu
-  listé par `7z` (exe, `ffmpeg.exe`, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
+- libmpv : le workflow lance `scripts/estompe/natif-mpv.mjs "$RUNNER_TEMP/mpv"` avant le build : archive `mpv-dev-x86_64` de
+  [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake) prise sur SourceForge (`mpv-player-windows/files/libmpv`, où les anciennes
+  versions restent), épinglée par son nom et sa somme SHA-256 dans le script ; il en tire `libmpv-2.dll`, écrit `mpv.def` (exports `mpv_*` lus dans la DLL)
+  et la bibliothèque d'import MSVC `mpv.lib` (`llvm-lib`, sinon `lib`). `makensis -DMPV=<chemin de libmpv-2.dll>` (par défaut
+  `apps/estompe/natif/target/mpv/libmpv-2.dll`, dossier par défaut du script). La DLL fait 116 Mo installée et ajoute 33 Mo à l'installeur (LZMA solide, mesuré avec makensis 3.09 sous Linux) ; ce build est sous GPL
+  version 2 ou ultérieure (feature `gpl` de mpv), cité dans « À propos ».
+- Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 125 Mo : 41 Mo pour
+  ffmpeg compressé et 33 Mo pour libmpv, mesurés, plus les 45 Mo prévus pour l'app, pas encore mesurée sur un build release), contenu
+  listé par `7z` (exe, `ffmpeg.exe`, `libmpv-2.dll`, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
 - Manifeste de mise à jour `natif.json` (`scripts/estompe/natif-manifeste.mjs`), servi par la release fixe `estompe-natif-beta` :
   `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json`. Format de `latest.json` de Tauri plus la taille :
   `{ version, notes, pub_date, mandatory, force, minVersion, message, platforms: { "windows-x86_64": { url, signature, taille } } }` ;
@@ -1850,7 +1909,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   vers `objects.githubusercontent.com` ou `release-assets.githubusercontent.com`), `signature` est le fichier `.minisig` en base64 (clé
   `apps/estompe/crates/client/src/mise_a_jour/cle.pub`, commentaire de confiance `estompe-natif X.Y.Z`), `taille` en octets.
 - Essai local de l'installeur sous Linux : `apt-get install nsis p7zip-full`, puis dans `apps/estompe/natif/installeur/`
-  `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` (après `TAURI_ENV_PLATFORM=windows node ../../windows/scripts/fetch-ffmpeg.mjs`)
+  `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` (après `TAURI_ENV_PLATFORM=windows node ../../windows/scripts/fetch-ffmpeg.mjs`
+  et `node ../../../../scripts/estompe/natif-mpv.mjs`, qui demande 7-Zip et `llvm-lib`)
   et le contrôle sur le résultat.
 
 ## CI

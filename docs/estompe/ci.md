@@ -69,13 +69,15 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   GNOME déverrouillé (le coffre de secrets est testé pour de vrai) : portabilité, fichiers générés à jour, `cargo fmt --check`,
   `clippy -D warnings`, `cargo deny check`, absence de `tauri`, `wry` et `webview2-com`, tests par cargo-nextest, installé par `scripts/estompe/installer-nextest.sh` (binaire de la release, somme SHA-256 vérifiée) (dont les captures de rendu, et la conversion d'une
   vidéo HEVC en H.264 par le ffmpeg installé par apt, rendue obligatoire par `ESTOMPE_FFMPEG_EXIGE=1`, comme le décodage d'un message vocal AAC ;
-  `libasound2-dev` pour le son par `cpal`, sans périphérique audio : micro et sortie sont simulés ; zone de notification et notifications
+  `libasound2-dev` pour le son par `cpal`, sans périphérique audio : micro et sortie sont simulés ; `libmpv-dev` pour le lecteur vidéo et audio, dont les tests lisent
+  une vidéo H.264/AAC et un flux HLS générés par ffmpeg et servis par un faux serveur HTTP qui vérifie le jeton ; zone de notification et notifications
   sur le bus de session, rendues obligatoires par `ESTOMPE_DBUS_EXIGE=1`), build. Puis il lance
   l'app sous Xvfb (`--essai-de-lancement`). En cas d'échec, l'artefact `estompe-natif-captures` contient captures, références et différences.
   Le runner (16 Go) reçoit 16 Go de swap avant les contrôles : un rustc sur la crate de l'app monte à 14,2 Go en pointe (code généré par Slint
   analysé, puis passage vers LLVM ; mesuré avec `-Z time-passes`), et sans swap le runner perdait parfois la connexion en pleine compilation.
 - `estompe-natif-windows` : runner Windows, cible `x86_64-pc-windows-msvc` : build et tests par cargo-nextest (coffre de secrets : Credential Manager), sans
-  comparaison des captures. CRT statique (libwebrtc) : Skia y est compilé depuis ses sources (`ninja` installé par pip, LLVM 22.1.8 installé depuis sa release GitHub, empreinte SHA-256 vérifiée,
+  comparaison des captures. libmpv : `scripts/estompe/natif-mpv.mjs` télécharge l'archive épinglée (somme SHA-256), en tire `libmpv-2.dll` et
+  la bibliothèque d'import MSVC `mpv.lib` (`llvm-lib /def:`) dans `$RUNNER_TEMP/mpv`, désigné par `ESTOMPE_MPV_DIR` (recherche du lien) et ajouté au `PATH` (DLL des tests). CRT statique (libwebrtc) : Skia y est compilé depuis ses sources (`ninja` installé par pip, LLVM 22.1.8 installé depuis sa release GitHub, empreinte SHA-256 vérifiée,
   désigné par `LLVM_HOME` et `LIBCLANG_PATH` car le STL de MSVC refuse le clang 20 du runner, `core.longpaths` pour le clonage de ses dépendances),
   une vingtaine de minutes, une fois par version de `skia-bindings` : ses binaires sont gardés dans le cache `skia-windows-v1-` (voir « Caches ») ;
   `estompe-livraison-natif.yml` fait de même.
