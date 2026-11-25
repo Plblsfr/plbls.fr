@@ -472,6 +472,44 @@ pub mod coquille {
         v.into_iter().map(depuis).collect()
     }
 
+    pub fn conversation_medias() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit(
+                "610",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:20:00Z",
+                "Mon dernier clutch :",
+            ),
+            ecrit(
+                "611",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:22:00Z",
+                "La vidéo des vacances",
+            ),
+            ecrit(
+                "612",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:23:00Z",
+                "La maquette du morceau et le podcast :",
+            ),
+        ];
+        v[0]["attachments"] = json!([
+            {"id": "r1", "name": "Valorant_2026-11-19_21-04-33.mp4", "mime": "video/mp4", "size": 18874368, "kind": "video", "thumb": true, "duration_ms": 65000}
+        ]);
+        v[1]["attachments"] = json!([
+            {"id": "v2", "name": "vacances.mp4", "mime": "video/mp4", "size": 9437184}
+        ]);
+        v[2]["attachments"] = json!([
+            {"id": "s1", "name": "maquette.mp3", "mime": "audio/mpeg", "size": 4194304, "duration_ms": 214000},
+            {"id": "s2", "name": "podcast-episode-12.ogg", "mime": "audio/ogg", "size": 31457280}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
     pub fn forme_de_test(n: usize) -> Vec<u8> {
         (0..n)
             .map(|i| (30 + (i * 37) % 60 + if i % 7 == 3 { 10 } else { 0 }) as u8)

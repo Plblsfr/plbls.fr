@@ -1037,6 +1037,29 @@ mod tests {
         attendre(&lecteur, "fin masquée", |e| e.fin).await;
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn une_video_jointe_sortie_de_l_ecran_est_dechargee_par_mpv() {
+        use crate::lecteur::{GenreMedia, LectureUnique, Presence};
+        if !ffmpeg_h264_aac() {
+            return;
+        }
+        let dossier = tempfile::tempdir().unwrap();
+        medias_de_test(dossier.path(), 3, "160x120");
+        let lecture = LectureUnique::nouvelle(std::sync::Arc::new(lecteur(true)));
+        lecture.lire_piece(
+            "m1",
+            "v1",
+            GenreMedia::Video,
+            Source::fichier(&dossier.path().join("video.mp4")),
+        );
+        attendre(lecture.lecteur(), "lecture", |e| e.position > 0.5).await;
+        assert!(lecture.lecteur().images().attendre(0, DELAI).is_some());
+        assert!(!lecture.suivre(|_| Presence::Visible));
+        assert!(lecture.suivre(|_| Presence::HorsEcran));
+        let e = attendre(lecture.lecteur(), "déchargée", |e| e.phase == Phase::Vide).await;
+        assert!(!e.visible && lecture.actif().is_none());
+    }
+
     fn cpu_ms() -> u64 {
         use estompe_plateforme::{MesureProcessus, MesureSysteme};
         MesureSysteme.compteurs().map(|c| c.cpu_ms).unwrap_or(0)

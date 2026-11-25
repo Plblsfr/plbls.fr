@@ -44,6 +44,7 @@ use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
+use crate::video::lecteur::GestionLecteur;
 use crate::{
     AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, DroitsLigne, EpingleMessage,
     EtatConversation, EtatEpingles, EtatTelechargement, EtatTranscription, GenreBloc, GenreCarte,
@@ -80,6 +81,7 @@ pub const VUE_PAR_DEFAUT: f64 = 600.0;
 const LARGEUR_CARACTERE: f64 = 7.4;
 const HAUTEUR_LIGNE_TEXTE: f64 = 23.0;
 const HAUTEUR_TRANSCRIPTION: f64 = 72.0;
+const HAUTEUR_VIDEO: f64 = 240.0;
 const GOUTTIERE: f64 = 96.0;
 
 thread_local! {
@@ -92,6 +94,7 @@ thread_local! {
 
 mod actions;
 mod gifs;
+mod lecture;
 mod sondages;
 mod televersements;
 mod transcription;
@@ -427,10 +430,16 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
     if m.annexes
         .pieces
         .iter()
-        .any(|p| p.genre != GenrePiece::Image)
+        .any(|p| !matches!(p.genre, GenrePiece::Image | GenrePiece::Video))
     {
         h += 44.0;
     }
+    h += HAUTEUR_VIDEO
+        * m.annexes
+            .pieces
+            .iter()
+            .filter(|p| p.genre == GenrePiece::Video)
+            .count() as f64;
     if m.annexes
         .pieces
         .iter()
@@ -605,19 +614,27 @@ pub fn barres(forme: &[u8]) -> Vec<f32> {
 }
 
 fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
+    let cle = match p.donnees.genre {
+        GenrePiece::Video => cle_affiche(&p.donnees.id),
+        _ => cle_vignette(&p.donnees.id),
+    };
     let image = if p.chargee {
         images
-            .decodee(&cle_vignette(&p.donnees.id), Emplacement::Piece(i))
+            .decodee(&cle, Emplacement::Piece(i))
             .unwrap_or_default()
     } else {
         Image::default()
     };
+    let sans_duree =
+        matches!(p.donnees.genre, GenrePiece::Video | GenrePiece::Audio) && p.donnees.duree_ms == 0;
     PieceJointe {
         id: p.donnees.id.as_str().into(),
         genre: match p.donnees.genre {
             GenrePiece::Image => GenrePieceJointe::Image,
             GenrePiece::Fichier => GenrePieceJointe::Fichier,
             GenrePiece::Media => GenrePieceJointe::Media,
+            GenrePiece::Video => GenrePieceJointe::Video,
+            GenrePiece::Audio => GenrePieceJointe::Audio,
             GenrePiece::Expiree => GenrePieceJointe::Expiree,
         },
         nom: p.donnees.nom.as_str().into(),
@@ -629,7 +646,11 @@ fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
         echec: p.echec || p.etat.illisible,
         anime: p.donnees.anime,
         vocal: p.donnees.vocal,
-        duree: estompe_client::message_vocal::horloge(p.donnees.duree_ms).into(),
+        duree: if sans_duree {
+            SharedString::default()
+        } else {
+            estompe_client::message_vocal::horloge(p.donnees.duree_ms).into()
+        },
         barres: ModelRc::new(VecModel::from(barres(&p.donnees.forme))),
         ecoute: p.ecoute,
         index_image: p.index_image,
@@ -642,6 +663,8 @@ fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
         progression: f32::from(p.etat.progression) / 100.0,
         note: p.etat.note.as_str().into(),
         transcription: transcription_slint(&p.transcription),
+        replay: p.donnees.replay,
+        jeu: p.donnees.jeu.as_str().into(),
     }
 }
 
@@ -839,6 +862,13 @@ fn cle_vignette(id: &str) -> CleImage {
     }
 }
 
+fn cle_affiche(id: &str) -> CleImage {
+    CleImage {
+        source: Source::Affiche(id.to_string()),
+        format: Format::Affiche,
+    }
+}
+
 fn ligne_slint(
     l: &LigneFenetre,
     profils: &Profils,
@@ -998,6 +1028,7 @@ pub struct PontMessagerie {
     gifs: Gifs,
     vocal: Vocal,
     alpha: Arc<Mutex<LireAlpha>>,
+    lecteur: Arc<Mutex<Option<Arc<GestionLecteur>>>>,
 }
 
 struct SourceIndisponible;
@@ -1070,6 +1101,7 @@ impl PontMessagerie {
             gifs: Gifs::default(),
             vocal: Vocal::default(),
             alpha: Arc::new(Mutex::new(Arc::new(|| false))),
+            lecteur: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -2414,6 +2446,7 @@ impl PontMessagerie {
             self.charger_emojis(false);
         }
         self.suivre_animations(f);
+        self.suivre_media();
         self.planifier_sondages();
         self.rafraichir_visionneuse(f);
     }
@@ -2720,6 +2753,14 @@ impl PontMessagerie {
                             d.images.push(cle);
                         }
                     }
+                }
+            }
+            if p.genre == GenrePiece::Video && p.affiche {
+                let cle = cle_affiche(&p.id);
+                affichee.chargee = medias.image(&cle).is_some();
+                affichee.echec = !affichee.chargee && medias.en_echec(&cle);
+                if !affichee.chargee && !affichee.echec && i.demandes_images.insert(cle.clone()) {
+                    d.images.push(cle);
                 }
             }
             pieces.push(affichee);

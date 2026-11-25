@@ -409,6 +409,67 @@ mod tests {
         assert_eq!(codec_mp4(&mut Cursor::new(vec![0u8; 16])).unwrap(), None);
     }
 
+    fn piste(gestionnaire: &[u8; 4], entree: &[u8; 4]) -> Vec<u8> {
+        let hdlr = boite(b"hdlr", &[&[0u8; 8][..], gestionnaire].concat());
+        let stsd = boite(
+            b"stsd",
+            &[&[0u8; 8][..], &boite(entree, &[0u8; 8])].concat(),
+        );
+        let minf = boite(b"minf", &boite(b"stbl", &stsd));
+        boite(b"trak", &boite(b"mdia", &[hdlr, minf].concat()))
+    }
+
+    fn moov_de(pistes: &[Vec<u8>]) -> Vec<u8> {
+        boite(b"moov", &pistes.concat())
+    }
+
+    #[test]
+    fn le_codec_est_celui_de_la_piste_video_pas_de_l_audio() {
+        assert_eq!(
+            codec_du_moov(&moov_de(&[
+                piste(b"soun", b"mp4a"),
+                piste(b"vide", b"hvc1")
+            ])),
+            Some("hvc1".into())
+        );
+        assert_eq!(
+            codec_du_moov(&moov_de(&[
+                piste(b"vide", b"avc1"),
+                piste(b"soun", b"mp4a")
+            ])),
+            Some("avc1".into())
+        );
+    }
+
+    #[test]
+    fn sans_piste_video_aucun_codec() {
+        assert_eq!(codec_du_moov(&moov_de(&[piste(b"soun", b"mp4a")])), None);
+    }
+
+    #[test]
+    fn le_moov_est_trouve_en_tete_comme_en_fin_de_fichier() {
+        let ftyp = boite(b"ftyp", b"isom\0\0\0\0");
+        let m = moov_de(&[piste(b"vide", b"av01")]);
+        let mdat = boite(b"mdat", &[0u8; 100]);
+        for fichier in [
+            [ftyp.clone(), m.clone(), mdat.clone()].concat(),
+            [ftyp.clone(), mdat.clone(), m.clone()].concat(),
+        ] {
+            assert_eq!(
+                codec_mp4(&mut Cursor::new(fichier)).unwrap(),
+                Some("av01".into())
+            );
+        }
+    }
+
+    #[test]
+    fn un_fichier_sans_moov_ou_tronque_n_a_pas_de_codec() {
+        let ftyp = boite(b"ftyp", b"isom\0\0\0\0");
+        let sans_moov = [ftyp, boite(b"mdat", &[0u8; 10])].concat();
+        assert_eq!(codec_mp4(&mut Cursor::new(sans_moov)).unwrap(), None);
+        assert_eq!(codec_mp4(&mut Cursor::new(vec![0u8; 3])).unwrap(), None);
+    }
+
     #[test]
     fn seul_un_mp4_qui_n_est_pas_en_h264_est_converti() {
         assert!(!a_convertir("video/mp4", Some("avc1")));

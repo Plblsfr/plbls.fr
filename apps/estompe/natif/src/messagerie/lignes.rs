@@ -4,6 +4,7 @@ use estompe_client::emoji::titre_de_reaction;
 use estompe_client::fichiers::{categorie, nom_de_fichier_sur, CategoriePiece};
 use estompe_client::format::taille_lisible;
 use estompe_client::format::{date_heure_complete, heure_de, lignes_de_messages, Ligne};
+use estompe_client::lecteur::jeu_du_nom;
 use estompe_client::mention::Mentionnables;
 use estompe_client::roles::{couleur_du_pseudo, Membre};
 use estompe_client::sondage::{est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total};
@@ -49,6 +50,8 @@ pub enum GenrePiece {
     Image,
     Fichier,
     Media,
+    Video,
+    Audio,
     Expiree,
 }
 
@@ -65,6 +68,9 @@ pub struct DonneesPiece {
     pub forme: Vec<u8>,
     pub transcription: Option<String>,
     pub transcription_auto: bool,
+    pub replay: bool,
+    pub affiche: bool,
+    pub jeu: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -253,9 +259,9 @@ pub fn piece(piece: &Attachment) -> DonneesPiece {
             CategoriePiece::Image => GenrePiece::Image,
             CategoriePiece::Fichier => GenrePiece::Fichier,
             CategoriePiece::Expiree => GenrePiece::Expiree,
-            CategoriePiece::Vocal | CategoriePiece::Replay | CategoriePiece::Video => {
-                GenrePiece::Media
-            }
+            CategoriePiece::Vocal => GenrePiece::Media,
+            CategoriePiece::Replay | CategoriePiece::Video => GenrePiece::Video,
+            CategoriePiece::Audio => GenrePiece::Audio,
         },
         taille: taille_lisible(piece.size.unwrap_or(0).max(0) as u64),
         anime: matches!(mime, "image/gif" | "image/webp"),
@@ -270,6 +276,9 @@ pub fn piece(piece: &Attachment) -> DonneesPiece {
             .collect(),
         transcription: piece.transcript.clone().filter(|_| vocal),
         transcription_auto: piece.transcript_auto == Some(true),
+        replay: categorie(piece) == CategoriePiece::Replay,
+        affiche: piece.thumb == Some(true),
+        jeu: jeu_du_nom(&nom).unwrap_or_else(|| nom.clone()),
         nom,
     }
 }
@@ -785,7 +794,9 @@ mod tests {
                 {"id": "c", "name": "..\\CON.txt", "mime": "text/plain", "size": 3_500_000},
                 {"id": "d", "name": "vieux.zip", "mime": "application/zip", "expired": true},
                 {"id": "e", "name": "voix.ogg", "kind": "voice", "transcript": "Bonjour", "transcript_auto": true},
-                {"id": "f", "name": "clip.mp4", "mime": "video/mp4", "transcript": "ignoré"}
+                {"id": "f", "name": "clip.mp4", "mime": "video/mp4", "transcript": "ignoré"},
+                {"id": "g", "name": "Valorant_2026-11-19_21-04-33.mp4", "mime": "video/mp4", "kind": "video", "thumb": true, "duration_ms": 65000},
+                {"id": "h", "name": "chanson.mp3", "mime": "audio/mpeg", "size": 4096}
             ],
             "reactions": [{"emoji": "👍", "count": 2, "me": true, "users": [{"id": "me", "pseudo": "moi"}, {"id": "bob", "pseudo": "bob"}]}]
         }))
@@ -804,9 +815,19 @@ mod tests {
                 ("c", GenrePiece::Fichier, "3.3 Mo", false),
                 ("d", GenrePiece::Expiree, "0 o", false),
                 ("e", GenrePiece::Media, "0 o", false),
-                ("f", GenrePiece::Media, "0 o", false),
+                ("f", GenrePiece::Video, "0 o", false),
+                ("g", GenrePiece::Video, "0 o", false),
+                ("h", GenrePiece::Audio, "4.0 Ko", false),
             ]
         );
+        assert!(!a.pieces[5].replay && !a.pieces[5].affiche);
+        assert_eq!(a.pieces[5].jeu, "clip.mp4");
+        assert!(a.pieces[6].replay && a.pieces[6].affiche);
+        assert_eq!(
+            (a.pieces[6].jeu.as_str(), a.pieces[6].duree_ms),
+            ("Valorant", 65000)
+        );
+        assert!(!a.pieces[7].vocal);
         assert_eq!(a.pieces[2].nom_sur, "_CON.txt");
         assert_eq!(a.pieces[4].transcription.as_deref(), Some("Bonjour"));
         assert!(a.pieces[4].transcription_auto);

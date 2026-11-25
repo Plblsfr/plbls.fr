@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex, Weak};
 
 use estompe_client::lecteur::mpv::OptionsMpv;
 use estompe_client::lecteur::{
-    libelle_vitesse, peripherique_mpv, ErreurLecteur, EtatLecteur, GenrePiste, Lecteur, Phase,
-    Source, MESSAGE_ERREUR, VITESSES,
+    libelle_vitesse, peripherique_mpv, ErreurLecteur, EtatLecteur, GenreMedia, GenrePiste, Lecteur,
+    LectureUnique, Origine, Phase, Presence, Source, MESSAGE_ERREUR, VITESSES,
 };
 use slint::{ComponentHandle, Image};
 
@@ -145,58 +145,131 @@ fn ancre(x: f32, y: f32) -> Ancre {
 }
 
 pub struct GestionLecteur {
-    lecteur: Arc<Lecteur>,
+    lecture: Arc<LectureUnique>,
     fenetre: slint::Weak<Principale>,
     _afficheur: Afficheur,
 }
 
 impl GestionLecteur {
     pub fn nouvelle(f: &Principale, lecteur: Lecteur) -> Self {
-        let lecteur = Arc::new(lecteur);
+        let lecture = Arc::new(LectureUnique::nouvelle(Arc::new(lecteur)));
         let fenetre = f.as_weak();
-        brancher(f, &lecteur);
-        suivre(&lecteur, fenetre.clone());
+        brancher(f, &lecture);
+        suivre(lecture.lecteur(), fenetre.clone());
         let afficheur = Afficheur::demarrer(
             CLE.to_string(),
-            lecteur.images(),
+            lecture.lecteur().images(),
             (0, 0),
             false,
             Arc::new(AtomicU64::new(0)),
             livraison(fenetre.clone()),
         );
         Self {
-            lecteur,
+            lecture,
             fenetre,
             _afficheur: afficheur,
         }
     }
 
     pub fn lecteur(&self) -> &Arc<Lecteur> {
-        &self.lecteur
+        self.lecture.lecteur()
+    }
+
+    pub fn lecture(&self) -> &Arc<LectureUnique> {
+        &self.lecture
     }
 
     pub fn ouvrir(&self, titre: &str, source: Source) {
         if let Some(f) = self.fenetre.upgrade() {
+            poser_image(&f, None);
+        }
+        self.lecture.lancer(
+            Origine::Autre(titre.to_string()),
+            GenreMedia::Video,
+            true,
+            source,
+        );
+        if let Some(f) = self.fenetre.upgrade() {
             let g = f.global::<DonneesLecteur>();
             g.set_titre(titre.into());
+            g.set_telechargeable(false);
+            g.set_ouvert(true);
+            afficher_piece(&f, &self.lecture);
+        }
+    }
+
+    pub fn lire_piece(&self, message: &str, piece: &str, genre: GenreMedia, source: Source) {
+        let nouvelle = self.lecture.piece_active().as_deref() != Some(piece);
+        if let (true, Some(f)) = (nouvelle, self.fenetre.upgrade()) {
+            poser_image(&f, None);
+        }
+        self.lecture.lire_piece(message, piece, genre, source);
+        if let Some(f) = self.fenetre.upgrade() {
+            afficher_piece(&f, &self.lecture);
+        }
+    }
+
+    pub fn agrandir(&self, titre: &str, piece: &str, plein: bool) -> bool {
+        if !self.lecture.agrandir(piece) {
+            return false;
+        }
+        if let Some(f) = self.fenetre.upgrade() {
+            let g = f.global::<DonneesLecteur>();
+            g.set_titre(titre.into());
+            g.set_telechargeable(true);
             g.set_ouvert(true);
         }
-        self.lecteur.definir_visible(true);
-        self.lecteur.charger(source);
+        if plein {
+            self.lecture.lecteur().definir_plein_ecran(true);
+        }
+        true
+    }
+
+    pub fn suivre(&self, presence: impl Fn(&str) -> Presence) -> bool {
+        let arrete = self.lecture.suivre(presence);
+        if arrete {
+            if let Some(f) = self.fenetre.upgrade() {
+                afficher_piece(&f, &self.lecture);
+            }
+        }
+        arrete
+    }
+
+    pub fn arreter(&self) {
+        if let Some(f) = self.fenetre.upgrade() {
+            if f.global::<DonneesLecteur>().get_ouvert() {
+                fermer(&f, &self.lecture);
+                return;
+            }
+            self.lecture.arreter();
+            afficher_piece(&f, &self.lecture);
+        } else {
+            self.lecture.arreter();
+        }
     }
 
     pub fn fermer(&self) {
         if let Some(f) = self.fenetre.upgrade() {
-            fermer(&f, &self.lecteur);
+            fermer(&f, &self.lecture);
         }
     }
 }
 
-fn fermer(f: &Principale, lecteur: &Lecteur) {
-    lecteur.arreter();
-    lecteur.definir_plein_ecran(false);
-    lecteur.definir_visible(false);
-    f.global::<DonneesLecteur>().set_ouvert(false);
+fn afficher_piece(f: &Principale, lecture: &LectureUnique) {
+    f.global::<DonneesLecteur>()
+        .set_piece(lecture.piece_active().unwrap_or_default().into());
+}
+
+fn fermer(f: &Principale, lecture: &LectureUnique) {
+    if !lecture.arreter() {
+        lecture.lecteur().arreter();
+        lecture.lecteur().definir_plein_ecran(false);
+        lecture.lecteur().definir_visible(false);
+    }
+    let g = f.global::<DonneesLecteur>();
+    g.set_ouvert(false);
+    g.set_telechargeable(false);
+    afficher_piece(f, lecture);
 }
 
 fn avec(lecteur: &Weak<Lecteur>, action: impl FnOnce(&Lecteur)) {
@@ -205,7 +278,8 @@ fn avec(lecteur: &Weak<Lecteur>, action: impl FnOnce(&Lecteur)) {
     }
 }
 
-fn brancher(f: &Principale, lecteur: &Arc<Lecteur>) {
+fn brancher(f: &Principale, lecture: &Arc<LectureUnique>) {
+    let lecteur = lecture.lecteur();
     let g = f.global::<DonneesLecteur>();
     let l = Arc::downgrade(lecteur);
     g.on_basculer(move || avec(&l, Lecteur::basculer));
@@ -228,7 +302,7 @@ fn brancher(f: &Principale, lecteur: &Arc<Lecteur>) {
         let cote = |c: f32| (c * echelle).round().max(0.0) as u32;
         avec(&l, |l| l.definir_zone((cote(largeur), cote(hauteur))));
     });
-    let (l, fenetre) = (Arc::downgrade(lecteur), f.as_weak());
+    let (l, fenetre) = (Arc::downgrade(lecture), f.as_weak());
     g.on_fermer(move || {
         if let (Some(f), Some(l)) = (fenetre.upgrade(), l.upgrade()) {
             fermer(&f, &l);

@@ -147,6 +147,7 @@ fn l_editeur_coupe_regle_exporte_et_rouvre_un_montage_sans_toucher_au_clip() {
             conversions: Arc::new(Conversions::aucune()),
             ffmpeg: Some(PathBuf::from("ffmpeg")),
             messagerie: None,
+            lecteur: None,
         },
         &execution,
     );

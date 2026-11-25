@@ -24,10 +24,12 @@ use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::messagerie::vocal::{MicroPartage, SortiePartagee};
 use crate::session::Memoire;
+use crate::video::lecteur::GestionLecteur;
 use crate::vocal::{OutilsVocaux, PERIODE_MESURE};
 use crate::{
-    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessageVocal, DonneesMessagerie,
-    DonneesNouveauPrive, DonneesRecherche, DonneesSaisie, DonneesSelecteur, Principale,
+    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesLecteur, DonneesMessageVocal,
+    DonneesMessagerie, DonneesNouveauPrive, DonneesRecherche, DonneesSaisie, DonneesSelecteur,
+    Principale,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::video::Conversions;
@@ -95,6 +97,9 @@ pub trait Fabrique: Send + Sync + 'static {
     fn journal(&self) -> Option<Arc<Journal>> {
         None
     }
+    fn lecteur(&self) -> Option<Arc<GestionLecteur>> {
+        None
+    }
 }
 
 pub struct FabriqueReelle {
@@ -110,6 +115,7 @@ pub struct FabriqueReelle {
     pub jeux: Option<watch::Receiver<crate::jeux::EtatJeux>>,
     pub conversions: Arc<Conversions>,
     pub son: SonPeripheriques,
+    pub lecteur: Option<Arc<GestionLecteur>>,
 }
 
 fn son_par_defaut() -> SonPeripheriques {
@@ -230,6 +236,10 @@ impl Fabrique for FabriqueReelle {
 
     fn journal(&self) -> Option<Arc<Journal>> {
         self.journal.clone()
+    }
+
+    fn lecteur(&self) -> Option<Arc<GestionLecteur>> {
+        self.lecteur.clone()
     }
 }
 
@@ -468,6 +478,21 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_telecharger, |p, f, message, piece| p
         .messagerie()
         .telecharger_piece(&f, &message, &piece));
+    rappel_messagerie!(on_lire_media, |p, f, message, piece| p
+        .messagerie()
+        .lire_media(&f, &message, &piece));
+    rappel_messagerie!(on_agrandir_media, |p, f, message, piece| p
+        .messagerie()
+        .agrandir_media(&f, &message, &piece));
+    {
+        let source = source.clone();
+        let faible = f.as_weak();
+        f.global::<DonneesLecteur>().on_telecharger(move || {
+            if let (Some(p), Some(f)) = (source(), faible.upgrade()) {
+                p.messagerie().telecharger_media(&f);
+            }
+        });
+    }
     rappel_messagerie!(on_ouvrir_fichier, |p, f, _message, piece| p
         .messagerie()
         .ouvrir_fichier(&f, &piece));
@@ -1502,6 +1527,9 @@ async fn session(
         .definir_conversions(contexte.fabrique.conversions());
     pont.messagerie()
         .definir_son(contexte.fabrique.micro(), contexte.fabrique.sortie_son());
+    if let Some(lecteur) = contexte.fabrique.lecteur() {
+        pont.messagerie().definir_lecteur(lecteur);
+    }
     let memoire = contexte.memoire.clone();
     pont.messagerie().definir_ecoutes(
         contexte.memoire.lire(|p| p.vocaux_ecoutes.clone()),

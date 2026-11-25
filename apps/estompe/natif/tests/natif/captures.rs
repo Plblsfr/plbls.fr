@@ -214,6 +214,11 @@ const ECRANS: &[Ecran] = ecrans![
     "messagerie-transcription-clair", Clair, messagerie_transcription;
     "messagerie-transcription-sombre", Sombre, messagerie_transcription;
     "messagerie-transcription-edition-clair", Clair, messagerie_transcription_edition;
+    "messagerie-video-clair", Clair, messagerie_video;
+    "messagerie-video-sombre", Sombre, messagerie_video;
+    "messagerie-video-visionneuse-clair", Clair, messagerie_video_visionneuse;
+    "messagerie-audio-clair", Clair, messagerie_audio;
+    "messagerie-audio-sombre", Sombre, messagerie_audio;
     "selecteur-emoji-clair", Clair, selecteur_emoji;
     "selecteur-emoji-sombre", Sombre, selecteur_emoji;
     "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
@@ -2362,6 +2367,12 @@ fn medias_des_captures() -> Arc<Medias> {
         Format::Miniature,
         &photo(480, 360, [30, 30, 40], [180, 60, 60]),
     );
+    installer(
+        &medias,
+        Source::Affiche("r1".into()),
+        Format::Affiche,
+        &photo(320, 180, [70, 110, 160], [190, 120, 80]),
+    );
     medias
 }
 
@@ -2412,6 +2423,76 @@ fn messagerie_vocal(f: &Principale) {
     v.set_avance(0.4);
     v.set_temps("0:01".into());
     v.set_vitesse("1,5×".into());
+    stabiliser(f);
+}
+
+fn etat_media(
+    adresse: &str,
+    media: estompe_client::lecteur::MediaFactice,
+    depart: f64,
+) -> estompe_client::lecteur::EtatLecteur {
+    use estompe_client::lecteur::{Lecteur, Source as SourceLecteur};
+    let (lecteur, moteur) = Lecteur::factice();
+    moteur.ajouter_media(adresse, media);
+    lecteur.charger(
+        SourceLecteur::adresse(adresse)
+            .a_partir_de(depart)
+            .en_pause(),
+    );
+    lecteur.etat()
+}
+
+fn media_actif(f: &Principale, piece: &str, etat: &estompe_client::lecteur::EtatLecteur) {
+    let image = etat
+        .a_de_la_video()
+        .then(|| {
+            estompe_natif::video::convertir(&Mire::nouvelle(1280, 720).image(30), (0, 0), false)
+        })
+        .flatten()
+        .map(slint::Image::from_rgba8);
+    let g = f.global::<estompe_natif::DonneesLecteur>();
+    g.set_piece(piece.into());
+    g.set_etat(estompe_natif::video::lecteur::vue(
+        etat,
+        image.clone().unwrap_or_default(),
+        image.is_some(),
+    ));
+}
+
+fn messagerie_video(f: &Principale) {
+    messagerie_avec(f, commun::coquille::conversation_medias());
+    let etat = etat_media(
+        "vacances.mp4",
+        estompe_client::lecteur::MediaFactice::video(95.0),
+        37.0,
+    );
+    media_actif(f, "v2", &etat);
+    stabiliser(f);
+}
+
+fn messagerie_video_visionneuse(f: &Principale) {
+    messagerie_avec(f, commun::coquille::conversation_medias());
+    let etat = etat_media(
+        "replay.mp4",
+        estompe_client::lecteur::MediaFactice::video(65.0),
+        12.0,
+    );
+    media_actif(f, "r1", &etat);
+    let g = f.global::<estompe_natif::DonneesLecteur>();
+    g.set_titre("Valorant_2026-11-19_21-04-33.mp4".into());
+    g.set_telechargeable(true);
+    g.set_ouvert(true);
+    stabiliser(f);
+}
+
+fn messagerie_audio(f: &Principale) {
+    messagerie_avec(f, commun::coquille::conversation_medias());
+    let etat = etat_media(
+        "maquette.mp3",
+        estompe_client::lecteur::MediaFactice::son(214.0),
+        42.0,
+    );
+    media_actif(f, "s1", &etat);
     stabiliser(f);
 }
 

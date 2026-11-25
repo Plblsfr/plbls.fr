@@ -367,6 +367,7 @@ fn scenario(
     println!("305 C3 : pastille de c4 retirée après read.updated");
 
     pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
+    video_hors_de_l_ecran(&faible, &fabrique, &pont);
     epingles_dans_la_marge(&faible, &fabrique, &serveur);
     molette_sans_a_coup(&faible, &pont);
     copie_au_survol_sans_clic(&faible, &pont);
@@ -640,6 +641,95 @@ fn sondage_de(f: &Principale, id: &str) -> Option<Vec<(i32, i32)>> {
             .map(|o| (o.votes, o.pourcentage))
             .collect()
     })
+}
+
+fn video_hors_de_l_ecran(faible: &slint::Weak<Principale>, fabrique: &FausseFabrique, pont: &Pont) {
+    use estompe_client::lecteur::{source_de_piece, CommandeMoteur, Lecteur, MediaFactice, Phase};
+    use estompe_natif::video::lecteur::GestionLecteur;
+    use estompe_natif::DonneesLecteur;
+    let adresse = fabrique
+        .store
+        .lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .client()
+        .adresse()
+        .to_string();
+    let source = source_de_piece(&adresse, "v9", None).adresse;
+    let (lecteur, moteur) = Lecteur::factice();
+    moteur.ajouter_media(&source, MediaFactice::video(30.0));
+    let gestion = sur_l_interface(faible, move |f| {
+        Arc::new(GestionLecteur::nouvelle(f, lecteur))
+    });
+    pont.messagerie().definir_lecteur(gestion.clone());
+    let mut m = message("306", "c1", "carol");
+    m["content"] = json!("La vidéo :");
+    m["attachments"] =
+        json!([{"id": "v9", "name": "essai.mp4", "mime": "video/mp4", "size": 1000}]);
+    fabrique.envoyer(evenement("message.created", m));
+    attendre_l_interface(
+        faible,
+        |f| lignes(f).iter().any(|l| l.id == "306"),
+        "message vidéo reçu",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas()
+    });
+    stabiliser(faible, pont);
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>()
+            .invoke_lire_media("306".into(), "v9".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            pomper_fenetre(f);
+            f.global::<DonneesLecteur>().get_piece() == "v9"
+                && ElementHandle::find_by_element_type_name(f, "LecteurMedia").count() >= 2
+        },
+        "vidéo lue dans le message",
+    );
+    assert_eq!(gestion.lecteur().etat().phase, Phase::Pret);
+    assert!(moteur
+        .commandes()
+        .iter()
+        .any(|c| matches!(c, CommandeMoteur::Charger(s) if s.adresse == source)));
+    stabiliser(faible, pont);
+    assert!(
+        gestion.lecture().actif().is_some(),
+        "à l'écran, elle continue"
+    );
+    moteur.vider_commandes();
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().set_defilement(-1500.0);
+    });
+    attendre(
+        || {
+            pomper(faible);
+            gestion.lecture().actif().is_none()
+        },
+        "vidéo sortie de l'écran arrêtée",
+    );
+    let commandes: Vec<CommandeMoteur> = moteur
+        .commandes()
+        .into_iter()
+        .filter(|c| !matches!(c, CommandeMoteur::Zone(..)))
+        .collect();
+    println!("371 C2 : vidéo hors de l'écran, commandes du moteur {commandes:?}");
+    assert_eq!(
+        commandes,
+        [CommandeMoteur::Arreter, CommandeMoteur::Video(false)]
+    );
+    assert_eq!(gestion.lecteur().etat().phase, Phase::Vide);
+    assert!(sur_l_interface(faible, |f| f
+        .global::<DonneesLecteur>()
+        .get_piece()
+        .is_empty()));
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas()
+    });
+    stabiliser(faible, pont);
 }
 
 fn pieces_jointes_sondage_et_telechargement(

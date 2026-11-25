@@ -66,6 +66,7 @@ impl PontMessagerie {
         self.fermer_propositions(f);
         self.saisie.signaler_erreur(f, "");
         self.arreter_lecture(f);
+        self.arreter_media();
         let (generation, suivi) = {
             let mut e = self.vocal.enregistreur();
             (e.commencer(cle), e.suivi.clone())
@@ -304,6 +305,7 @@ impl PontMessagerie {
     }
 
     pub fn basculer_lecture(&self, f: &Principale, piece: &str) {
+        self.arreter_media();
         let mut l = self.vocal.lecteur();
         if let Some(c) = l.courant.as_mut().filter(|c| c.piece == piece) {
             if c.flux.is_some() || (c.jouer && c.lecture.is_none()) {
@@ -341,6 +343,7 @@ impl PontMessagerie {
     }
 
     pub fn placer_lecture(&self, f: &Principale, piece: &str, fraction: f32) {
+        self.arreter_media();
         let charger = {
             let mut l = self.vocal.lecteur();
             match l.courant.as_mut().filter(|c| c.piece == piece) {

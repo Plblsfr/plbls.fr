@@ -352,6 +352,13 @@ impl Client {
         self.jeton.is_some()
     }
 
+    pub fn jeton(&self) -> Option<String> {
+        self.jeton
+            .as_ref()
+            .and_then(|f| f())
+            .filter(|j| !j.is_empty())
+    }
+
     fn noter(&self, niveau: Niveau, message: &str) {
         if let Some(journal) = &self.journal {
             journal.ecrire(niveau, SOURCE_JOURNAL, message);

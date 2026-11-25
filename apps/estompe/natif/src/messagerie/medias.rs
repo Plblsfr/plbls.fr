@@ -36,6 +36,7 @@ pub const TAILLE_EXTERNE_MAX: u64 = 8 * 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Source {
     Fichier(String),
+    Affiche(String),
     Emoji(String),
     Externe(String),
 }
@@ -44,6 +45,7 @@ impl Source {
     pub fn nom_de_cache(&self) -> String {
         match self {
             Self::Fichier(id) => format!("f.{}", nettoyer(id)),
+            Self::Affiche(id) => format!("a.{}", nettoyer(id)),
             Self::Emoji(id) => format!("e.{}", nettoyer(id)),
             Self::Externe(url) => {
                 let mut empreinte = std::collections::hash_map::DefaultHasher::new();
@@ -69,6 +71,7 @@ fn nettoyer(id: &str) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Format {
     Vignette,
+    Affiche,
     Visionneuse,
     Emoji,
     Carte,
@@ -81,6 +84,7 @@ impl Format {
     pub fn boite(self) -> (u32, u32) {
         match self {
             Self::Vignette => (360, 300),
+            Self::Affiche => (360, 203),
             Self::Visionneuse => (2048, 2048),
             Self::Emoji => (96, 96),
             Self::Carte => (168, 168),
@@ -182,14 +186,14 @@ impl Format {
     fn rapport(self) -> Option<(u32, u32)> {
         match self {
             Self::Carte | Self::Piece => Some((1, 1)),
-            Self::Miniature => Some((16, 9)),
+            Self::Miniature | Self::Affiche => Some((16, 9)),
             _ => None,
         }
     }
 
     fn rayon(self) -> f32 {
         match self {
-            Self::Vignette | Self::Miniature => 10.0,
+            Self::Vignette | Self::Miniature | Self::Affiche => 10.0,
             Self::Carte | Self::Piece | Self::Gif => 8.0,
             Self::Emoji | Self::Visionneuse => 0.0,
         }
@@ -321,6 +325,7 @@ impl SourceMedias for Client {
         Box::pin(async move {
             match &source {
                 Source::Fichier(id) => client.contenu_de_fichier(id).await,
+                Source::Affiche(id) => client.miniature_de_fichier(id).await,
                 Source::Emoji(id) => client.image_d_emoji(id).await,
                 Source::Externe(url) => client.octets_externes(url, TAILLE_EXTERNE_MAX).await,
             }
@@ -715,6 +720,7 @@ mod tests {
     #[test]
     fn le_nom_de_cache_est_sur_pour_toute_source() {
         assert_eq!(Source::Fichier("a/../b".into()).nom_de_cache(), "f.a____b");
+        assert_eq!(Source::Affiche("v1".into()).nom_de_cache(), "a.v1");
         assert_eq!(Source::Emoji("e1".into()).nom_de_cache(), "e.e1");
         let externe = Source::Externe("https://x.fr/a.png?b=1".into()).nom_de_cache();
         assert!(estompe_client::cache::cle_valide(&externe), "{externe}");

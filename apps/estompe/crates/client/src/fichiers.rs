@@ -35,6 +35,7 @@ pub enum CategoriePiece {
     Replay,
     Image,
     Video,
+    Audio,
     Fichier,
 }
 
@@ -247,6 +248,8 @@ pub fn categorie(piece: &Attachment) -> CategoriePiece {
         CategoriePiece::Image
     } else if MIMES_VIDEO.contains(&mime) {
         CategoriePiece::Video
+    } else if mime.starts_with("audio/") {
+        CategoriePiece::Audio
     } else {
         CategoriePiece::Fichier
     }
@@ -622,6 +625,13 @@ mod tests {
             CategoriePiece::Vocal
         );
         assert_eq!(categorie(&Attachment::default()), CategoriePiece::Fichier);
+        for m in ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm"] {
+            assert_eq!(categorie(&piece(m, File, false)), CategoriePiece::Audio);
+        }
+        assert_eq!(
+            categorie(&piece("audio/mpeg", File, true)),
+            CategoriePiece::Expiree
+        );
     }
 
     #[test]

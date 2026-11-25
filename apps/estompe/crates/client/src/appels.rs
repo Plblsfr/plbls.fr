@@ -1117,6 +1117,11 @@ impl Client {
             .await
     }
 
+    pub async fn miniature_de_fichier(&self, fichier: &str) -> Result<Bytes, ErreurApi> {
+        self.octets(&format!("/files/{}/thumb", encoder_composant(fichier)))
+            .await
+    }
+
     pub async fn apercu_de_lien(
         &self,
         url: &str,
@@ -1925,6 +1930,7 @@ mod tests {
             ),
             Reponse::brute(200, "image/png", b"png"),
             Reponse::brute(200, "image/png", b"img"),
+            Reponse::brute(200, "image/jpeg", b"jpg"),
         ])
         .await;
         let client = serveur.client();
@@ -1946,6 +1952,10 @@ mod tests {
         assert_eq!(&client.image_d_emoji("e1").await.unwrap()[..], b"png");
         assert_eq!(&client.contenu_de_fichier("f/1").await.unwrap()[..], b"img");
         assert_eq!(
+            &client.miniature_de_fichier("v1").await.unwrap()[..],
+            b"jpg"
+        );
+        assert_eq!(
             lignes(&serveur),
             [
                 ligne(
@@ -1956,6 +1966,7 @@ mod tests {
                 ligne("/emojis", "GET"),
                 ligne("/emojis/e1/image", "GET"),
                 ligne("/files/f%2F1", "GET"),
+                ligne("/files/v1/thumb", "GET"),
             ]
         );
     }

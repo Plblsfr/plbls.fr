@@ -14,7 +14,7 @@ export struct ReactionMessage {
     infobulle: string,
 }
 
-export enum GenrePieceJointe { image, fichier, media, expiree }
+export enum GenrePieceJointe { image, fichier, media, video, audio, expiree }
 
 export enum EtatTelechargement { aucun, en-cours, termine, echec }
 
@@ -53,6 +53,8 @@ export struct PieceJointe {
     progression: float,
     note: string,
     transcription: TranscriptionVocale,
+    replay: bool,
+    jeu: string,
 }
 
 export struct OptionSondage {
@@ -220,6 +222,8 @@ export global DonneesMessagerie {
     callback reessayer();
     callback theme-change(bool);
     callback image-cliquee(string, int);
+    callback lire-media(string, string);
+    callback agrandir-media(string, string);
     callback telecharger(string, string);
     callback ouvrir-fichier(string, string);
     callback carte-cliquee(string, string);

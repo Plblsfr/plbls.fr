@@ -375,3 +375,77 @@ export component LecteurMedia inherits Rectangle {
         }
     }
 }
+
+export component MiniLecteur inherits Rectangle {
+    in property <EtatLecteurVue> etat;
+    in property <bool> actif: false;
+    in property <string> titre;
+    in property <string> duree;
+    callback lancer();
+    callback basculer();
+    callback aller(float);
+    callback muet();
+    property <bool> joue: root.actif && !root.etat.en-pause && !root.etat.fin && root.etat.erreur == "";
+    height: 48px;
+    min-width: 280px;
+    preferred-width: 360px;
+    max-width: 420px;
+    border-radius: Rayon.s;
+    background: #0e0c0b;
+    accessible-role: groupbox;
+    accessible-label: "Lecteur audio " + root.titre;
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 6px;
+        BoutonLecteur {
+            icone: root.joue ? "pause" : "lecture";
+            description: (root.joue ? "Pause " : "Lire ") + root.titre;
+            clique => {
+                if (root.actif) {
+                    root.basculer();
+                } else {
+                    root.lancer();
+                }
+            }
+        }
+        Text {
+            max-width: 140px;
+            text: root.titre;
+            color: #f1ece6;
+            font-size: Typo.minuscule;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        BarreLecteur {
+            valeur: root.actif ? root.etat.position : 0;
+            maximum: root.actif ? root.etat.duree : 1;
+            avance: 0;
+            pas: 5;
+            utilisable: root.actif && root.etat.duree > 0;
+            description: "Position";
+            texte-valeur: root.actif ? root.etat.temps : root.duree;
+            regle(v) => {
+                root.aller(v);
+            }
+        }
+        Text {
+            text: !root.actif ? root.duree : root.etat.erreur != "" ? "Lecture impossible" : root.etat.chargement ? "…" : root.etat.temps;
+            color: root.actif && root.etat.erreur != "" ? #f4a3a3 : #f1ece6;
+            font-family: Typo.mono;
+            font-size: Typo.minuscule;
+            vertical-alignment: center;
+            accessible-role: text;
+        }
+        if root.actif: BoutonLecteur {
+            icone: root.etat.muet || root.etat.volume == 0 ? "casqueoff" : "volmax";
+            description: root.etat.muet ? "Activer le son" : "Couper le son";
+            eteint: root.etat.muet || root.etat.volume == 0;
+            clique => {
+                root.muet();
+            }
+        }
+    }
+}

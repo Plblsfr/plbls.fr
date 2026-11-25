@@ -241,6 +241,21 @@ pub fn demarrer(
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let audio_editeur = audio_messages.clone();
+    let lecteur = match video::lecteur::lecteur_du_systeme(
+        session.memoire.lire(|p| p.sortie_audio.clone()).as_deref(),
+    ) {
+        Ok(l) => Some(std::sync::Arc::new(
+            video::lecteur::GestionLecteur::nouvelle(fenetre, l),
+        )),
+        Err(e) => {
+            session.journal.ecrire(
+                estompe_client::journal::Niveau::Avertissement,
+                "lecteur",
+                &e.to_string(),
+            );
+            None
+        }
+    };
     let fabrique = coquille::FabriqueReelle {
         client: reels.client.clone(),
         jeton: std::sync::Arc::new(jeton),
@@ -263,6 +278,7 @@ pub fn demarrer(
             })
         }),
         conversions: conversions.clone(),
+        lecteur: lecteur.clone(),
         medias: messagerie::medias::Medias::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(
@@ -301,6 +317,7 @@ pub fn demarrer(
             conversions,
             ffmpeg: Some(estompe_client::video::ffmpeg_du_systeme()),
             messagerie: Some(coquille.source_pont()),
+            lecteur,
         },
         &entree.runtime(),
     );

@@ -4,6 +4,7 @@ pub mod image;
 pub mod moteur;
 #[cfg(feature = "mpv")]
 pub mod mpv;
+pub mod pieces;
 pub mod pistes;
 pub mod reglages;
 
@@ -18,6 +19,9 @@ pub use etat::{EtatLecteur, Evenement, Phase};
 pub use factice::{CommandeMoteur, MediaFactice, MoteurFactice};
 pub use image::ImageLecteur;
 pub use moteur::{ErreurLecteur, MoteurLecture, Rapport, Source};
+pub use pieces::{
+    jeu_du_nom, source_de_piece, GenreMedia, LectureUnique, MediaActif, Origine, Presence,
+};
 pub use pistes::{nom_de_langue, pistes_de_mpv, GenrePiste, Piste};
 pub use reglages::{
     borner_vitesse, libelle_vitesse, peripherique_mpv, position_bornee, raccourci, son_bascule,

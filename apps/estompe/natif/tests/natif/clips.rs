@@ -86,6 +86,7 @@ fn la_galerie_liste_renomme_supprime_et_purge_les_clips_sans_toucher_aux_protege
             conversions: Arc::new(Conversions::aucune()),
             ffmpeg: None,
             messagerie: None,
+            lecteur: None,
         },
         &execution,
     );

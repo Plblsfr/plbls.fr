@@ -26,10 +26,12 @@ use super::ServiceReplay;
 use crate::confirmation::{self, Demande, Saisie};
 use crate::coquille::SourcePont;
 use crate::messagerie::pont::SystemeFichiers;
+use crate::video::lecteur::GestionLecteur;
 use crate::{
     DestinationClip, DonneesClips, DonneesJeux, DonneesReplay, JeuClips, LigneClip, Principale,
     TravailClip,
 };
+use estompe_client::lecteur::Source as SourceLecteur;
 
 pub const TYPE_MP4: &str = "video/mp4";
 pub const SANS_ENCODEUR: &str = "aucun encodeur matériel H.264 disponible";
@@ -374,6 +376,7 @@ pub struct OutilsGalerie {
     pub conversions: Arc<Conversions>,
     pub ffmpeg: Option<PathBuf>,
     pub messagerie: Option<SourcePont>,
+    pub lecteur: Option<Arc<GestionLecteur>>,
 }
 
 struct Travail {
@@ -707,7 +710,24 @@ impl Galerie {
             .spawn(move || action(&galerie));
     }
 
-    pub fn lire(self: &Arc<Self>, chemin: &Path) {
+    pub fn lire(self: &Arc<Self>, f: &Principale, chemin: &Path) {
+        if let Some(lecteur) = &self.outils.lecteur {
+            if let Some(pont) = self.outils.messagerie.as_ref().and_then(|s| s()) {
+                pont.messagerie().arreter_lecture(f);
+            }
+            let titre = self.clip(chemin).map_or_else(
+                || {
+                    chemin
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned()
+                },
+                |c| c.nom,
+            );
+            lecteur.ouvrir(&titre, SourceLecteur::fichier(chemin));
+            return;
+        }
         let chemin = chemin.to_path_buf();
         self.sur_un_fil("lecture", move |g| {
             if let Err(e) = g.outils.fichiers.ouvrir(&chemin) {
@@ -1254,7 +1274,8 @@ pub fn brancher(
         .global::<DonneesClips>()
         .set_ouvert(false));
     rappel!(on_filtrer, |g, f, jeu| g.filtrer(&f, &jeu));
-    rappel!(on_lire, |g, _f, chemin| g.lire(Path::new(chemin.as_str())));
+    rappel!(on_lire, |g, f, chemin| g
+        .lire(&f, Path::new(chemin.as_str())));
     rappel!(on_ouvrir_dossier, |g, _f| g.ouvrir_dossier());
     rappel!(on_reglages, |_g, f| {
         f.global::<DonneesClips>().set_ouvert(false);

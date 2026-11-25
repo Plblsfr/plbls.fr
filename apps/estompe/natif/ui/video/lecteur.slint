@@ -1,4 +1,4 @@
-import { Theme, Rayon, Espace, Calques } from "../jetons.slint";
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
 import { Icone } from "../composants/icone.slint";
 import { LecteurMedia, EtatLecteurVue } from "../composants/lecteur.slint";
 
@@ -7,6 +7,8 @@ export { EtatLecteurVue }
 export global DonneesLecteur {
     in property <bool> ouvert: false;
     in property <string> titre;
+    in property <string> piece;
+    in property <bool> telechargeable: false;
     in property <EtatLecteurVue> etat;
     in property <float> avance: 0;
     callback basculer();
@@ -20,10 +22,38 @@ export global DonneesLecteur {
     callback touche(string, bool, bool, bool) -> bool;
     callback zone-image(length, length);
     callback fermer();
+    callback telecharger();
+}
+
+component BoutonPlein inherits Rectangle {
+    in property <string> icone;
+    in property <string> description;
+    callback clique();
+    width: 40px;
+    height: 40px;
+    border-radius: Rayon.s;
+    background: zone.has-hover ? #ffffff24 : #0e0c0b99;
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-action-default => {
+        root.clique();
+    }
+    Icone {
+        nom: root.icone;
+        taille: 20px;
+        couleur: #f1ece6;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
 }
 
 export component LecteurPlein {
     in property <bool> ouvert: DonneesLecteur.ouvert;
+    property <int> niveau: 1;
     width: 100%;
     height: 100%;
     visible: root.ouvert;
@@ -31,6 +61,8 @@ export component LecteurPlein {
     changed ouvert => {
         Calques.ouverts = Math.max(0, Calques.ouverts + (root.ouvert ? 1 : -1));
         if (root.ouvert) {
+            root.niveau = Calques.ouverts;
+            DonneesLecteur.zone-image(lecteur.width, lecteur.height);
             lecteur.focus-lecteur();
         }
     }
@@ -52,7 +84,7 @@ export component LecteurPlein {
             etat: DonneesLecteur.etat;
             avance: DonneesLecteur.avance;
             titre: DonneesLecteur.titre;
-            calque: 1;
+            calque: root.niveau;
             basculer => {
                 DonneesLecteur.basculer();
             }
@@ -81,31 +113,45 @@ export component LecteurPlein {
                 return DonneesLecteur.touche(t, c, m, a);
             }
             zone-image(l, h) => {
-                DonneesLecteur.zone-image(l, h);
+                if (root.ouvert) {
+                    DonneesLecteur.zone-image(l, h);
+                }
             }
         }
     }
-    if root.ouvert: Rectangle {
+    if root.ouvert: HorizontalLayout {
         x: Espace.e3;
         y: Espace.e3;
-        width: 40px;
+        width: parent.width - 2 * Espace.e3;
         height: 40px;
-        border-radius: Rayon.s;
-        background: fermeture.has-hover ? #ffffff24 : #0e0c0b99;
-        accessible-role: button;
-        accessible-label: "Fermer le lecteur";
-        accessible-action-default => {
-            DonneesLecteur.fermer();
-        }
-        Icone {
-            nom: "x";
-            taille: 20px;
-            couleur: #f1ece6;
-        }
-        fermeture := TouchArea {
-            mouse-cursor: pointer;
-            clicked => {
+        spacing: Espace.e2;
+        BoutonPlein {
+            icone: "x";
+            description: "Fermer le lecteur";
+            clique => {
                 DonneesLecteur.fermer();
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            Text {
+                x: 0;
+                width: Math.min(parent.width, self.preferred-width);
+                height: parent.height;
+                text: DonneesLecteur.titre;
+                color: #f1ece6;
+                font-family: Typo.texte;
+                font-size: Typo.compact;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: text;
+            }
+        }
+        if DonneesLecteur.telechargeable: BoutonPlein {
+            icone: "telecharge";
+            description: "Télécharger";
+            clique => {
+                DonneesLecteur.telecharger();
             }
         }
     }
