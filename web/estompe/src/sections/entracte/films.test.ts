@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, effectiveBuffer, refuseCodec, refusedCodecs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, effectiveBuffer, refuseCodec, refusedCodecs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeAfter, episodeLabel, fullTitle, nearEnd, seasonAfter, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -70,6 +70,21 @@ describe('progression', () => {
     expect(pickEpisode([e1, e2])?.id).toBe('2')
     expect(pickEpisode([e1])?.id).toBe('1')
     expect(pickEpisode([])).toBeUndefined()
+  })
+  it('épisode suivant : le premier disponible après celui en cours, puis la saison suivante', () => {
+    const liste = [item({ id: '1' }), item({ id: '2', available: false }), item({ id: '3' })]
+    expect(episodeAfter(liste, '1')?.id).toBe('3')
+    expect(episodeAfter(liste, '3')).toBeUndefined()
+    expect(episodeAfter(liste, 'absent')).toBeUndefined()
+    const saisons = [item({ id: 's·3', kind: 'season', season: 3 }), item({ id: 's·0', kind: 'season', season: 0 }), item({ id: 's·2', kind: 'season', season: 2, available: false }), item({ id: 's·1', kind: 'season', season: 1 })]
+    expect(seasonAfter(saisons, 1)?.id).toBe('s·3')
+    expect(seasonAfter(saisons, 0)?.id).toBe('s·1')
+    expect(seasonAfter(saisons, 3)).toBeUndefined()
+  })
+  it('fin d’un titre : les trente dernières secondes', () => {
+    expect(nearEnd(2969, 3000)).toBe(false)
+    expect(nearEnd(2970, 3000)).toBe(true)
+    expect(nearEnd(10, 0)).toBe(false)
   })
 })
 

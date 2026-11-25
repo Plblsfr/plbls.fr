@@ -251,7 +251,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `sections/entracte/FilmsNav.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
 | `sections/entracte/FilmsLibrary.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
 | `sections/entracte/FilmDetail.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
-| `sections/entracte/FilmPlayer.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | lecteur HLS, sous-titres, passer l'intro, diffusion sur une télé |
+| `sections/entracte/FilmPlayer.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | lecteur HLS, sous-titres, passer l'intro, épisode suivant, diffusion sur une télé |
 | `sections/entracte/FilmPoster.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
 | `sections/entracte/FilmNoAccess.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | salon cinéma sans accès au titre |
 | `sections/entracte/EntractePoster.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent |  |
