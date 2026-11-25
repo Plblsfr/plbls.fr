@@ -33,7 +33,7 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
 
 ### Verrou des builds et mémoire
 
-Compiler l'app native demande plusieurs Go de mémoire par `rustc` (code généré par Slint), et deux compilations en même temps peuvent
+Compiler l'app native demande plusieurs Go de mémoire par `rustc` (code généré par Slint ; mesures : [natif-compilation.md](natif-compilation.md)), et deux compilations en même temps peuvent
 saturer la mémoire de la machine (WSL redémarre alors). `scripts/estompe/natif-check.sh` et les recettes `estompe-natif-…` du `justfile`
 qui compilent passent donc par `scripts/estompe/natif-verrou.sh` : un seul build lourd à la fois sur la machine, quel que soit le worktree.
 Les autres attendent en l'annonçant (« un autre build de l'app native tourne sur cette machine, attente de sa fin »). Le verrou est
