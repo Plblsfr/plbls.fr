@@ -856,9 +856,31 @@ deux moteurs et sur les deux OS :
   pendant la lecture ; à la fin, retour au début.
 - Écarts : pas d'enchaînement automatique sur le message vocal suivant, une vitesse commune à tous les messages, position oubliée quand un autre message est
   lancé ; pas de geste « maintenir pour enregistrer » (tactile) ; pas d'annulation d'écho ni de réduction de bruit à l'enregistrement (le navigateur les fait ;
-  la chaîne du micro du vocal n'y est pas branchée) ; pas de transcription (lot 9).
+  la chaîne du micro du vocal n'y est pas branchée) ; pas de transcription ni de correction dans l'écoute avant l'envoi (voir [Transcription](#transcription)).
 - À vérifier sur une vraie machine (Windows et Linux) : micro et haut-parleurs réels, refus du micro par les réglages de confidentialité de Windows, message
   enregistré lu par le front web et l'inverse.
+
+### Transcription
+
+- Comme `blocks/transcription/` et `VoiceMessage.svelte` : proposée si `transcription` de `GET /me` vaut `on`, ou `alpha` avec les fonctions alpha débloquées
+  (`estompe_client::transcription::proposee`, préférence locale `alpha` relue à chaque rafraîchissement de la messagerie) ; rien ne s'affiche sinon, ni sous un message
+  vocal illisible, expiré ou en cours d'envoi.
+- États (`transcription::Suivi` par pièce, dans `EtatPiece` du pont ; affichage calculé par `transcription::affichage`, testé sans interface) : « Transcrire » (proposée),
+  « Transcription en cours… » (demandée, `POST /files/{id}/transcript`, une seule demande à la fois par pièce), texte prête sous le lecteur (`TranscriptionVue` de
+  `ui/messagerie/vocal.slint`), édition pour l'auteur du message. La réponse est appliquée au message du store (`Store::appliquer_transcription`, comme `message.updated`) ;
+  un `message.updated` reçu entre-temps (transcription calculée, corrigée ou retirée par un autre appareil) remplace l'attente ou le texte de la même façon.
+- Texte : replié sur trois lignes au-delà de 140 caractères (« Afficher plus », « Afficher moins »), « Masquer » et « Afficher la transcription », mention
+  « Transcription automatique » tant que l'auteur ne l'a pas corrigée, « Modifier » pour l'auteur : zone de texte, « Enregistrer » (`PUT /files/{id}/transcript`, texte vide
+  pour la retirer, retour au bouton « Transcrire ») et « Annuler ». Le brouillon tapé est gardé dans le pont et repris si la ligne est recréée au défilement.
+- Erreurs sous le message (le front les affiche en notification) : « La transcription a échoué » (502 `transcription_failed`, 501 `transcription_disabled`, toute erreur
+  du serveur), « La transcription n'a pas pu être enregistrée » ou le message du serveur pour une correction refusée, « Trop de demandes, patientez quelques secondes. » pour
+  un 429 (`rate_limited`, `transcription_busy`), « Connexion au serveur impossible. » hors ligne ; mêmes règles que `messageOf` du front. « Transcrire » reste proposé après un échec.
+- « Transcrire automatiquement mes messages vocaux » (catégorie « Apparence », préférence locale `transcrire_auto`, active par défaut) : après l'envoi réussi d'un message vocal,
+  sa transcription est demandée sans attendre et arrive par `message.updated`, comme l'envoi rapide du front. Écart : le front la calcule dès l'écoute avant l'envoi pour la
+  relire ou la corriger ; l'app native ne transcrit qu'après l'envoi.
+- Tests : `transcription::tests` (règles et états), `appels::tests` et `store::messages::tests` de la crate client (routes, réponse appliquée au message),
+  `tests/natif/saisie.rs` (parcours complet avec le faux serveur) ; captures `messagerie-transcription-clair` et `-sombre` (proposée, en cours, prête repliée,
+  prête de l'auteur, échec) et `messagerie-transcription-edition-clair`.
 
 ## Vocal
 
@@ -1605,7 +1627,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, fonctions alpha débloquées, dernière catégorie des paramètres, ordre des serveurs, géométrie de la
-  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume ; les fichiers personnalisés sont à part, dans `<données>/sons/`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume ; les fichiers personnalisés sont à part, dans `<données>/sons/`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus), transcription automatique de mes messages vocaux (`transcrire_auto`). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -1627,7 +1649,7 @@ Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal
   la rend inactive ; à sa fermeture le focus revient à la catégorie.
 - Préférences synchronisées comme dans le front : les réglages de notification (voir ci-dessous) sont enregistrés sur le compte (`PUT /me/notify-settings`, retour en
   arrière et message si l'envoi échoue) et suivis en temps réel (`notify_settings.updated`) ; tout le reste est local (`preferences.json`) : thème, densité, aperçu des liens,
-  réduction des animations, notifications du bureau, lancement avec la session, mode debug, fonctions alpha.
+  réduction des animations, notifications du bureau, lancement avec la session, mode debug, fonctions alpha, transcription automatique.
 - Notifications (`SettingsNotifications.svelte`, logique pure dans `estompe_client::niveaux_notification`) : notifications du bureau (local), « Ne pas déranger » (le statut,
   comme le menu de la barre), niveau général, types, aperçu et son, puis un serveur (celui ouvert, sinon le premier ; « Changer de serveur… » ouvre un menu) : son niveau, sa
   sourdine, « Ignorer @everyone et @here », ses salons texte réglés (niveau ou sourdine) et « Régler un autre salon… » (menu, le salon ajouté passe à « Tous »). Chaque choix
@@ -1643,7 +1665,8 @@ Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal
   des durées (`menu::choisir` laisse ouvert le menu qu'une action vient d'ouvrir) ; en sourdine, l'entrée devient « Réactiver les notifications ». Le menu d'un serveur offre aussi
   « Paramètres de notification » (la catégorie s'ouvre sur ce serveur) et « Copier le lien ».
 - Apparence : le thème choisi s'applique tout de suite (`Theme.mode`), comme le bouton de l'en-tête ; la densité compacte resserre les messages (`Affichage.compacte`) ;
-  réduire les animations met les durées à zéro (`Mouvement.reduit`).
+  réduire les animations met les durées à zéro (`Mouvement.reduit`) ; « Transcrire automatiquement mes messages vocaux » n'apparaît que si la transcription est proposée
+  (`DonneesParametres.transcription` et `alpha`, badge « ALPHA » quand le serveur la réserve aux fonctions alpha, voir [Transcription](#transcription)).
 - Débogage : 500 dernières lignes du journal (relu toutes les 3 s tant que la catégorie est ouverte), filtre par niveau et par texte, copie de tout le journal, export
   dans le dossier des téléchargements (`estompe-debug-AAAA-MM-JJ-HH-MM-SS.log`, heure locale), vidage ; « Mesures de performance… » quand le mode debug est actif.
 - Application : « À propos », panneau des mises à jour, lancement à l'ouverture de la session ; 7 clics sur « Version installée » basculent les fonctions alpha
@@ -1729,7 +1752,9 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
   texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis les messages vocaux (micro et sortie simulés par `FauxMicro` et
   `FausseSortie` de la fausse fabrique : micro refusé puis absent, 1,5 s à 44,1 kHz avec durée et niveau, pause et réécoute à 440 Hz, envoi `kind=voice` relu par
-  le décodeur, puis lecture d'un WebM du web et du message envoyé, vitesse, position, un seul à la fois, fin, fichier illisible) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
+  le décodeur, puis lecture d'un WebM du web et du message envoyé, vitesse, position, un seul à la fois, fin, fichier illisible) ; puis la transcription (proposée par
+  `GET /me`, demande retenue par le faux serveur pour voir « en cours », échec 502, transcription prête puis masquée, arrivée par `message.updated`, correction par l'auteur
+  avec le corps du `PUT` vérifié) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
   jointe, envoyée en `kind=video` et reçue en H.264, fichier converti supprimé après l'envoi, puis une conversion (ou son envoi bloqué) annulée sans laisser de fichier.
   Les tests de `estompe_client::video` convertissent aussi une vidéo HEVC (`libx264` à la place des encodeurs matériels, absents du runner) et l'annulent pendant l'encodage.
   Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.
