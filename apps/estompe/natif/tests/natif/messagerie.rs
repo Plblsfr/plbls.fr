@@ -367,10 +367,10 @@ fn scenario(
     println!("305 C3 : pastille de c4 retirée après read.updated");
 
     pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
-    video_hors_de_l_ecran(&faible, &fabrique, &pont);
     epingles_dans_la_marge(&faible, &fabrique, &serveur);
     molette_sans_a_coup(&faible, &pont);
     copie_au_survol_sans_clic(&faible, &pont);
+    video_hors_de_l_ecran(&faible, &fabrique, &pont);
 }
 
 fn copie_au_survol_sans_clic(faible: &slint::Weak<Principale>, pont: &Pont) {

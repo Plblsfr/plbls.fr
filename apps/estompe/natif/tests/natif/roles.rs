@@ -386,6 +386,11 @@ fn attribuer(faible: &slint::Weak<Principale>, serveur: &ServeurMessages) {
         || requetes(serveur, "PUT /servers/s1/members/dave/roles/ra") == 1,
         "rôle attribué",
     );
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesReglagesServeur>().get_en_cours(),
+        "attribution terminée",
+    );
     assert!(sur_l_interface(faible, |f| {
         f.global::<DonneesRoles>()
             .get_membres()
