@@ -101,6 +101,7 @@ jobs:
           npm run e2e:sillon --workspace web/estompe
           npm run e2e:regie --workspace web/estompe
           npm run e2e:sablier --workspace web/estompe
+          npm run e2e:cinema --workspace web/estompe
       - name: Types, tests et build des projets touchés
         if: needs.changements.outputs.espaces != ''
         env:
