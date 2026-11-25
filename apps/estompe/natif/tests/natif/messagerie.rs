@@ -681,30 +681,17 @@ fn video_hors_de_l_ecran(faible: &slint::Weak<Principale>, fabrique: &FausseFabr
         f.global::<DonneesMessagerie>()
             .invoke_lire_media("306".into(), "v9".into())
     });
-    for _ in 0..3 {
-        let etat = sur_l_interface(faible, |f| {
-            let avant = f.global::<DonneesLecteur>().get_piece().to_string();
-            pomper_fenetre(f);
-            (
-                avant,
-                f.global::<DonneesLecteur>().get_piece().to_string(),
-                ElementHandle::find_by_element_type_name(f, "LecteurMedia").count(),
-                ElementHandle::find_by_element_type_name(f, "VideoJointe").count(),
-                f.global::<DonneesMessagerie>().get_defilement(),
-            )
-        });
-        println!(
-            "371 diagnostic : pièce {etat:?}, actif {:?}, commandes {:?}",
-            gestion.lecture().actif().is_some(),
-            moteur.commandes()
-        );
-    }
     attendre_l_interface(
         faible,
         |f| {
             pomper_fenetre(f);
             f.global::<DonneesLecteur>().get_piece() == "v9"
-                && ElementHandle::find_by_element_type_name(f, "LecteurMedia").count() >= 2
+                && ElementHandle::find_by_element_type_name(f, "VideoJointe").any(|v| {
+                    v.query_descendants()
+                        .match_inherits("LecteurMedia")
+                        .find_first()
+                        .is_some()
+                })
         },
         "vidéo lue dans le message",
     );
