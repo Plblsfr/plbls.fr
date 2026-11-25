@@ -175,6 +175,7 @@ export component LecteurMedia inherits Rectangle {
     callback touche(string, bool, bool, bool) -> bool;
     callback zone-image(length, length);
     property <bool> utilisable: root.calque >= Calques.ouverts;
+    property <bool> etroit: root.width < 560px;
     public function focus-lecteur() {
         clavier.focus();
     }
@@ -323,7 +324,7 @@ export component LecteurMedia inherits Rectangle {
                     root.muet();
                 }
             }
-            BarreLecteur {
+            if !root.etroit: BarreLecteur {
                 horizontal-stretch: 1;
                 max-width: 96px;
                 valeur: root.etat.muet ? 0 : root.etat.volume;
@@ -339,7 +340,7 @@ export component LecteurMedia inherits Rectangle {
                     root.volume(Math.round(v));
                 }
             }
-            BoutonLecteur {
+            if !root.etroit: BoutonLecteur {
                 texte: root.etat.vitesse;
                 description: "Vitesse de lecture";
                 utilisable: root.utilisable;
@@ -347,7 +348,7 @@ export component LecteurMedia inherits Rectangle {
                     root.menu-vitesse(x, y);
                 }
             }
-            if root.etat.pistes-audio > 1: BoutonLecteur {
+            if !root.etroit && root.etat.pistes-audio > 1: BoutonLecteur {
                 icone: "vol";
                 description: "Piste audio";
                 utilisable: root.utilisable;

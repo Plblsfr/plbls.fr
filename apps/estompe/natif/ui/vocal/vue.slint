@@ -224,6 +224,25 @@ component Scene inherits Rectangle {
         height: 100%;
         marge-bas: root.marge-bas;
     }
+    property <bool> boutons-compacts: mesure.preferred-width > (self.width - barre.width) / 2 - 24px - Espace.e3;
+    mesure := HorizontalLayout {
+        visible: false;
+        width: self.preferred-width;
+        height: self.preferred-height;
+        spacing: Espace.e2;
+        if root.seance-presente && DonneesMusique.vue.active: Bouton {
+            texte: root.musique ? "Vidéo" : "Musique";
+            icone: "note";
+        }
+        if !DonneesMusique.vue.active && DonneesMusique.disponible: Bouton {
+            texte: "Écouter ensemble";
+            icone: "note";
+        }
+        if !root.seance-presente: Bouton {
+            texte: "Regarder ensemble";
+            icone: "tele";
+        }
+    }
     if !root.plein && !DonneesVocal.vue.cinema: HorizontalLayout {
         x: parent.width - self.width - 24px;
         y: barre.y + (barre.height - self.height) / 2;
@@ -231,7 +250,7 @@ component Scene inherits Rectangle {
         height: self.preferred-height;
         spacing: Espace.e2;
         if root.seance-presente && DonneesMusique.vue.active: Bouton {
-            texte: root.musique ? "Vidéo" : "Musique";
+            texte: root.boutons-compacts ? "" : root.musique ? "Vidéo" : "Musique";
             icone: root.musique ? "tele" : "note";
             description: root.musique ? "Afficher la vidéo" : "Afficher la musique";
             variante: VarianteBouton.secondaire;
@@ -240,7 +259,7 @@ component Scene inherits Rectangle {
             }
         }
         if !DonneesMusique.vue.active && DonneesMusique.disponible: Bouton {
-            texte: "Écouter ensemble";
+            texte: root.boutons-compacts ? "" : "Écouter ensemble";
             icone: "note";
             description: "Écouter ensemble (Music2gether)";
             variante: VarianteBouton.secondaire;
@@ -249,7 +268,7 @@ component Scene inherits Rectangle {
             }
         }
         if !root.seance-presente: Bouton {
-            texte: "Regarder ensemble";
+            texte: root.boutons-compacts ? "" : "Regarder ensemble";
             icone: "tele";
             description: "Regarder ensemble (vidéo)";
             variante: VarianteBouton.secondaire;

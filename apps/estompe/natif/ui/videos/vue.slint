@@ -18,6 +18,7 @@ export component PetitBouton inherits Rectangle {
     property <bool> utilisable: root.actif && Calques.ouverts == 0;
     height: 28px;
     min-width: disposition.preferred-width;
+    horizontal-stretch: 0;
     border-radius: Rayon.xs;
     background: root.fort ? (zone.has-hover && root.utilisable ? Theme.rose-fonce : Theme.rose) : root.enfonce ? Theme.rose-doux : zone.has-hover && root.utilisable ? Theme.papier-3 : transparent;
     opacity: root.actif ? 1 : 0.45;

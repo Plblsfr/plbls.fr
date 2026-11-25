@@ -3260,6 +3260,18 @@ fn remettre_a_zero(f: &Principale) {
         .set_menu_ouvert(false);
     f.global::<estompe_natif::DonneesVocal>()
         .set_reglages_ouverts(false);
+    f.global::<estompe_natif::DonneesVideos>()
+        .set_solo(Default::default());
+    let musique = f.global::<estompe_natif::DonneesMusique>();
+    musique.set_vue(Default::default());
+    musique.set_minis(slint::ModelRc::default());
+    musique.set_a_ici(false);
+    musique.set_file_ouverte(false);
+    musique.set_afficher(true);
+    let vue_web = f.global::<estompe_natif::DonneesVueWeb>();
+    vue_web.set_seance(false);
+    vue_web.set_solo(false);
+    vue_web.set_musique(false);
     mise_a_jour::afficher(f, &EtatMaj::default());
 }
 

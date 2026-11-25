@@ -201,7 +201,8 @@ export component EnEcoute inherits Rectangle {
                         couleur: Theme.gris;
                     }
                     Curseur {
-                        width: 120px;
+                        preferred-width: 120px;
+                        max-width: 120px;
                         minimum: 0;
                         maximum: 100;
                         pas: 5;
@@ -334,20 +335,23 @@ export component EnEcoute inherits Rectangle {
                     overflow: elide;
                 }
             }
-            if DonneesMusique.vue.navigateur: HorizontalLayout {
-                alignment: center;
+            if DonneesMusique.vue.navigateur: VerticalLayout {
                 spacing: Espace.e2;
                 Text {
                     text: "La musique s'écoute dans le navigateur sur cet appareil : elle n'y est pas synchronisée.";
                     color: Theme.gris;
                     font-size: Typo.petit;
-                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
                 }
-                Bouton {
-                    texte: "Ouvrir dans le navigateur";
-                    icone: "external";
-                    clique => {
-                        DonneesMusique.ouvrir-navigateur();
+                HorizontalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Ouvrir dans le navigateur";
+                        icone: "external";
+                        clique => {
+                            DonneesMusique.ouvrir-navigateur();
+                        }
                     }
                 }
             }
@@ -406,7 +410,10 @@ export component EnEcoute inherits Rectangle {
             }
         }
         VerticalLayout {
-            width: 300px;
+            min-width: 220px;
+            preferred-width: 300px;
+            max-width: 300px;
+            horizontal-stretch: 0;
             spacing: Espace.e3;
             alignment: start;
             Carte {
@@ -445,6 +452,7 @@ export component EnEcoute inherits Rectangle {
                     color: Theme.gris;
                     font-family: Typo.mono;
                     font-size: 10.5px;
+                    wrap: word-wrap;
                 }
                 if DonneesMusique.vue.recherche-erreur != "": Text {
                     text: DonneesMusique.vue.recherche-erreur;
