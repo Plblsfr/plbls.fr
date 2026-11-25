@@ -47,7 +47,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 ## `ci.yml` (PR)
 
 - `version-seule` : seul job de la PR de version (branche `ci/version`, `changements` et donc tous les autres jobs sont ignorés) ; échoue si un
-  autre fichier que `.version` change ou si `.version` n'a pas les quatre éléments `api`, `web`, `windows`, `android` (plus `natif`, facultatif) au format `x.y.z`.
+  autre fichier que `.version` change ou si `.version` n'a pas les quatre éléments `api`, `web`, `windows`, `android` (plus `natif`, facultatif : ancienne clé de l'app native, que `bump-version.mjs` ne calcule plus et retire) au format `x.y.z`.
 - `changelog` : exige un nouveau `changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
   tests des scripts communs, liens Markdown internes (`scripts/check-links.mjs`), `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque

@@ -73,7 +73,7 @@ Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte u
 ## 7. Après la fusion (l'utilisateur confirme)
 - `git switch main && git pull`. Vérifier que HEAD est le commit de fusion de la release.
 - Vérifier que les versions de `.version` sur HEAD sont celles écrites dans `changelog.json` et `CHANGELOG.md`. Sinon, s'arrêter et le dire.
-- Demander avec AskUserQuestion ce qu'il faut livrer : **API** (`estompe-api-vX.Y.Z`), **applications** (`estompe-app-vX.Y.Z`) ou **les deux** (même commit). Ne proposer que ce dont la version a augmenté depuis le dernier tag correspondant (`git tag -l 'estompe-api-v*'`, `git tag -l 'estompe-app-v*'`). L'app native (`natif` de `.version`) ne se livre pas : projet abandonné, sans workflow de livraison.
+- Demander avec AskUserQuestion ce qu'il faut livrer : **API** (`estompe-api-vX.Y.Z`), **applications** (`estompe-app-vX.Y.Z`) ou **les deux** (même commit). Ne proposer que ce dont la version a augmenté depuis le dernier tag correspondant (`git tag -l 'estompe-api-v*'`, `git tag -l 'estompe-app-v*'`). L'app native ne se livre pas : projet abandonné, sans version ni workflow de livraison.
 - Pour chaque tag : vérifier qu'il n'existe pas, `git tag -a <tag> -m "<tag>"`, puis `git push origin <tag>` (ce tag seul, jamais `--tags`). `estompe-api-v*` déclenche `livraison.yml` (job `estompe-api-image` : image Rust de l'API), `estompe-app-v*` déclenche `estompe-livraison-app.yml` (images web, installeur, APK).
 - `gh release create <tag> --repo Plblsfr/plbls.fr --verify-tag --title "<tag>" --notes "<Nouveautés / Corrections>"` pour chaque tag (`--notes`, pas `--body`).
 
