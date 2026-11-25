@@ -68,9 +68,9 @@ estompe-natif-build PROFIL="release":
     cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo build --locked --profile {{PROFIL}}
 
 estompe-natif-test:
-    cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --workspace --locked
+    cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo nextest run --workspace --locked
 
-# Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests, build
+# Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests (qui construisent aussi le binaire)
 estompe-natif-check:
     scripts/estompe/natif-check.sh
 
@@ -89,7 +89,7 @@ estompe-natif-emoji DOSSIER="":
 
 # Parcours long du test de volume de la messagerie (50 000 messages, 2 minutes simulées)
 estompe-natif-volume:
-    cd apps/estompe/natif && ESTOMPE_VOLUME=long {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --locked --test messagerie_volume -- --nocapture
+    cd apps/estompe/natif && ESTOMPE_VOLUME=long {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo nextest run --locked --test natif messagerie_volume:: --no-capture
 
 # Test d'intégration du vocal contre le LiveKit de dev-up (docker compose -f deploy/docker-compose.dev.yml up -d --wait livekit)
 estompe-natif-vocal:
@@ -101,7 +101,7 @@ estompe-natif-mesures *ARGS:
 
 # Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
 estompe-natif-captures:
-    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --locked --test captures --test overlay
+    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo nextest run --locked --test natif captures:: overlay::
 
 # Demande aussi ffmpeg et ffprobe dans le PATH
 test-entracte:
