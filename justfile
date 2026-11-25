@@ -9,7 +9,7 @@ install:
     npm ci
 
 # Lint de tout le code non Rust : Biome (JS, TS, CSS, JSON), shellcheck (scripts shell), ruff (Python), liens Markdown internes
-lint: lint-js lint-shell lint-python lint-links estompe-natif-parite
+lint: lint-js lint-shell lint-python lint-links
 
 lint-js:
     npm run lint
@@ -70,7 +70,7 @@ estompe-natif-build PROFIL="release":
 estompe-natif-test:
     cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo nextest run --workspace --locked
 
-# Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests (qui construisent aussi le binaire)
+# Tous les contrôles de l'app native : portabilité, fichiers générés, fmt, clippy, cargo deny, tests (qui construisent aussi le binaire)
 estompe-natif-check:
     scripts/estompe/natif-check.sh
 
