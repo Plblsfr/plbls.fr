@@ -161,12 +161,21 @@ describe('api', () => {
     expect(h).not.toHaveBeenCalled()
     fetchMock.mockImplementation(async () => json(401, { error: 'unauthorized', message: 'x' }))
     await expect(api.setServerAvatar('s1', img)).rejects.toMatchObject({ status: 401 })
-    await expect(api.avatarBlob('u1', 's1')).rejects.toMatchObject({ status: 401 })
+    await expect(api.avatarBlob('u1', 1, 's1')).rejects.toMatchObject({ status: 401 })
     expect(h).toHaveBeenCalledTimes(2)
     fetchMock.mockImplementation(async () => json(426, { error: 'upgrade_required', message: 'trop vieux' }))
     await expect(api.setCameraBackground(img)).rejects.toMatchObject({ status: 426 })
-    await expect(api.serverIconBlobUrl('s1')).rejects.toMatchObject({ status: 426 })
+    await expect(api.serverIconBlobUrl('s1', 1)).rejects.toMatchObject({ status: 426 })
     expect(refus).toHaveBeenCalledTimes(2)
+  })
+
+  it('demande chaque image sous une adresse propre à sa version, que le cache du navigateur ne peut pas confondre', async () => {
+    fetchMock.mockImplementation(async () => json(404, { error: 'not_found', message: 'x' }))
+    await api.avatarBlob('u1', 3).catch(() => {})
+    await api.avatarBlob('u1', 2, 's1').catch(() => {})
+    await api.serverIconBlobUrl('s1', 4).catch(() => {})
+    await api.badgeIconBlobUrl('b1', 5).catch(() => {})
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/users/u1/avatar?v=3', '/servers/s1/users/u1/avatar?v=2', '/servers/s1/icon?v=4', '/badges/b1/icon?v=5'])
   })
 
   it('borne chaque requête dans le temps et signale un serveur muet', async () => {
@@ -175,6 +184,6 @@ describe('api', () => {
     expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
     fetchMock.mockImplementation(async () => { throw new DOMException('délai dépassé', 'TimeoutError') })
     await expect(api.servers()).rejects.toMatchObject({ status: 0, code: 'timeout' })
-    await expect(api.avatarBlob('u1')).rejects.toMatchObject({ status: 0, code: 'timeout' })
+    await expect(api.avatarBlob('u1', 1)).rejects.toMatchObject({ status: 0, code: 'timeout' })
   })
 })

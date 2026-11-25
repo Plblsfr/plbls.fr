@@ -56,15 +56,15 @@ class Avatars {
   /** Lance le téléchargement si l'avatar n'est pas encore en mémoire. */
   ensure(userId: string, serverId?: string) {
     const sv = this.serverVersion(userId, serverId)
-    if (sv) this.fetch(`${serverId}/${userId}:${sv}`, userId, serverId)
+    if (sv) this.fetch(`${serverId}/${userId}:${sv}`, userId, sv, serverId)
     const v = this.versions[userId]
-    if (v) this.fetch(`${userId}:${v}`, userId)
+    if (v) this.fetch(`${userId}:${v}`, userId, v)
   }
 
-  private fetch(key: string, userId: string, serverId?: string) {
+  private fetch(key: string, userId: string, version: number, serverId?: string) {
     if (this.urls[key] || this.pending.has(key)) return
     this.pending.add(key)
-    api.avatarBlob(userId, serverId)
+    api.avatarBlob(userId, version, serverId)
       .then((b) => { const u = URL.createObjectURL(b); this.blobs.set(u, b); this.urls[key] = u })
       .catch(() => {})
       .finally(() => this.pending.delete(key))
@@ -86,7 +86,7 @@ class ServerIcons {
     const key = `${serverId}:${version}`
     if (!version || this.urls[key] || this.pending.has(key)) return
     this.pending.add(key)
-    api.serverIconBlobUrl(serverId)
+    api.serverIconBlobUrl(serverId, version)
       .then((u) => { this.urls[key] = u })
       .catch(() => {})
       .finally(() => this.pending.delete(key))
@@ -108,7 +108,7 @@ class BadgeIcons {
     const key = `${id}:${version}`
     if (!version || this.urls[key] || this.pending.has(key)) return
     this.pending.add(key)
-    api.badgeIconBlobUrl(id)
+    api.badgeIconBlobUrl(id, version)
       .then((u) => { this.urls[key] = u })
       .catch(() => {})
       .finally(() => this.pending.delete(key))
