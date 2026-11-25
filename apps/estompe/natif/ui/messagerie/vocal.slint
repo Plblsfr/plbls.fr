@@ -1,6 +1,6 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
-import { Icone } from "../composants.slint";
-import { DonneesMessagerie, PieceJointe } from "donnees.slint";
+import { Icone, Bouton, VarianteBouton } from "../composants.slint";
+import { DonneesMessagerie, PieceJointe, TranscriptionVocale, EtatTranscription } from "donnees.slint";
 
 export enum EtapeVocal { aucune, ouverture, enregistrement, finalisation, ecoute, envoi }
 
@@ -24,6 +24,13 @@ export global DonneesMessageVocal {
     callback basculer(string, string);
     callback placer(string, string, float);
     callback changer-vitesse();
+    callback transcrire(string);
+    callback basculer-transcription(string);
+    callback deplier-transcription(string);
+    callback modifier-transcription(string, string);
+    callback ecrire-transcription(string, string);
+    callback annuler-transcription(string);
+    callback enregistrer-transcription(string, string);
 }
 
 export component Onde inherits Rectangle {
@@ -268,5 +275,230 @@ export component VocalIllisible inherits Rectangle {
                 }
             }
         }
+    }
+}
+
+component LienTranscription inherits Text {
+    callback clique();
+    color: Theme.encre-2;
+    font-size: 12px;
+    font-weight: Typo.demi-gras;
+    vertical-alignment: center;
+    accessible-role: button;
+    accessible-label: self.text;
+    accessible-action-default => {
+        root.clique();
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component PointTranscription inherits Text {
+    text: "·";
+    color: Theme.gris;
+    font-size: 12px;
+    vertical-alignment: center;
+    accessible-role: none;
+}
+
+export component TranscriptionVue inherits VerticalLayout {
+    in property <TranscriptionVocale> transcription;
+    in property <string> piece;
+    in property <string> message;
+    property <bool> repliee: root.transcription.repliable && !root.transcription.depliee;
+    spacing: 4px;
+    if root.transcription.etat == EtatTranscription.proposee: HorizontalLayout {
+        alignment: start;
+        Rectangle {
+            height: 26px;
+            width: transcrire.preferred-width + 20px;
+            border-radius: Rayon.pilule;
+            border-width: 1px;
+            border-color: Theme.trait-fort;
+            background: zone-transcrire.has-hover ? Theme.papier-2 : transparent;
+            accessible-role: button;
+            accessible-label: "Transcrire";
+            accessible-action-default => {
+                DonneesMessageVocal.transcrire(root.piece);
+            }
+            transcrire := Text {
+                text: "Transcrire";
+                color: Theme.encre-2;
+                font-size: 12.5px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            zone-transcrire := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    DonneesMessageVocal.transcrire(root.piece);
+                }
+            }
+        }
+    }
+    if root.transcription.etat == EtatTranscription.demandee: HorizontalLayout {
+        alignment: start;
+        Rectangle {
+            height: 26px;
+            width: attente.preferred-width + 20px;
+            border-radius: Rayon.pilule;
+            background: Theme.papier-2;
+            accessible-role: text;
+            accessible-label: "Transcription en cours…";
+            attente := HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 6px;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "onde";
+                        taille: 14px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    text: "Transcription en cours…";
+                    color: Theme.gris;
+                    font-size: 12.5px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    if root.transcription.etat == EtatTranscription.prete: Rectangle {
+        preferred-width: 380px;
+        max-width: 380px;
+        border-radius: Rayon.s;
+        background: Theme.papier-2;
+        accessible-role: groupbox;
+        accessible-label: "Transcription du message vocal";
+        VerticalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 6px;
+            if !root.transcription.masquee: Text {
+                text: root.transcription.texte;
+                color: Theme.encre;
+                font-size: 14px;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: root.repliee ? 54px : 100000px;
+                accessible-role: text;
+                accessible-label: root.transcription.texte;
+            }
+            HorizontalLayout {
+                alignment: start;
+                spacing: 4px;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "onde";
+                        taille: 13px;
+                        couleur: Theme.gris;
+                    }
+                }
+                if root.transcription.auto: Text {
+                    text: "TRANSCRIPTION AUTOMATIQUE";
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 10.5px;
+                    vertical-alignment: center;
+                }
+                if root.transcription.auto: PointTranscription { }
+                if root.transcription.repliable: LienTranscription {
+                    text: root.transcription.depliee ? "Afficher moins" : "Afficher plus";
+                    clique => {
+                        DonneesMessageVocal.deplier-transcription(root.piece);
+                    }
+                }
+                if root.transcription.repliable: PointTranscription { }
+                LienTranscription {
+                    text: root.transcription.masquee ? "Afficher la transcription" : "Masquer";
+                    clique => {
+                        DonneesMessageVocal.basculer-transcription(root.piece);
+                    }
+                }
+                if root.transcription.modifiable: PointTranscription { }
+                if root.transcription.modifiable: LienTranscription {
+                    text: "Modifier";
+                    clique => {
+                        DonneesMessageVocal.modifier-transcription(root.message, root.piece);
+                    }
+                }
+            }
+        }
+    }
+    if root.transcription.etat == EtatTranscription.edition: Rectangle {
+        preferred-width: 380px;
+        max-width: 380px;
+        border-radius: Rayon.s;
+        background: Theme.papier-2;
+        VerticalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 8px;
+            Rectangle {
+                height: 76px;
+                border-radius: Rayon.xs;
+                background: Theme.surface;
+                border-width: champ.has-focus ? 2px : 1px;
+                border-color: champ.has-focus ? Theme.encre : Theme.trait-fort;
+                accessible-role: text-input;
+                accessible-label: "Transcription du message vocal";
+                accessible-value: champ.text;
+                clip: true;
+                champ := TextInput {
+                    x: 10px;
+                    y: 8px;
+                    width: parent.width - 20px;
+                    height: parent.height - 16px;
+                    single-line: false;
+                    wrap: word-wrap;
+                    enabled: !root.transcription.occupee;
+                    text: root.transcription.brouillon;
+                    color: Theme.encre;
+                    font-size: 14px;
+                    selection-background-color: Theme.rose;
+                    edited => {
+                        DonneesMessageVocal.ecrire-transcription(root.piece, self.text);
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                Bouton {
+                    texte: "Enregistrer";
+                    variante: VarianteBouton.primaire;
+                    en-cours: root.transcription.occupee;
+                    clique => {
+                        DonneesMessageVocal.enregistrer-transcription(root.piece, champ.text);
+                    }
+                }
+                Bouton {
+                    texte: "Annuler";
+                    actif: !root.transcription.occupee;
+                    clique => {
+                        DonneesMessageVocal.annuler-transcription(root.piece);
+                    }
+                }
+            }
+        }
+    }
+    if root.transcription.erreur != "": Text {
+        text: root.transcription.erreur;
+        color: Theme.danger;
+        font-size: 11.5px;
+        wrap: word-wrap;
+        accessible-role: text;
     }
 }

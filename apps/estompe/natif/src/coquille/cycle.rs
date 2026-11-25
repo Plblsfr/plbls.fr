@@ -605,6 +605,27 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_vocal!(on_changer_vitesse, |p, f| p
         .messagerie()
         .changer_vitesse(&f));
+    rappel_vocal!(on_transcrire, |p, f, piece| p
+        .messagerie()
+        .transcrire(&f, &piece));
+    rappel_vocal!(on_basculer_transcription, |p, f, piece| p
+        .messagerie()
+        .basculer_transcription(&f, &piece));
+    rappel_vocal!(on_deplier_transcription, |p, f, piece| p
+        .messagerie()
+        .deplier_transcription(&f, &piece));
+    rappel_vocal!(on_modifier_transcription, |p, f, message, piece| p
+        .messagerie()
+        .modifier_transcription(&f, &message, &piece));
+    rappel_vocal!(on_ecrire_transcription, |p, _f, piece, texte| p
+        .messagerie()
+        .ecrire_transcription(&piece, &texte));
+    rappel_vocal!(on_annuler_transcription, |p, f, piece| p
+        .messagerie()
+        .annuler_transcription(&f, &piece));
+    rappel_vocal!(on_enregistrer_transcription, |p, f, piece, texte| p
+        .messagerie()
+        .enregistrer_transcription(&f, &piece, &texte));
     let selecteur = f.global::<DonneesSelecteur>();
     macro_rules! rappel_selecteur {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -1130,6 +1151,8 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     }
     rappel_parametres!(on_apercus_change, |p, f, actif| p
         .definir_apercus(&f, actif));
+    rappel_parametres!(on_transcrire_auto_change, |p, f, actif| p
+        .definir_transcription_auto(&f, actif));
     rappel_parametres!(on_type_change, |p, f, genre, actif| p
         .definir_type_notification(&f, &genre, actif));
     rappel_parametres!(on_niveau_general_change, |p, f, rang| p
@@ -1489,6 +1512,11 @@ async fn session(
         .definir_brouillons(contexte.fabrique.brouillons());
     pont.messagerie()
         .definir_apercus(contexte.memoire.lire(|p| p.apercus));
+    pont.messagerie()
+        .definir_transcription_auto(contexte.memoire.lire(|p| p.transcrire_auto));
+    let memoire = contexte.memoire.clone();
+    pont.messagerie()
+        .definir_alpha(Arc::new(move || memoire.lire(|p| p.alpha)));
     let memoire = contexte.memoire.clone();
     pont.messagerie().selecteur().definir_recents(
         contexte.memoire.lire(|p| p.emoji_recents.clone()),

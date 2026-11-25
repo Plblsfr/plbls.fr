@@ -92,6 +92,8 @@ pub fn afficher_onglets(f: &Principale) {
 pub fn afficher_preferences(f: &Principale, p: &Preferences) {
     let g = f.global::<DonneesParametres>();
     g.set_apercus(p.apercus);
+    g.set_alpha(p.alpha);
+    g.set_transcrire_auto(p.transcrire_auto);
     g.set_journal_actif(p.journal_debogage);
     g.set_raccourcis(lignes_de_raccourcis(raccourcis_fixes()));
     g.set_touches_globales(lignes_de_raccourcis(raccourcis_globaux(
@@ -180,8 +182,9 @@ impl Parametres {
         let actuel = self.outils.memoire.lire(|p| p.alpha);
         if let Some(alpha) = self.deblocage.borrow_mut().cliquer(actuel) {
             self.outils.memoire.modifier(|p| p.alpha = alpha);
-            f.global::<DonneesParametres>()
-                .set_annonce(annonce_alpha(alpha).into());
+            let g = f.global::<DonneesParametres>();
+            g.set_alpha(alpha);
+            g.set_annonce(annonce_alpha(alpha).into());
         }
     }
 

@@ -12,6 +12,7 @@ use estompe_client::sections::Section;
 use estompe_client::store::messages::ChangementMessages;
 use estompe_client::store::{Changement, CleConversation, ParticipantVocal, Store};
 use estompe_client::temps_reel::EtatReseau;
+use estompe_client::transcription::Suivi as SuiviTranscription;
 use estompe_client::types::LinkPreview;
 use estompe_client::version::MiseAJourDisponible;
 use estompe_client::vocal::{
@@ -210,6 +211,9 @@ const ECRANS: &[Ecran] = ecrans![
     "saisie-vocal-ecoute-sombre", Sombre, saisie_vocal_ecoute;
     "messagerie-vocal-clair", Clair, messagerie_vocal;
     "messagerie-vocal-sombre", Sombre, messagerie_vocal;
+    "messagerie-transcription-clair", Clair, messagerie_transcription;
+    "messagerie-transcription-sombre", Sombre, messagerie_transcription;
+    "messagerie-transcription-edition-clair", Clair, messagerie_transcription_edition;
     "selecteur-emoji-clair", Clair, selecteur_emoji;
     "selecteur-emoji-sombre", Sombre, selecteur_emoji;
     "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
@@ -2362,6 +2366,69 @@ fn messagerie_vocal(f: &Principale) {
     v.set_avance(0.4);
     v.set_temps("0:01".into());
     v.set_vitesse("1,5×".into());
+    stabiliser(f);
+}
+
+fn messagerie_transcriptions(f: &Principale) -> Pont {
+    let mut etat = commun::coquille::etat_avec_membres();
+    etat.compte.transcription = Some(estompe_client::types::GetMeReponseTranscription::On);
+    let pont = coquille_complete(
+        f,
+        etat,
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        Some(medias_des_captures()),
+        move |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_transcriptions(),
+                false,
+            )
+        },
+    );
+    pont.messagerie().definir_ecoutes(
+        vec![
+            "t1".into(),
+            "t2".into(),
+            "t3".into(),
+            "t4".into(),
+            "t5".into(),
+        ],
+        Arc::new(|_| {}),
+    );
+    pont.messagerie().noter_transcription(
+        "t2",
+        SuiviTranscription {
+            demandee: true,
+            ..SuiviTranscription::default()
+        },
+    );
+    pont.messagerie().noter_transcription(
+        "t5",
+        SuiviTranscription {
+            erreur: estompe_client::transcription::ECHEC_DEMANDE.into(),
+            ..SuiviTranscription::default()
+        },
+    );
+    pont
+}
+
+fn messagerie_transcription(f: &Principale) {
+    let pont = messagerie_transcriptions(f);
+    pont.messagerie().rafraichir_maintenant(f);
+    stabiliser(f);
+}
+
+fn messagerie_transcription_edition(f: &Principale) {
+    let pont = messagerie_transcriptions(f);
+    pont.messagerie().noter_transcription(
+        "t4",
+        SuiviTranscription {
+            brouillon: Some("Parfait, je serai là à 19 h, peut-être un peu avant.".into()),
+            ..SuiviTranscription::default()
+        },
+    );
+    pont.messagerie().rafraichir_maintenant(f);
     stabiliser(f);
 }
 

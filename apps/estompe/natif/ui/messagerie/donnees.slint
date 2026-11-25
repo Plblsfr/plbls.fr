@@ -18,6 +18,21 @@ export enum GenrePieceJointe { image, fichier, media, expiree }
 
 export enum EtatTelechargement { aucun, en-cours, termine, echec }
 
+export enum EtatTranscription { aucune, proposee, demandee, prete, edition }
+
+export struct TranscriptionVocale {
+    etat: EtatTranscription,
+    texte: string,
+    auto: bool,
+    repliable: bool,
+    depliee: bool,
+    masquee: bool,
+    modifiable: bool,
+    brouillon: string,
+    occupee: bool,
+    erreur: string,
+}
+
 export struct PieceJointe {
     id: string,
     genre: GenrePieceJointe,
@@ -37,6 +52,7 @@ export struct PieceJointe {
     telechargement: EtatTelechargement,
     progression: float,
     note: string,
+    transcription: TranscriptionVocale,
 }
 
 export struct OptionSondage {

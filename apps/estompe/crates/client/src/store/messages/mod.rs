@@ -32,7 +32,7 @@ use crate::http::ErreurApi;
 use crate::sondage::{choix_apres_vote, comptes_avec, mes_choix, Sondage};
 use crate::temps_reel::evenements::{Lecture, ReactionModifiee, SondageClos, SondageVote};
 use crate::temps_reel::Evenement;
-use crate::types::{Message, Person};
+use crate::types::{Message, Person, Transcript};
 
 impl Store {
     pub fn envois(&self, cle: &CleConversation) -> Vec<EnvoiLocal> {
@@ -221,6 +221,43 @@ impl Store {
 
     pub async fn votants(&self, message: &str) -> Result<BTreeMap<String, Vec<Person>>, ErreurApi> {
         self.client().votants(message).await
+    }
+
+    pub async fn transcrire(&self, piece: &str) -> Result<(), ErreurApi> {
+        let transcription = self.client().transcrire(piece).await?;
+        self.appliquer_transcription(piece, &transcription);
+        Ok(())
+    }
+
+    pub async fn modifier_transcription(&self, piece: &str, texte: &str) -> Result<(), ErreurApi> {
+        let transcription = self.client().modifier_transcription(piece, texte).await?;
+        self.appliquer_transcription(piece, &transcription);
+        Ok(())
+    }
+
+    pub fn appliquer_transcription(&self, piece: &str, transcription: &Transcript) {
+        let porteur = self.lire_messages(|m| {
+            m.conversations
+                .values()
+                .flat_map(|c| c.messages.iter().chain(&c.en_attente))
+                .find(|x| {
+                    x.attachments
+                        .iter()
+                        .flatten()
+                        .any(|a| a.id.as_deref() == Some(piece))
+                })
+                .cloned()
+        });
+        let Some(mut message) = porteur else {
+            return;
+        };
+        for a in message.attachments.iter_mut().flatten() {
+            if a.id.as_deref() == Some(piece) {
+                a.transcript = transcription.transcript.clone();
+                a.transcript_auto = transcription.transcript_auto;
+            }
+        }
+        self.appliquer_aux_messages(&Evenement::MessageModifie(message));
     }
 
     pub async fn epingler(&self, message: &str, epingle: bool) -> Result<(), ErreurApi> {
@@ -591,6 +628,70 @@ mod tests {
             .find(|r| r.methode == "PATCH")
             .unwrap();
         assert_eq!(requete.json(), json!({"content": "modifié"}));
+    }
+
+    #[tokio::test]
+    async fn la_transcription_est_appliquee_au_message_vocal() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        let (store, cle) = store_sur(serveur.client());
+        store.installer_conversation(
+            &cle,
+            vec![depuis_json(json!({"id": "2", "channel_id": "c1", "author": {"id": "me", "pseudo": "moi"}, "content": "", "attachments": [{"id": "v1", "kind": "voice"}, {"id": "f1"}]}))],
+            false,
+        );
+        let piece = |store: &Store| {
+            store.conversation(&cle).unwrap().messages[0]
+                .attachments
+                .clone()
+                .unwrap()
+        };
+        serveur.router(
+            "POST",
+            "/files/v1/transcript",
+            Reponse::json(
+                502,
+                json!({"error": "transcription_failed", "message": "x"}),
+            ),
+        );
+        assert_eq!(store.transcrire("v1").await.unwrap_err().statut(), 502);
+        assert_eq!(piece(&store)[0].transcript, None);
+        serveur.router(
+            "POST",
+            "/files/v1/transcript",
+            Reponse::json(
+                200,
+                json!({"transcript": "Bonjour", "transcript_auto": true}),
+            ),
+        );
+        let mut abonne = store.abonner();
+        store.transcrire("v1").await.unwrap();
+        assert_eq!(piece(&store)[0].transcript.as_deref(), Some("Bonjour"));
+        assert_eq!(piece(&store)[0].transcript_auto, Some(true));
+        assert_eq!(piece(&store)[1].transcript, None);
+        let recus: Vec<Changement> = std::iter::from_fn(|| abonne.try_recv().ok())
+            .flatten()
+            .collect();
+        assert!(
+            recus.contains(&Changement::Messages(ChangementMessages::Modifie {
+                conversation: cle.clone(),
+                message: "2".into()
+            }))
+        );
+        serveur.router(
+            "PUT",
+            "/files/v1/transcript",
+            Reponse::json(200, json!({"transcript": "", "transcript_auto": false})),
+        );
+        store.modifier_transcription("v1", "").await.unwrap();
+        assert_eq!(piece(&store)[0].transcript.as_deref(), Some(""));
+        assert_eq!(piece(&store)[0].transcript_auto, Some(false));
+        store.appliquer_transcription(
+            "inconnue",
+            &Transcript {
+                transcript: Some("x".into()),
+                transcript_auto: Some(true),
+            },
+        );
     }
 
     #[tokio::test]

@@ -504,6 +504,39 @@ pub mod coquille {
         v.into_iter().map(depuis).collect()
     }
 
+    pub fn conversation_transcriptions() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let auteurs = [
+            ("ines", "Inès"),
+            ("dave", "dave"),
+            ("carol", "carol"),
+            ("u1", "bob"),
+            ("eve", "Ève"),
+        ];
+        let mut v: Vec<Value> = auteurs
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let mut m = ecrit(
+                    &format!("{}", 720 + i),
+                    c1,
+                    *a,
+                    &format!("2026-11-19T08:{:02}:00Z", 20 + i * 3),
+                    "",
+                );
+                m["attachments"] = json!([
+                    {"id": format!("t{}", i + 1), "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 9000, "kind": "voice", "duration_ms": (4_000 + i as i64 * 3_100), "waveform": forme_de_test(30 + i)}
+                ]);
+                m
+            })
+            .collect();
+        v[2]["attachments"][0]["transcript"] = json!("Salut tout le monde, je confirme pour samedi : on se retrouve à 19 h devant le cinéma, j'apporte les billets. Si quelqu'un est en retard, prévenez-moi dans le salon, je garderai les places au fond de la salle.");
+        v[2]["attachments"][0]["transcript_auto"] = json!(true);
+        v[3]["attachments"][0]["transcript"] = json!("Parfait, je serai là à 19 h.");
+        v[3]["attachments"][0]["transcript_auto"] = json!(false);
+        v.into_iter().map(depuis).collect()
+    }
+
     pub fn conversation_cartes() -> Vec<estompe_client::types::Message> {
         let c1 = ("channel_id", "c1");
         [
@@ -2414,7 +2447,16 @@ pub mod references {
             return Ok(());
         }
         let Ok(reference) = image::open(&chemin).map(|i| i.into_rgba8()) else {
-            return Err(format!("{nom} : référence absente ({})", chemin.display()));
+            let sorties = sorties();
+            std::fs::create_dir_all(&sorties).expect("dossier des sorties");
+            obtenu
+                .save(sorties.join(format!("{nom}.obtenu.png")))
+                .expect("écriture de la capture");
+            return Err(format!(
+                "{nom} : référence absente ({}), capture dans {}",
+                chemin.display(),
+                sorties.display()
+            ));
         };
         let (part, difference) = comparer(obtenu, &reference);
         if part <= PART_TOLEREE {

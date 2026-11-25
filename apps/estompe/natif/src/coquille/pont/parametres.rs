@@ -7,7 +7,7 @@ use estompe_client::niveaux_notification::{
 use estompe_client::parametres::{avec_type_de_notification, types_de_notification};
 use estompe_client::store::{est_vocal, Changement, Etat, Presence};
 use estompe_client::temps_reel::evenements::StatutPresence;
-use estompe_client::types::NotifySettings;
+use estompe_client::types::{GetMeReponseTranscription, NotifySettings};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use super::super::projection::serveur_courant;
@@ -122,7 +122,18 @@ impl Pont {
             .unwrap_or_default()
     }
 
+    pub fn projeter_transcription(&self, f: &Principale) {
+        let reglage = self.store.lire(|e| match e.compte.transcription {
+            Some(GetMeReponseTranscription::On) => "on",
+            Some(GetMeReponseTranscription::Alpha) => "alpha",
+            _ => "",
+        });
+        f.global::<DonneesParametres>()
+            .set_transcription(reglage.into());
+    }
+
     pub fn projeter_parametres(&self, f: &Principale) {
+        self.projeter_transcription(f);
         let maintenant = self.maintenant_ms();
         let g = f.global::<DonneesParametres>();
         let choisi = g.get_serveur_notif().to_string();
@@ -397,6 +408,14 @@ impl Pont {
         f.global::<DonneesParametres>().set_apercus(apercus);
         self.messagerie.definir_apercus(apercus);
         self.messagerie.rafraichir_maintenant(f);
+    }
+
+    pub fn definir_transcription_auto(&self, f: &Principale, actif: bool) {
+        if let Some(memoire) = &self.memoire {
+            memoire.modifier(|p| p.transcrire_auto = actif);
+        }
+        f.global::<DonneesParametres>().set_transcrire_auto(actif);
+        self.messagerie.definir_transcription_auto(actif);
     }
 }
 

@@ -63,6 +63,8 @@ pub struct DonneesPiece {
     pub vocal: bool,
     pub duree_ms: u64,
     pub forme: Vec<u8>,
+    pub transcription: Option<String>,
+    pub transcription_auto: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -266,6 +268,8 @@ pub fn piece(piece: &Attachment) -> DonneesPiece {
             .iter()
             .map(|v| (*v).clamp(0, 100) as u8)
             .collect(),
+        transcription: piece.transcript.clone().filter(|_| vocal),
+        transcription_auto: piece.transcript_auto == Some(true),
         nom,
     }
 }
@@ -780,8 +784,8 @@ mod tests {
                 {"id": "b", "name": "anim.gif", "mime": "image/gif", "size": 10},
                 {"id": "c", "name": "..\\CON.txt", "mime": "text/plain", "size": 3_500_000},
                 {"id": "d", "name": "vieux.zip", "mime": "application/zip", "expired": true},
-                {"id": "e", "name": "voix.ogg", "kind": "voice"},
-                {"id": "f", "name": "clip.mp4", "mime": "video/mp4"}
+                {"id": "e", "name": "voix.ogg", "kind": "voice", "transcript": "Bonjour", "transcript_auto": true},
+                {"id": "f", "name": "clip.mp4", "mime": "video/mp4", "transcript": "ignoré"}
             ],
             "reactions": [{"emoji": "👍", "count": 2, "me": true, "users": [{"id": "me", "pseudo": "moi"}, {"id": "bob", "pseudo": "bob"}]}]
         }))
@@ -804,6 +808,9 @@ mod tests {
             ]
         );
         assert_eq!(a.pieces[2].nom_sur, "_CON.txt");
+        assert_eq!(a.pieces[4].transcription.as_deref(), Some("Bonjour"));
+        assert!(a.pieces[4].transcription_auto);
+        assert_eq!(a.pieces[5].transcription, None);
         assert_eq!(a.images().count(), 2);
         assert_eq!(a.lien.as_deref(), Some("https://plbls.fr/page"));
         assert_eq!(a.reactions[0].titre, "Toi et bob ont réagi avec 👍");

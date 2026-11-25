@@ -51,6 +51,7 @@ pub mod sondage;
 pub mod store;
 pub mod televersement;
 pub mod temps_reel;
+pub mod transcription;
 pub mod version;
 pub mod video;
 pub mod virtualisation;

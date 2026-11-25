@@ -228,12 +228,18 @@ impl PontMessagerie {
                 )
             });
             if let Some(piece) = piece {
+                let fichier = piece.id.clone();
                 let brouillon = Brouillon {
                     pieces: vec![piece],
                     reponse_a,
                     ..Brouillon::default()
                 };
-                pont.store.envoyer(&cle, brouillon).await;
+                let envoi = pont.store.envoyer(&cle, brouillon).await;
+                let envoye =
+                    envoi.is_some_and(|id| pont.store.lire_messages(|m| m.envoi(id).is_none()));
+                if let (true, true, Some(fichier)) = (envoye, pont.transcription_auto(), fichier) {
+                    pont.transcrire_apres_envoi(&fichier);
+                }
             }
         });
     }

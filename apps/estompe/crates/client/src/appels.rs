@@ -25,11 +25,11 @@ use crate::types::{
     PostChannelsCidMessagesBulkDeleteRequete, PostDmsRequete, PostNotificationsReadRequete,
     PostReportsRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
     PostServersIdMembersUidBanRequete, PostServersIdMembersUidKickRequete,
-    PostServersIdMembersUidWarnRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
-    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete,
+    PostServersIdMembersUidWarnRequete, PostVoiceCidTokenReponse, PutFilesIdTranscriptRequete,
+    PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete,
     PutServersIdChannelsCidModerationRequete, PutServersIdChannelsCidOverridesRidRequete,
     PutServersIdMembersUidNicknameRequete, PutServersIdMembersUidTimeoutRequete,
-    PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, DM,
+    PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, Transcript, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -1019,6 +1019,31 @@ impl Client {
         };
         self.televerser_en_flux("/files", &envoi, std::sync::Arc::new(|_, _| {}))
             .await
+    }
+
+    pub async fn transcrire(&self, fichier: &str) -> Result<Transcript, ErreurApi> {
+        self.requete(
+            Method::POST,
+            &format!("/files/{}/transcript", encoder_composant(fichier)),
+            &Corps::Aucun,
+            OptionsAppel::default(),
+        )
+        .await?
+        .ok_or_else(|| ErreurApi::ReponseInvalide("réponse sans corps JSON".to_string()))
+    }
+
+    pub async fn modifier_transcription(
+        &self,
+        fichier: &str,
+        texte: &str,
+    ) -> Result<Transcript, ErreurApi> {
+        self.put(
+            &format!("/files/{}/transcript", encoder_composant(fichier)),
+            &PutFilesIdTranscriptRequete {
+                text: texte.to_string(),
+            },
+        )
+        .await
     }
 
     pub async fn definir_avatar(
@@ -2339,5 +2364,40 @@ mod tests {
         serveur.programmer([Reponse::brute(200, "image/svg+xml", b"<svg/>")]);
         assert_eq!(&client.icone_de_badge("b 1").await.unwrap()[..], b"<svg/>");
         assert_eq!(serveur.requetes()[1].ligne(), ("/badges/b%201/icon", "GET"));
+    }
+
+    #[tokio::test]
+    async fn demande_et_corrige_une_transcription() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(
+                200,
+                json!({"transcript": "Bonjour", "transcript_auto": true}),
+            ),
+            Reponse::json(
+                200,
+                json!({"transcript": "Bonjour !", "transcript_auto": false}),
+            ),
+            Reponse::json(
+                429,
+                json!({"error": "transcription_busy", "message": "occupé"}),
+            ),
+        ])
+        .await;
+        let client = serveur.client();
+        let t = client.transcrire("f1").await.unwrap();
+        assert_eq!(t.transcript.as_deref(), Some("Bonjour"));
+        assert_eq!(t.transcript_auto, Some(true));
+        let t = client
+            .modifier_transcription("f1", "Bonjour !")
+            .await
+            .unwrap();
+        assert_eq!(t.transcript_auto, Some(false));
+        let e = client.transcrire("f1").await.unwrap_err();
+        assert_eq!((e.statut(), e.code()), (429, "transcription_busy"));
+        let requetes = serveur.requetes();
+        assert_eq!(requetes.len(), 3);
+        assert_eq!(requetes[0].ligne(), ("/files/f1/transcript", "POST"));
+        assert_eq!(requetes[1].ligne(), ("/files/f1/transcript", "PUT"));
+        assert_eq!(requetes[1].json(), json!({"text": "Bonjour !"}));
     }
 }

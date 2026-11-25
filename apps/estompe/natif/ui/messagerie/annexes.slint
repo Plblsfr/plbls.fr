@@ -1,8 +1,8 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Anneau } from "../composants/focus.slint";
 import { Icone, Infobulle, Etiquette, BadgeRole, GenreBadgeRole, TexteRiche, BlocTexte, Avatar, Bouton, VarianteBouton } from "../composants.slint";
-import { MessageVocal, VocalIllisible } from "vocal.slint";
-import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, ReactionMessage, LecteurMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
+import { MessageVocal, VocalIllisible, TranscriptionVue } from "vocal.slint";
+import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, EtatTranscription, ReactionMessage, LecteurMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
 
 component Puce inherits Rectangle {
     in property <bool> active: true;
@@ -208,6 +208,11 @@ component PieceJointeVue inherits HorizontalLayout {
             color: root.piece.telechargement == EtatTelechargement.echec ? Theme.danger : Theme.gris;
             font-size: 11.5px;
             overflow: elide;
+        }
+        if root.piece.transcription.etat != EtatTranscription.aucune || root.piece.transcription.erreur != "": TranscriptionVue {
+            transcription: root.piece.transcription;
+            piece: root.piece.id;
+            message: root.message;
         }
     }
     if root.piece.genre == GenrePieceJointe.media && root.piece.vocal && root.piece.echec: VocalIllisible {

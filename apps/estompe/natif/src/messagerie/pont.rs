@@ -13,6 +13,10 @@ use estompe_client::store::messages::{
     auteur, ChangementMessages, Conversation, EtatEnvoi, PREFIXE_LOCAL,
 };
 use estompe_client::store::{Changement, CleConversation, Store};
+use estompe_client::transcription::{
+    affichage as affichage_transcription, Affichage as AffichageTranscription,
+    Etat as EtatTranscriptionPiece, Piece as PieceTranscrite, Suivi as SuiviTranscription,
+};
 use estompe_client::types::LinkPreview;
 use estompe_client::video::Conversions;
 use estompe_plateforme::{Fichiers, Indisponible, OuvertureUrl, PressePapiers};
@@ -42,9 +46,10 @@ use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
 use crate::{
     AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, DroitsLigne, EpingleMessage,
-    EtatConversation, EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage,
-    GenrePieceJointe, GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe,
-    Principale, ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
+    EtatConversation, EtatEpingles, EtatTelechargement, EtatTranscription, GenreBloc, GenreCarte,
+    GenreLigneMessage, GenrePieceJointe, GenreSegment, LecteurMessage, LigneMessage, OptionSondage,
+    PieceJointe, Principale, ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme,
+    TranscriptionVocale, Visionneuse,
 };
 use estompe_client::autocompletion::{
     autocompletion, convertir_code, GenreProposition, Proposition,
@@ -56,6 +61,7 @@ pub type HorlogeMs = Arc<dyn Fn() -> i64 + Send + Sync>;
 pub type SystemeFichiers = Arc<dyn Fichiers + Send + Sync>;
 pub type Presse = Arc<dyn PressePapiers + Send + Sync>;
 pub type DossierParDefaut = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
+pub type LireAlpha = Arc<dyn Fn() -> bool + Send + Sync>;
 
 pub const ZOOM_MAX: f32 = 8.0;
 pub const TEXTE_LECTURE_SEULE_ESTOMPE: &str =
@@ -73,6 +79,7 @@ pub const VUE_PAR_DEFAUT: f64 = 600.0;
 
 const LARGEUR_CARACTERE: f64 = 7.4;
 const HAUTEUR_LIGNE_TEXTE: f64 = 23.0;
+const HAUTEUR_TRANSCRIPTION: f64 = 72.0;
 const GOUTTIERE: f64 = 96.0;
 
 thread_local! {
@@ -87,6 +94,7 @@ mod actions;
 mod gifs;
 mod sondages;
 mod televersements;
+mod transcription;
 pub mod vocal;
 
 pub use actions::TITRE_MENU_MESSAGE;
@@ -140,6 +148,7 @@ pub struct EtatPiece {
     pub chemin: Option<PathBuf>,
     pub note: String,
     pub illisible: bool,
+    pub transcription: SuiviTranscription,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +161,7 @@ struct PieceAffichee {
     index_image: i32,
     etat: EtatPiece,
     ecoute: bool,
+    transcription: AffichageTranscription,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,6 +289,7 @@ struct Interne {
     animations: HashMap<(String, Emplacement), EtatAnimation>,
     visionneuse: Option<EtatVisionneuse>,
     apercus: bool,
+    transcription_auto: bool,
     dossier: Option<PathBuf>,
     reveil_sondage: Option<i64>,
     votants: HashMap<String, Votants>,
@@ -337,6 +348,7 @@ impl Interne {
             animations: HashMap::new(),
             visionneuse: None,
             apercus: true,
+            transcription_auto: true,
             dossier: None,
             reveil_sondage: None,
             votants: HashMap::new(),
@@ -360,7 +372,9 @@ impl Interne {
         let (emojis_demandes, apercus, dossier) =
             (self.emojis_demandes, self.apercus, self.dossier.take());
         let epingles_visibles = self.epingles_visibles;
+        let transcription_auto = self.transcription_auto;
         *self = Self::nouveau();
+        self.transcription_auto = transcription_auto;
         self.epingles_visibles = epingles_visibles;
         self.pieces = pieces;
         self.emojis_demandes = emojis_demandes;
@@ -416,6 +430,13 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
         .any(|p| p.genre != GenrePiece::Image)
     {
         h += 44.0;
+    }
+    if m.annexes
+        .pieces
+        .iter()
+        .any(|p| p.transcription.as_deref().is_some_and(|t| !t.is_empty()))
+    {
+        h += HAUTEUR_TRANSCRIPTION;
     }
     if m.annexes.lien.is_some() {
         h += 90.0;
@@ -620,6 +641,28 @@ fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
         },
         progression: f32::from(p.etat.progression) / 100.0,
         note: p.etat.note.as_str().into(),
+        transcription: transcription_slint(&p.transcription),
+    }
+}
+
+fn transcription_slint(a: &AffichageTranscription) -> TranscriptionVocale {
+    TranscriptionVocale {
+        etat: match a.etat {
+            EtatTranscriptionPiece::Aucune => EtatTranscription::Aucune,
+            EtatTranscriptionPiece::Proposee => EtatTranscription::Proposee,
+            EtatTranscriptionPiece::Demandee => EtatTranscription::Demandee,
+            EtatTranscriptionPiece::Prete => EtatTranscription::Prete,
+            EtatTranscriptionPiece::Edition => EtatTranscription::Edition,
+        },
+        texte: a.texte.as_str().into(),
+        auto: a.auto,
+        repliable: a.repliable,
+        depliee: a.depliee,
+        masquee: a.masquee,
+        modifiable: a.modifiable,
+        brouillon: a.brouillon.as_str().into(),
+        occupee: a.occupee,
+        erreur: a.erreur.as_str().into(),
     }
 }
 
@@ -954,6 +997,7 @@ pub struct PontMessagerie {
     selecteur: Selecteur,
     gifs: Gifs,
     vocal: Vocal,
+    alpha: Arc<Mutex<LireAlpha>>,
 }
 
 struct SourceIndisponible;
@@ -1025,6 +1069,7 @@ impl PontMessagerie {
             selecteur: Selecteur::default(),
             gifs: Gifs::default(),
             vocal: Vocal::default(),
+            alpha: Arc::new(Mutex::new(Arc::new(|| false))),
         }
     }
 
@@ -1420,6 +1465,14 @@ impl PontMessagerie {
 
     pub fn definir_apercus(&self, apercus: bool) {
         self.verrou().apercus = apercus;
+    }
+
+    pub fn definir_transcription_auto(&self, actif: bool) {
+        self.verrou().transcription_auto = actif;
+    }
+
+    pub fn transcription_auto(&self) -> bool {
+        self.verrou().transcription_auto
     }
 
     fn maintenant(&self) -> i64 {
@@ -2143,11 +2196,19 @@ impl PontMessagerie {
         let mut demandes = Demandes::default();
         let medias = self.medias();
         let serveur = self.verrou().serveur.clone();
+        let (proposee, moi) = self.contexte_transcription();
         for donnees in lignes_fenetre {
             let medias_ligne = match &donnees.message {
                 Some(m) => {
                     let rendus = self.rendus_de(m);
-                    self.medias_de_ligne(&medias, m, &rendus, serveur.as_deref(), &mut demandes)
+                    self.medias_de_ligne(
+                        &medias,
+                        m,
+                        &rendus,
+                        serveur.as_deref(),
+                        &mut demandes,
+                        (proposee, &moi),
+                    )
                 }
                 None => MediasLigne::default(),
             };
@@ -2613,11 +2674,24 @@ impl PontMessagerie {
         rendus: &Rendus,
         serveur: Option<&str>,
         d: &mut Demandes,
+        (proposee, moi): (bool, &str),
     ) -> MediasLigne {
         let mut i = self.verrou();
         let mut index_image = 0;
         let mut pieces = Vec::with_capacity(m.annexes.pieces.len());
+        let proposee = proposee && m.envoi.is_none();
+        let mienne = !moi.is_empty() && m.utilisateur == moi;
         for p in &m.annexes.pieces {
+            let etat = i.pieces.get(&p.id).cloned().unwrap_or_default();
+            let transcription = affichage_transcription(
+                proposee && p.vocal && p.genre == GenrePiece::Media,
+                &PieceTranscrite {
+                    texte: p.transcription.as_deref(),
+                    auto: p.transcription_auto,
+                    mienne,
+                },
+                &etat.transcription,
+            );
             let mut affichee = PieceAffichee {
                 donnees: p.clone(),
                 largeur: 0,
@@ -2625,8 +2699,9 @@ impl PontMessagerie {
                 chargee: false,
                 echec: false,
                 index_image: -1,
-                etat: i.pieces.get(&p.id).cloned().unwrap_or_default(),
+                etat,
                 ecoute: p.vocal && self.vocal.ecoute(&p.id),
+                transcription,
             };
             if p.genre == GenrePiece::Image {
                 let cle = cle_vignette(&p.id);
@@ -3165,6 +3240,7 @@ impl PontMessagerie {
                 *e = EtatPiece {
                     telechargement: Telechargement::EnCours,
                     illisible: e.illisible,
+                    transcription: e.transcription.clone(),
                     ..EtatPiece::default()
                 };
             });
@@ -3205,6 +3281,7 @@ impl PontMessagerie {
                             ),
                             chemin: Some(destination.clone()),
                             illisible: e.illisible,
+                            transcription: e.transcription.clone(),
                         }
                     }
                     Err(erreur) => {
@@ -3212,6 +3289,7 @@ impl PontMessagerie {
                             telechargement: Telechargement::Echec,
                             note: format!("Échec du téléchargement : {erreur}"),
                             illisible: e.illisible,
+                            transcription: e.transcription.clone(),
                             ..EtatPiece::default()
                         }
                     }

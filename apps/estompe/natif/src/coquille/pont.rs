@@ -697,6 +697,7 @@ impl Pont {
         self.changements_des_reglages(f, changements);
         if changements.iter().any(|c| matches!(c, Changement::Compte)) {
             self.projeter_administration(f);
+            self.projeter_transcription(f);
         }
         if corrigee {
             self.suivre_conversation(f);

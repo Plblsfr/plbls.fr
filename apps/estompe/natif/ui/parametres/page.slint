@@ -68,6 +68,9 @@ export global DonneesParametres {
     in-out property <bool> autres-salons: false;
     in-out property <bool> a-sourdines: false;
     in-out property <bool> apercus: true;
+    in-out property <string> transcription;
+    in-out property <bool> alpha: false;
+    in-out property <bool> transcrire-auto: true;
     in-out property <bool> demarrage-disponible: false;
     in-out property <bool> demarrage-actif: false;
     in-out property <string> annonce;
@@ -87,6 +90,7 @@ export global DonneesParametres {
     callback theme-choisi(ModeTheme);
     callback densite-choisie(bool);
     callback apercus-change(bool);
+    callback transcrire-auto-change(bool);
     callback animations-change(bool);
     callback notifications-change(bool);
     callback type-change(string, bool);
@@ -863,6 +867,23 @@ component OngletApparence inherits VerticalLayout {
             allume: DonneesParametres.apercus;
             bascule(actif) => {
                 DonneesParametres.apercus-change(actif);
+            }
+        }
+        if DonneesParametres.transcription == "on" || (DonneesParametres.transcription == "alpha" && DonneesParametres.alpha): HorizontalLayout {
+            alignment: start;
+            spacing: Espace.e2;
+            Interrupteur {
+                texte: "Transcrire automatiquement mes messages vocaux";
+                allume: DonneesParametres.transcrire-auto;
+                bascule(actif) => {
+                    DonneesParametres.transcrire-auto-change(actif);
+                }
+            }
+            if DonneesParametres.transcription == "alpha": VerticalLayout {
+                alignment: center;
+                Etiquette {
+                    texte: "ALPHA";
+                }
             }
         }
         Interrupteur {

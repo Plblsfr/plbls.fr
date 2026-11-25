@@ -14,6 +14,8 @@ use estompe_client::gifs::TROP_DE_RECHERCHES;
 use estompe_client::pieces::{ATTENDRE_LES_FICHIERS, FICHIERS_EN_ECHEC};
 use estompe_client::preferences::Preferences;
 use estompe_client::route::Route;
+use estompe_client::transcription::ECHEC_DEMANDE;
+use estompe_client::types::GetMeReponseTranscription;
 use estompe_client::video::{codec_mp4, Conversions, Convertisseur, DOSSIER_CONVERSIONS};
 use estompe_natif::coquille::{Coquille, Depot, Pont};
 use estompe_natif::entree::{self, Entree, Machine};
@@ -24,8 +26,8 @@ use estompe_natif::{
     creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille,
     DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessageVocal, DonneesMessagerie,
     DonneesNouveauPrive, DonneesRecherche, DonneesSaisie, DonneesSelecteur, EtapeVocal,
-    GenreBandeau, GenreLigneMessage, LigneMessage, Page, PieceJointe, PieceSaisie, Principale,
-    SondageMessage,
+    EtatTranscription, GenreBandeau, GenreLigneMessage, LigneMessage, Page, PieceJointe,
+    PieceSaisie, Principale, SondageMessage, TranscriptionVocale,
 };
 use estompe_plateforme::{ContenuPressePapiers, Erreur};
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
@@ -951,6 +953,186 @@ fn messages_vocaux(
         "message vocal illisible signalé",
     );
     println!("323 : lecture d'un WebM du web et d'un message natif, position, vitesse, un seul à la fois, illisible");
+}
+
+fn transcription(f: &Principale, piece: &str) -> Option<TranscriptionVocale> {
+    piece_jointe(f, piece).map(|p| p.transcription)
+}
+
+fn transcription_des_vocaux(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    fabrique: &FausseFabrique,
+    pont: &Pont,
+) {
+    let store = pont.store().clone();
+    store.installer({
+        let mut etat = store.instantane();
+        etat.compte.transcription = Some(GetMeReponseTranscription::On);
+        etat
+    });
+    let reponse: Arc<std::sync::Mutex<(u16, String)>> =
+        Arc::new(std::sync::Mutex::new((502, String::new())));
+    let porte = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+    let (r, p) = (reponse.clone(), porte.clone());
+    let repondeur: commun::coquille::Repondeur = Arc::new(move |methode, chemin, _| {
+        if !chemin.ends_with("/transcript") {
+            return None;
+        }
+        if methode == "POST" {
+            let (ouverte, reveil) = &*p;
+            let mut o = ouverte.lock().unwrap();
+            while !*o {
+                o = reveil.wait(o).unwrap();
+            }
+        }
+        Some(r.lock().unwrap().clone())
+    });
+    *serveur.repondeur.lock().unwrap() = Some(repondeur);
+    let ouvrir = |ouverte: bool| {
+        *porte.0.lock().unwrap() = ouverte;
+        porte.1.notify_all();
+    };
+    let mut mien = commun::coquille::message("311", "c1", "u1");
+    mien["author"]["pseudo"] = serde_json::json!("bob");
+    mien["content"] = serde_json::json!("");
+    mien["attachments"] = serde_json::json!([
+        {"id": "v-moi", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 900, "kind": "voice", "duration_ms": 1200, "waveform": [30, 60]}
+    ]);
+    fabrique.envoyer(commun::coquille::evenement("message.created", mien.clone()));
+    let mut autre = commun::coquille::message("312", "c1", "carol");
+    autre["content"] = serde_json::json!("");
+    autre["attachments"] = serde_json::json!([
+        {"id": "v-tr", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 900, "kind": "voice", "duration_ms": 1200, "waveform": [30, 60]}
+    ]);
+    fabrique.envoyer(commun::coquille::evenement("message.created", autre));
+    attendre_l_interface(
+        faible,
+        |f| {
+            transcription(f, "v-tr").is_some_and(|t| t.etat == EtatTranscription::Proposee)
+                && transcription(f, "v-moi").is_some_and(|t| t.etat == EtatTranscription::Proposee)
+        },
+        "bouton « Transcrire » sous les messages vocaux",
+    );
+
+    *reponse.lock().unwrap() = (
+        502,
+        r#"{"error": "transcription_failed", "message": "échec"}"#.into(),
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessageVocal>()
+            .invoke_transcrire("v-tr".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| transcription(f, "v-tr").is_some_and(|t| t.etat == EtatTranscription::Demandee),
+        "transcription demandée, en cours",
+    );
+    ouvrir(true);
+    attendre_l_interface(
+        faible,
+        |f| {
+            transcription(f, "v-tr")
+                .is_some_and(|t| t.etat == EtatTranscription::Proposee && t.erreur == ECHEC_DEMANDE)
+        },
+        "échec signalé, « Transcrire » de nouveau proposé",
+    );
+    println!("377 C1 : transcription demandée puis échec");
+
+    *reponse.lock().unwrap() = (
+        200,
+        r#"{"transcript": "Rendez-vous à huit heures devant le cinéma.", "transcript_auto": true}"#
+            .into(),
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessageVocal>()
+            .invoke_transcrire("v-tr".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            transcription(f, "v-tr").is_some_and(|t| {
+                t.etat == EtatTranscription::Prete
+                    && t.texte == "Rendez-vous à huit heures devant le cinéma."
+                    && t.auto
+                    && !t.modifiable
+                    && t.erreur.is_empty()
+            })
+        },
+        "transcription prête sous le message",
+    );
+    assert!(serveur
+        .requetes
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r == "POST /files/v-tr/transcript"));
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessageVocal>()
+            .invoke_basculer_transcription("v-tr".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| transcription(f, "v-tr").is_some_and(|t| t.masquee),
+        "transcription masquée",
+    );
+    println!("377 C1 : transcription prête, affichée puis masquée");
+
+    mien["attachments"][0]["transcript"] = serde_json::json!("Je serai en retard.");
+    mien["attachments"][0]["transcript_auto"] = serde_json::json!(true);
+    fabrique.envoyer(commun::coquille::evenement("message.updated", mien));
+    attendre_l_interface(
+        faible,
+        |f| {
+            transcription(f, "v-moi").is_some_and(|t| {
+                t.etat == EtatTranscription::Prete
+                    && t.texte == "Je serai en retard."
+                    && t.modifiable
+            })
+        },
+        "transcription arrivée par message.updated",
+    );
+    println!("377 : transcription mise à jour en temps réel");
+
+    *reponse.lock().unwrap() = (
+        200,
+        r#"{"transcript": "Je serai en retard, désolé.", "transcript_auto": false}"#.into(),
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessageVocal>()
+            .invoke_modifier_transcription("311".into(), "v-moi".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            transcription(f, "v-moi").is_some_and(|t| {
+                t.etat == EtatTranscription::Edition && t.brouillon == "Je serai en retard."
+            })
+        },
+        "transcription en édition pour l'auteur",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessageVocal>()
+            .invoke_enregistrer_transcription("v-moi".into(), "Je serai en retard, désolé.".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            transcription(f, "v-moi").is_some_and(|t| {
+                t.etat == EtatTranscription::Prete
+                    && t.texte == "Je serai en retard, désolé."
+                    && !t.auto
+            })
+        },
+        "transcription corrigée enregistrée",
+    );
+    assert!(serveur.corps.lock().unwrap().iter().any(|(ligne, corps)| {
+        ligne == "PUT /files/v-moi/transcript"
+            && serde_json::from_str::<serde_json::Value>(corps).ok()
+                == Some(serde_json::json!({"text": "Je serai en retard, désolé."}))
+    }));
+    println!("377 : correction de la transcription par l'auteur (PUT)");
+    *serveur.repondeur.lock().unwrap() = None;
 }
 
 fn traiter_les_changements(faible: &slint::Weak<Principale>) {
@@ -2406,6 +2588,7 @@ fn scenario(
     });
     pieces_jointes(&faible, &serveur, &fabrique, &coquille, &dossier);
     messages_vocaux(&faible, &serveur, &fabrique);
+    transcription_des_vocaux(&faible, &serveur, &fabrique, &pont);
     recherche_et_palette(&faible, &serveur, &pont, &dossier);
     nouveau_prive_statut_et_tout_lu(&faible, &serveur, &pont);
 }
