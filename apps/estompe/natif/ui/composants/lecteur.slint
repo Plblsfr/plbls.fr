@@ -1,0 +1,377 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone } from "icone.slint";
+import { Chargement } from "chargement.slint";
+
+export struct EtatLecteurVue {
+    image: image,
+    image-prete: bool,
+    video: bool,
+    chargement: bool,
+    en-pause: bool,
+    fin: bool,
+    position: float,
+    duree: float,
+    temps: string,
+    volume: int,
+    muet: bool,
+    vitesse: string,
+    plein-ecran: bool,
+    erreur: string,
+    pistes-audio: int,
+    pistes-sous-titres: int,
+    sous-titres-actifs: bool,
+}
+
+component BoutonLecteur inherits Rectangle {
+    in property <string> icone;
+    in property <string> texte;
+    in property <string> description;
+    in property <bool> eteint: false;
+    in property <bool> utilisable: true;
+    callback clique(length, length);
+    min-width: 32px;
+    height: 32px;
+    border-radius: Rayon.xs;
+    background: zone.has-hover && root.utilisable ? #ffffff24 : transparent;
+    animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-enabled: root.utilisable;
+    accessible-action-default => {
+        root.clique(root.absolute-position.x, root.absolute-position.y + root.height);
+    }
+    HorizontalLayout {
+        padding-left: root.texte == "" ? 7px : Espace.e2;
+        padding-right: root.texte == "" ? 7px : Espace.e2;
+        alignment: center;
+        if root.icone != "": Icone {
+            y: (parent.height - self.height) / 2;
+            nom: root.icone;
+            taille: 18px;
+            couleur: root.eteint ? #f1ece680 : #f1ece6;
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: #f1ece6;
+            font-family: Typo.mono;
+            font-size: Typo.minuscule;
+            vertical-alignment: center;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique(root.absolute-position.x, root.absolute-position.y + root.height);
+        }
+    }
+}
+
+component BarreLecteur inherits Rectangle {
+    in property <float> valeur;
+    in property <float> maximum: 1;
+    in property <float> avance: 0;
+    in property <bool> utilisable: true;
+    in property <string> description;
+    in property <string> texte-valeur;
+    in property <float> pas: 1;
+    callback suit(float);
+    callback regle(float);
+    property <bool> glisse: false;
+    property <float> tenue: 0;
+    property <float> affichee: root.glisse ? root.tenue : Math.clamp(root.valeur, 0, Math.max(root.maximum, 0.001));
+    property <float> part: root.maximum > 0 ? root.affichee / root.maximum : 0;
+    min-width: 48px;
+    height: 24px;
+    horizontal-stretch: 1;
+    opacity: root.utilisable ? 1 : 0.5;
+    accessible-role: slider;
+    accessible-label: root.description;
+    accessible-value: root.texte-valeur;
+    accessible-value-minimum: 0;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: root.pas;
+    accessible-enabled: root.utilisable;
+    accessible-action-increment => {
+        root.regle(Math.min(root.maximum, root.valeur + root.pas));
+    }
+    accessible-action-decrement => {
+        root.regle(Math.max(0, root.valeur - root.pas));
+    }
+    accessible-action-set-value(v) => {
+        root.regle(Math.clamp(v.to-float(), 0, root.maximum));
+    }
+    function sous(x: length) -> float {
+        Math.clamp(x / Math.max(root.width, 1px), 0, 1) * root.maximum
+    }
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: #ffffff38;
+    }
+    Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: root.maximum > 0 ? Math.clamp(root.avance / root.maximum, 0, 1) * root.width : 0;
+        height: 4px;
+        border-radius: 2px;
+        background: #ffffff5c;
+    }
+    Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: root.part * root.width;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.rose-fonce;
+    }
+    Rectangle {
+        x: root.part * (root.width - self.width);
+        y: (parent.height - self.height) / 2;
+        width: zone.has-hover || root.glisse ? 14px : 10px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: #f1ece6;
+        animate width { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.glisse = true;
+                root.tenue = root.sous(self.mouse-x);
+                root.suit(root.tenue);
+            }
+            if (e.kind == PointerEventKind.up && root.glisse) {
+                root.glisse = false;
+                root.regle(root.tenue);
+            }
+        }
+        moved => {
+            if (root.glisse) {
+                root.tenue = root.sous(self.mouse-x);
+                root.suit(root.tenue);
+            }
+        }
+    }
+}
+
+export component LecteurMedia inherits Rectangle {
+    in property <EtatLecteurVue> etat;
+    in property <float> avance: 0;
+    in property <int> calque: 0;
+    in property <string> titre: "Lecteur vidéo";
+    out property <bool> commandes-visibles: zone.has-hover || root.etat.en-pause || root.etat.fin || !root.etat.video || root.etat.erreur != "";
+    callback basculer();
+    callback aller(float);
+    callback volume(int);
+    callback muet();
+    callback plein-ecran();
+    callback menu-vitesse(length, length);
+    callback menu-audio(length, length);
+    callback menu-sous-titres(length, length);
+    callback touche(string, bool, bool, bool) -> bool;
+    callback zone-image(length, length);
+    property <bool> utilisable: root.calque >= Calques.ouverts;
+    public function focus-lecteur() {
+        clavier.focus();
+    }
+    background: #0e0c0b;
+    clip: true;
+    accessible-role: groupbox;
+    accessible-label: root.titre;
+    init => {
+        root.zone-image(root.width, root.height);
+    }
+    changed width => {
+        root.zone-image(root.width, root.height);
+    }
+    changed height => {
+        root.zone-image(root.width, root.height);
+    }
+    if root.etat.video && root.etat.image-prete: Image {
+        width: 100%;
+        height: 100%;
+        source: root.etat.image;
+        image-fit: ImageFit.contain;
+        accessible-role: image;
+        accessible-label: root.titre;
+    }
+    if !root.etat.video && !root.etat.chargement && root.etat.erreur == "": Icone {
+        nom: "note";
+        taille: 48px;
+        couleur: #f1ece699;
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        clicked => {
+            clavier.focus();
+            root.basculer();
+        }
+        double-clicked => {
+            root.plein-ecran();
+        }
+    }
+    clavier := FocusScope {
+        enabled: root.utilisable;
+        key-pressed(e) => {
+            if (root.touche(e.text, e.modifiers.control, e.modifiers.meta, e.modifiers.alt)) {
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if root.etat.chargement && root.etat.erreur == "": Chargement {
+        taille: 36px;
+        couleur: #f1ece6;
+        description: "Chargement de la vidéo";
+    }
+    if root.etat.erreur != "": Rectangle {
+        width: Math.min(parent.width - 2 * Espace.e4, 420px);
+        height: message.preferred-height + 2 * Espace.e3;
+        border-radius: Rayon.s;
+        background: #0e0c0bd9;
+        accessible-role: text;
+        accessible-label: root.etat.erreur;
+        message := Text {
+            x: Espace.e3;
+            width: parent.width - 2 * Espace.e3;
+            text: root.etat.erreur;
+            color: #f1ece6;
+            font-family: Typo.texte;
+            font-size: Typo.compact;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    if root.etat.video && (root.etat.en-pause || root.etat.fin) && !root.etat.chargement && root.etat.erreur == "": Rectangle {
+        width: 64px;
+        height: 64px;
+        border-radius: 32px;
+        background: grand.has-hover ? #0e0c0bcc : #0e0c0b99;
+        accessible-role: button;
+        accessible-label: "Lecture";
+        accessible-action-default => {
+            root.basculer();
+        }
+        Icone {
+            nom: "lecture";
+            taille: 30px;
+            couleur: #f1ece6;
+        }
+        grand := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                clavier.focus();
+                root.basculer();
+            }
+        }
+    }
+    barre := Rectangle {
+        y: parent.height - self.height;
+        height: 48px;
+        opacity: root.commandes-visibles || barre-zone.has-hover ? 1 : 0;
+        animate opacity { duration: Mouvement.d; easing: Courbes.sortie; }
+        background: @linear-gradient(0deg, #0e0c0bd9 0%, #0e0c0b00 100%);
+        barre-zone := TouchArea {
+            enabled: root.utilisable;
+        }
+        HorizontalLayout {
+            padding-left: Espace.e2;
+            padding-right: Espace.e2;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 4px;
+            BoutonLecteur {
+                icone: root.etat.en-pause || root.etat.fin ? "lecture" : "pause";
+                description: root.etat.en-pause || root.etat.fin ? "Lire" : "Pause";
+                utilisable: root.utilisable;
+                clique => {
+                    root.basculer();
+                }
+            }
+            Text {
+                text: root.etat.temps;
+                color: #f1ece6;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+                accessible-role: text;
+            }
+            BarreLecteur {
+                horizontal-stretch: 4;
+                valeur: root.etat.position;
+                maximum: root.etat.duree;
+                avance: root.avance;
+                pas: 5;
+                utilisable: root.utilisable && root.etat.duree > 0;
+                description: "Position";
+                texte-valeur: root.etat.temps;
+                regle(v) => {
+                    root.aller(v);
+                }
+            }
+            BoutonLecteur {
+                icone: root.etat.muet || root.etat.volume == 0 ? "casqueoff" : "volmax";
+                description: root.etat.muet ? "Activer le son" : "Couper le son";
+                eteint: root.etat.muet || root.etat.volume == 0;
+                utilisable: root.utilisable;
+                clique => {
+                    root.muet();
+                }
+            }
+            BarreLecteur {
+                horizontal-stretch: 1;
+                max-width: 96px;
+                valeur: root.etat.muet ? 0 : root.etat.volume;
+                maximum: 100;
+                pas: 5;
+                utilisable: root.utilisable;
+                description: "Volume";
+                texte-valeur: "\{root.etat.muet ? 0 : root.etat.volume} %";
+                suit(v) => {
+                    root.volume(Math.round(v));
+                }
+                regle(v) => {
+                    root.volume(Math.round(v));
+                }
+            }
+            BoutonLecteur {
+                texte: root.etat.vitesse;
+                description: "Vitesse de lecture";
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    root.menu-vitesse(x, y);
+                }
+            }
+            if root.etat.pistes-audio > 1: BoutonLecteur {
+                icone: "vol";
+                description: "Piste audio";
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    root.menu-audio(x, y);
+                }
+            }
+            if root.etat.pistes-sous-titres > 0: BoutonLecteur {
+                icone: "bulle";
+                description: "Sous-titres";
+                eteint: !root.etat.sous-titres-actifs;
+                utilisable: root.utilisable;
+                clique(x, y) => {
+                    root.menu-sous-titres(x, y);
+                }
+            }
+            if root.etat.video: BoutonLecteur {
+                icone: root.etat.plein-ecran ? "reduire" : "agrandir";
+                description: root.etat.plein-ecran ? "Quitter le plein écran" : "Plein écran";
+                utilisable: root.utilisable;
+                clique => {
+                    root.plein-ecran();
+                }
+            }
+        }
+    }
+}

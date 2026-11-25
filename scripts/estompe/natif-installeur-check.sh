@@ -7,7 +7,7 @@ if [ $# -ne 2 ]; then
 fi
 installeur=$1
 exe=$2
-TAILLE_MAX_MO=${TAILLE_MAX_MO:-90}
+TAILLE_MAX_MO=${TAILLE_MAX_MO:-125}
 
 octets=$(wc -c < "$installeur" | tr -d ' ')
 taille=$(awk -v o="$octets" 'BEGIN { printf "%.1f", o / 1048576 }')
@@ -22,7 +22,7 @@ fi
 
 contenu=$(7z l -ba "$installeur" | tr -d '\r')
 echo "$contenu"
-for fichier in estompe-natif.exe ffmpeg.exe estompe.ico desinstaller.exe; do
+for fichier in estompe-natif.exe ffmpeg.exe libmpv-2.dll estompe.ico desinstaller.exe; do
   if ! grep -qE "(^|[[:space:]/])$fichier\$" <<< "$contenu"; then
     echo "::error::$fichier absent de l'installeur"
     exit 1

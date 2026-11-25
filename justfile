@@ -87,6 +87,14 @@ estompe-natif-generer:
 estompe-natif-emoji DOSSIER="":
     node scripts/estompe/natif-emoji.mjs {{ if DOSSIER != "" { "--cache " + DOSSIER } else { "" } }}
 
+# libmpv pour Windows (DLL et bibliothèque d'import MSVC, archive épinglée) dans apps/estompe/natif/target/mpv, à désigner par ESTOMPE_MPV_DIR
+estompe-natif-mpv:
+    node scripts/estompe/natif-mpv.mjs
+
+# Mesure du CPU du lecteur (vidéo 1080p en lecture et en pause, release ; ESTOMPE_MESURE_LECTEUR_S, 10 s par défaut)
+estompe-natif-mesure-lecteur:
+    cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --release --locked -p estompe-client --features mpv lecteur::mpv::tests::mesure -- --ignored --nocapture
+
 # Parcours long du test de volume de la messagerie (50 000 messages, 2 minutes simulées)
 estompe-natif-volume:
     cd apps/estompe/natif && ESTOMPE_VOLUME=long {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo nextest run --locked --test natif messagerie_volume:: --no-capture

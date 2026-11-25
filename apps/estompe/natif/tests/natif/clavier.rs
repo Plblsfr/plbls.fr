@@ -130,3 +130,39 @@ fn entree_sur_la_croix_ferme_le_modal() {
     assert!(!f.get_modal_demo_ouvert());
     assert_eq!(f.get_confirmations_demo(), 0);
 }
+
+#[test]
+fn le_lecteur_plein_passe_les_raccourcis_au_lecteur_et_echap_le_ferme() {
+    use estompe_client::lecteur::{CommandeMoteur, Lecteur, MediaFactice, Source};
+    use estompe_natif::video::lecteur::GestionLecteur;
+    use estompe_natif::DonneesLecteur;
+    i_slint_backend_testing::init_no_event_loop();
+    let f = creer_fenetre().unwrap();
+    f.window().set_size(slint::LogicalSize::new(1180.0, 900.0));
+    f.show().unwrap();
+    f.window()
+        .dispatch_event(WindowEvent::WindowActiveChanged(true));
+    let (lecteur, moteur) = Lecteur::factice();
+    moteur.ajouter_media("v.mp4", MediaFactice::video(60.0));
+    let gestion = GestionLecteur::nouvelle(&f, lecteur);
+    gestion.ouvrir("Vidéo", Source::adresse("v.mp4").en_pause());
+    slint::platform::update_timers_and_animations();
+    assert!(f.global::<DonneesLecteur>().get_ouvert());
+    moteur.vider_commandes();
+    touche(&f, " ");
+    touche(&f, "m");
+    touche(&f, "x");
+    assert_eq!(
+        moteur.vider_commandes(),
+        [
+            CommandeMoteur::Pause(false),
+            CommandeMoteur::Volume(100, true)
+        ]
+    );
+    touche(&f, Key::Escape);
+    assert!(!f.global::<DonneesLecteur>().get_ouvert());
+    assert_eq!(
+        moteur.vider_commandes(),
+        [CommandeMoteur::Arreter, CommandeMoteur::Video(false)]
+    );
+}

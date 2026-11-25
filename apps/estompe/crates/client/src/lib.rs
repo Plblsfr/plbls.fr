@@ -24,6 +24,7 @@ pub mod format;
 pub mod gestion_roles;
 pub mod gifs;
 pub mod jeux;
+pub mod lecteur;
 pub mod lru;
 pub mod markdown;
 pub mod mention;

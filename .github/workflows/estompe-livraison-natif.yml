@@ -80,6 +80,11 @@ jobs:
           "LLVM_HOME=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "LIBCLANG_PATH=$(Join-Path $dossier 'bin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Join-Path $dossier 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: libmpv (archive épinglée par sa somme SHA-256, bibliothèque d'import MSVC par llvm-lib)
+        shell: bash
+        run: |
+          node scripts/estompe/natif-mpv.mjs "$RUNNER_TEMP/mpv"
+          echo "ESTOMPE_MPV_DIR=$(cygpath -w "$RUNNER_TEMP/mpv")" >> "$GITHUB_ENV"
       - name: Build release (x86_64-pc-windows-msvc)
         working-directory: apps/estompe/natif
         run: cargo build --release --locked --target x86_64-pc-windows-msvc
@@ -111,8 +116,8 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: '"/c/Program Files (x86)/NSIS/makensis.exe" -V2 "-DVERSION=$VERSION" estompe-natif.nsi'
-      - name: Contrôle de l'installeur (taille, contenu dont ffmpeg, sans WebView2)
+        run: '"/c/Program Files (x86)/NSIS/makensis.exe" -V2 "-DVERSION=$VERSION" "-DMPV=$(cygpath -w "$RUNNER_TEMP/mpv/libmpv-2.dll")" estompe-natif.nsi'
+      - name: Contrôle de l'installeur (taille, contenu dont ffmpeg et libmpv, sans WebView2)
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}

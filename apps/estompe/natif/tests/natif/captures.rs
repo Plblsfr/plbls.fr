@@ -310,6 +310,8 @@ const ECRANS: &[Ecran] = ecrans![
     "parametres-raccourcis-clair", Clair, parametres_raccourcis;
     "parametres-replay-clair", Clair, parametres_replay;
     "parametres-recherche-clair", Clair, parametres_recherche;
+    "lecteur-clair", Clair, lecteur_pause;
+    "lecteur-erreur-sombre", Sombre, lecteur_erreur;
 ];
 
 fn bob() -> Compte {
@@ -854,6 +856,50 @@ fn vocal_video(f: &Principale) {
     pont.vocal()
         .poser_image_video(f, &CleVideo::camera("carol"), &mire);
     stabiliser(f);
+}
+
+fn lecteur_etat(echec: bool) -> estompe_client::lecteur::EtatLecteur {
+    use estompe_client::lecteur::{Evenement, Lecteur, MediaFactice, Source as SourceLecteur};
+    let (lecteur, moteur) = Lecteur::factice();
+    moteur.ajouter_media("film.mp4", MediaFactice::video(5400.0));
+    if echec {
+        moteur.ajouter_echec("film.mp4", "HTTP 401");
+    }
+    lecteur.charger(
+        SourceLecteur::adresse("film.mp4")
+            .a_partir_de(1325.0)
+            .en_pause(),
+    );
+    moteur.emettre(Evenement::SousTitres(Some(1)));
+    moteur.emettre(Evenement::CacheJusqua(Some(1900.0)));
+    lecteur.etat()
+}
+
+fn lecteur_ouvert(f: &Principale, etat: &estompe_client::lecteur::EtatLecteur, avec_image: bool) {
+    let image = avec_image
+        .then(|| {
+            estompe_natif::video::convertir(&Mire::nouvelle(1280, 720).image(30), (0, 0), false)
+        })
+        .flatten()
+        .map(slint::Image::from_rgba8);
+    let g = f.global::<estompe_natif::DonneesLecteur>();
+    g.set_titre("Film".into());
+    g.set_etat(estompe_natif::video::lecteur::vue(
+        etat,
+        image.clone().unwrap_or_default(),
+        image.is_some(),
+    ));
+    g.set_avance(etat.cache_jusqua.unwrap_or(0.0) as f32);
+    g.set_ouvert(true);
+    stabiliser(f);
+}
+
+fn lecteur_pause(f: &Principale) {
+    lecteur_ouvert(f, &lecteur_etat(false), true);
+}
+
+fn lecteur_erreur(f: &Principale) {
+    lecteur_ouvert(f, &lecteur_etat(true), false);
 }
 
 fn cameras_du_poste() -> Vec<estompe_plateforme::InfoCamera> {
@@ -2638,6 +2684,9 @@ fn menu_sourdine_duree(f: &Principale) {
 
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
+    let lecteur = f.global::<estompe_natif::DonneesLecteur>();
+    lecteur.set_ouvert(false);
+    lecteur.set_etat(Default::default());
     let admin = f.global::<estompe_natif::DonneesAdmin>();
     admin.set_ouverte(false);
     admin.set_seule(false);

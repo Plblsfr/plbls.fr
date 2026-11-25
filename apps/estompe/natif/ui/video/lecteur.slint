@@ -1,0 +1,112 @@
+import { Theme, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone } from "../composants/icone.slint";
+import { LecteurMedia, EtatLecteurVue } from "../composants/lecteur.slint";
+
+export { EtatLecteurVue }
+
+export global DonneesLecteur {
+    in property <bool> ouvert: false;
+    in property <string> titre;
+    in property <EtatLecteurVue> etat;
+    in property <float> avance: 0;
+    callback basculer();
+    callback aller(float);
+    callback volume(int);
+    callback muet();
+    callback plein-ecran();
+    callback menu-vitesse(length, length);
+    callback menu-audio(length, length);
+    callback menu-sous-titres(length, length);
+    callback touche(string, bool, bool, bool) -> bool;
+    callback zone-image(length, length);
+    callback fermer();
+}
+
+export component LecteurPlein {
+    in property <bool> ouvert: DonneesLecteur.ouvert;
+    width: 100%;
+    height: 100%;
+    visible: root.ouvert;
+    accessible-role: none;
+    changed ouvert => {
+        Calques.ouverts = Math.max(0, Calques.ouverts + (root.ouvert ? 1 : -1));
+        if (root.ouvert) {
+            lecteur.focus-lecteur();
+        }
+    }
+    Rectangle {
+        background: #0e0c0b;
+        TouchArea { }
+    }
+    FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                DonneesLecteur.fermer();
+                return accept;
+            }
+            return reject;
+        }
+        lecteur := LecteurMedia {
+            width: 100%;
+            height: 100%;
+            etat: DonneesLecteur.etat;
+            avance: DonneesLecteur.avance;
+            titre: DonneesLecteur.titre;
+            calque: 1;
+            basculer => {
+                DonneesLecteur.basculer();
+            }
+            aller(v) => {
+                DonneesLecteur.aller(v);
+            }
+            volume(v) => {
+                DonneesLecteur.volume(v);
+            }
+            muet => {
+                DonneesLecteur.muet();
+            }
+            plein-ecran => {
+                DonneesLecteur.plein-ecran();
+            }
+            menu-vitesse(x, y) => {
+                DonneesLecteur.menu-vitesse(x, y);
+            }
+            menu-audio(x, y) => {
+                DonneesLecteur.menu-audio(x, y);
+            }
+            menu-sous-titres(x, y) => {
+                DonneesLecteur.menu-sous-titres(x, y);
+            }
+            touche(t, c, m, a) => {
+                return DonneesLecteur.touche(t, c, m, a);
+            }
+            zone-image(l, h) => {
+                DonneesLecteur.zone-image(l, h);
+            }
+        }
+    }
+    if root.ouvert: Rectangle {
+        x: Espace.e3;
+        y: Espace.e3;
+        width: 40px;
+        height: 40px;
+        border-radius: Rayon.s;
+        background: fermeture.has-hover ? #ffffff24 : #0e0c0b99;
+        accessible-role: button;
+        accessible-label: "Fermer le lecteur";
+        accessible-action-default => {
+            DonneesLecteur.fermer();
+        }
+        Icone {
+            nom: "x";
+            taille: 20px;
+            couleur: #f1ece6;
+        }
+        fermeture := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                DonneesLecteur.fermer();
+            }
+        }
+    }
+}

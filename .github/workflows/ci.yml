@@ -326,7 +326,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev ffmpeg
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev ffmpeg libmpv-dev
       - name: clang 21 (libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium)
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
@@ -418,6 +418,12 @@ jobs:
           "LLVM_HOME=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "LIBCLANG_PATH=$(Join-Path $dossier 'bin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Join-Path $dossier 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: libmpv (archive épinglée par sa somme SHA-256, bibliothèque d'import MSVC par llvm-lib, DLL dans le PATH des tests)
+        shell: bash
+        run: |
+          node scripts/estompe/natif-mpv.mjs "$RUNNER_TEMP/mpv"
+          echo "ESTOMPE_MPV_DIR=$(cygpath -w "$RUNNER_TEMP/mpv")" >> "$GITHUB_ENV"
+          cygpath -w "$RUNNER_TEMP/mpv" >> "$GITHUB_PATH"
       - id: skia
         name: Binaires de Skia (version de skia-bindings, SKIA_BINARIES_URL)
         shell: bash

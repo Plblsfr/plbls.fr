@@ -22,6 +22,7 @@ exceptions = [
   { crate = "ksni", allow = ["Unlicense"] },
   { crate = "doctest-file", allow = ["0BSD"] },
   { crate = "recvmsg", allow = ["0BSD"] },
+  { crate = "libmpv2-sys", allow = ["LGPL-2.1"] },
 ]
 
 [bans]
