@@ -29,6 +29,7 @@
   let link = $state('')
   let drag = $state<number | null>(null)
   let idle = $state(false)
+  let barre = $state(0)
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   const wake = () => { idle = false; clearTimeout(idleTimer); idleTimer = setTimeout(() => (idle = !!s?.playing && !host?.closest('.watch-player')?.matches(':focus-within')), 2500) }
   let vol = $state(100)
@@ -100,7 +101,7 @@
         {#if player}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => player?.reload()} title="Recharger la vidéo chez moi seulement">Recharger</button>{/if}
         {#if canDrive}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void api.watchStop(channelId, kind).catch(fail)}>Arrêter</button>{/if}
       </div>
-      <div class="watch-player" class:idle onpointermove={wake} onpointerdown={wake} onfocusin={wake} role="presentation">
+      <div class="watch-player" class:idle style:--watch-barre="{player && !live ? barre : 0}px" onpointermove={wake} onpointerdown={wake} onfocusin={wake} role="presentation">
         {#if theater}
           <div class="watch-top">
             <button class="watch-chip" onclick={ontheater}><Icon name="reduire" size={18} /> Quitter le mode cinéma</button>
@@ -136,7 +137,7 @@
           <button class="plbls-button watch-skip" onclick={skip} title="S" aria-keyshortcuts="S"><Icon name="suivant" size={16} /> Passer l’intro</button>
         {/if}
         {#if player && !live}
-          <div class="watch-bar" role="group" aria-label="Lecture">
+          <div class="watch-bar" role="group" aria-label="Lecture" bind:offsetHeight={barre}>
             <button class="watch-btn" disabled={!canDrive} onclick={toggle} aria-label={s.playing ? 'Pause' : 'Lecture'}><Icon name={s.playing ? 'pause' : 'lecture'} size={22} /></button>
             <span class="watch-time v-mono">{clock(drag ?? player.position)}{player.duration ? ` / ${clock(player.duration)}` : ''}</span>
             <input class="watch-range watch-seek grow" style="--p:{pct(drag ?? player.position, player.duration)};--piste:{seekTrack(drag ?? player.position, player.duration, player.buffered)}" type="range" min="0" max={Math.max(player.duration, 1)} step="1" disabled={!canDrive || !player.duration} value={drag ?? player.position} aria-label="Position dans la vidéo"
@@ -145,6 +146,7 @@
             <div class="watch-bar-title grow"><strong class="truncate">{s.meta?.title ?? PROVIDER_LABEL[s.provider] ?? 'Vidéo'}</strong><span class="watch-by">ajouté par {s.by}</span></div>
             <button class="watch-btn" onclick={() => (muted = !muted)} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'casqueoff' : 'volmax'} size={22} /></button>
             <input class="watch-range watch-vol" style="--p:{muted ? 0 : vol}%" type="range" min="0" max="100" value={muted ? 0 : vol} aria-label="Volume" oninput={(e) => { vol = Number(e.currentTarget.value); muted = vol === 0 }} />
+            <div class="watch-opts">
             {#if player.tracks}
               {@const tracks = player.tracks}
               {#if tracks.audio.length > 1}
@@ -173,6 +175,7 @@
             <select class="watch-rate" disabled={!canDrive} value={s.rate} onchange={(e) => player?.command({ action: 'rate', rate: Number(e.currentTarget.value) })} aria-label="Vitesse">
               {#each RATES as r (r)}<option value={r}>×{r}</option>{/each}
             </select>
+            </div>
             {#if theater}<div class="watch-voice"><VoiceControls /></div>{/if}
           </div>
         {/if}

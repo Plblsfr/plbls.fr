@@ -16,6 +16,7 @@ npm run build
 npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et Rust requis)
 npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
+npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
 ```
 
@@ -137,7 +138,9 @@ dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les d
 (`playwright.sablier.config.ts`, `e2e/sablier.spec.ts`, faux Sablier et fausse API d'Estompe dans `e2e/faux-sablier.ts`, horloge du navigateur
 fixée) vérifie la section Stats : permissions, périodes, récap au clavier et au toucher, pastille, partage et profil, export (fichier
 téléchargé comparé à celui du serveur), effacement, parcours d'administration, Sablier arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
-si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
+si la version de Playwright n'a pas le sien. `npm run e2e:cinema` (`playwright.cinema.config.ts`, `e2e/cinema.spec.ts`) vérifie le mode cinéma du salon cinéma
+sur un écran de téléphone, en portrait et en paysage : il tourne sur le serveur de dev de Vite, parce que le vocal (LiveKit) n'est pas simulé et que le test
+marque le salon comme rejoint en important le module `voice.svelte.ts` dans la page. La CI les lance dans le job `front`.
 
 ## Application Windows
 

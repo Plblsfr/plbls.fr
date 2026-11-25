@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/svelte'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../../lib/api'
 import { app } from '../../lib/store.svelte'
 import { tick } from 'svelte'
@@ -7,6 +7,7 @@ import { providers, type Adapter, type Handlers } from './providers'
 import WatchTogether from './WatchTogether.svelte'
 
 describe('salon cinéma : recharger le lecteur', () => {
+  beforeEach(() => { vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }) })
   afterEach(() => { vi.restoreAllMocks(); delete app.cinema.c1 })
 
   it('recrée le lecteur et recharge le film à la position de la séance', async () => {
