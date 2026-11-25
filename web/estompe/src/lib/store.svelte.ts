@@ -238,11 +238,22 @@ export class AppStore {
     this.mentions = mentions
     // Non lus conservés côté serveur ; la conversation affichée est considérée comme lue.
     this.unread = Object.fromEntries([...unread.channels.map((id) => [channelKey(id), unread.counts[id] ?? 1] as const), ...unread.dms.map((id) => [dmKey(id), unread.counts[id] ?? 1] as const)].filter(([k]) => k !== this.current))
-    void avatars.load()
-    api.statuses().then((s) => (this.statuses = s)).catch(() => {})
+    this.loadPeople()
     void this.loadNotifySettings()
     void emojis.load()
     await Promise.all(servers.map((s) => this.loadServer(s.id)))
+  }
+
+  private loadPeople() {
+    void avatars.load()
+    api.statuses().then((s) => (this.statuses = s)).catch(() => {})
+  }
+
+  addDm(dm: DM) {
+    if (dm.online) this.online[dm.other.id] = true
+    if (this.dms.some((d) => d.id === dm.id)) return
+    this.dms.unshift(dm)
+    this.loadPeople()
   }
 
   async loadServer(id: string) {
@@ -460,7 +471,11 @@ export class AppStore {
       case 'member.joined': {
         const det = this.details[d.server_id]
         if (d.member.online) this.online[d.member.id] = true
-        if (det && !det.members.some((m) => m.id === d.member.id)) det.members.push({ ...d.member, online: !!this.online[d.member.id] })
+        if (det && !det.members.some((m) => m.id === d.member.id)) {
+          det.members.push({ ...d.member, online: !!this.online[d.member.id] })
+          this.loadPeople()
+          void this.reloadServer(d.server_id)
+        }
         else if (!det && d.member.id === this.meId) void this.refreshServers()
         break
       }
@@ -577,7 +592,9 @@ export class AppStore {
 
   async refreshServers() {
     this.servers = await api.servers()
-    await Promise.all(this.servers.filter((s) => !this.details[s.id]).map((s) => this.loadServer(s.id)))
+    const nouveaux = this.servers.filter((s) => !this.details[s.id])
+    if (nouveaux.length) this.loadPeople()
+    await Promise.all(nouveaux.map((s) => this.loadServer(s.id)))
   }
 
   dropServer(id: string) {
@@ -690,7 +707,7 @@ export class AppStore {
 
   private onMessageCreated(m: Message) {
     const key = convKeyOf(m)
-    if (key.startsWith('d:') && !this.dms.some((d) => d.id === m.dm_id)) void api.dms().then((l) => { this.dms = l; for (const d of l) if (d.online) this.online[d.other.id] = true })
+    if (key.startsWith('d:') && !this.dms.some((d) => d.id === m.dm_id)) void api.dms().then((l) => { this.dms = l; for (const d of l) if (d.online) this.online[d.other.id] = true; this.loadPeople() })
     this.appendMessage(key, m)
     const mine = m.author.id === this.meId
     this.stopTyping(key, m.author.id)

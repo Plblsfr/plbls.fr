@@ -32,6 +32,7 @@
   let wifiOnly = $state(saved.wifiOnly)
   const reseauConnu = (platform.network?.kind() ?? 'unknown') !== 'unknown'
   let tracks = $state<FilmTracks | null>(null)
+  let audioVoulu: number | null = null
   let panel = $state(false)
   let picker = $state(false)
   let error = $state('')
@@ -93,12 +94,13 @@
     const n = pickAudio(tracks.audio, pref)
     if (n === tracks.audioN) return
     if (subtitlePref === 'forced') applySubtitle(n)
+    audioVoulu = n
     player?.setAudio?.(n)
   }
   const preferSubtitle = (pref: SubtitlePref) => {
     subtitlePref = pref
     savePlayPrefs(store(), { subtitles: pref })
-    if (tracks) applySubtitle(tracks.audioN)
+    if (tracks) applySubtitle(audioVoulu ?? tracks.audioN)
   }
 
   const preferBuffer = (pref: BufferPref) => {
@@ -145,7 +147,7 @@
       const a = await providers.film(host!, {
         onState: (s) => { if (s === 'playing' && st !== 'playing' && st !== 'buffering') medias.demarre('film'); st = s; if (s === 'playing') error = '' },
         onError: (m) => { error = m },
-        onTracks: (t) => { tracks = t },
+        onTracks: (t) => { tracks = t; audioVoulu = null },
         onCast: (s) => { cast = s },
       })
       if (gone) { a.destroy(); return }
