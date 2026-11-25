@@ -397,3 +397,57 @@ describe('FilmPlayer : passer l’intro', () => {
     expect(bouton(vue)).toBeTruthy()
   })
 })
+
+describe('FilmPlayer : épisode suivant', () => {
+  afterEach(() => { vi.useRealTimers(); localStorage.clear(); vi.restoreAllMocks(); location.hash = '' })
+
+  const episode = (n: number, over: Partial<FilmDetail> = {}): FilmDetail => ({ ...detail, id: `e${n}`, kind: 'episode', title: `Épisode ${n}`, season: 1, episode: n, series_id: 's', series_title: 'Les Veilleurs', ...over })
+  const saison = (n: number) => ({ id: `s·${n}`, kind: 'season' as const, title: `Saison ${n}`, year: null, overview: null, duration: 0, genres: [], season: n, episode: null, series_id: 's', series_title: null, poster: false, backdrop: false, progress: null, available: true })
+  async function ouvert(episodes: Record<string, FilmDetail[]>, t: number) {
+    vi.useFakeTimers()
+    const position = { t }
+    const m = monter(position)
+    vi.spyOn(filmsApi, 'item').mockImplementation(async (id) => Object.values(episodes).flat().find((e) => e.id === id)!)
+    vi.spyOn(filmsApi, 'seasons').mockResolvedValue({ items: Object.keys(episodes).map((k) => saison(Number(k))) })
+    vi.spyOn(filmsApi, 'episodes').mockImplementation(async (sid) => { const items = episodes[sid.split('·')[1]]; return { items, total: items.length } })
+    await m.vue.rerender({ id: 'e1' })
+    await vi.waitFor(() => expect(m.adapter.load).toHaveBeenCalledWith('e1', 0, true))
+    const avancer = async (x: number) => { position.t = x; await vi.advanceTimersByTimeAsync(600) }
+    await avancer(t)
+    return { ...m, avancer }
+  }
+  const bouton = (vue: ReturnType<typeof monter>['vue']) => vue.queryByRole('button', { name: 'Épisode suivant' })
+
+  it('apparaît dans les trente dernières secondes et ouvre l’épisode suivant dans le même lecteur', async () => {
+    const { vue, adapter, avancer } = await ouvert({ 1: [episode(1), episode(2)] }, 100)
+    expect(bouton(vue)).toBeNull()
+    await avancer(2975)
+    await fireEvent.click(bouton(vue)!)
+    expect(location.hash).toBe('#/films/watch/e2')
+    await vue.rerender({ id: 'e2' })
+    await vi.waitFor(() => expect(adapter.load).toHaveBeenLastCalledWith('e2', 0, true))
+    expect(adapter.destroy).not.toHaveBeenCalled()
+    await avancer(2975)
+    expect(bouton(vue)).toBeNull()
+  })
+
+  it('reste proposé une fois l’épisode terminé, et passe à la saison suivante après le dernier épisode', async () => {
+    const { vue, handlers, avancer } = await ouvert({ 1: [episode(1)], 2: [episode(3, { season: 2, available: false }), episode(4, { season: 2 })] }, 100)
+    handlers().onState('ended')
+    await avancer(100)
+    await fireEvent.click(bouton(vue)!)
+    expect(location.hash).toBe('#/films/watch/e4')
+  })
+
+  it('n’existe ni pour un film ni pour le dernier épisode', async () => {
+    vi.useFakeTimers()
+    const position = { t: 2990 }
+    const m = monter(position)
+    await vi.waitFor(() => expect(m.adapter.load).toHaveBeenCalled())
+    await vi.advanceTimersByTimeAsync(600)
+    expect(bouton(m.vue)).toBeNull()
+    m.vue.unmount()
+    const dernier = await ouvert({ 1: [episode(1)] }, 2990)
+    expect(bouton(dernier.vue)).toBeNull()
+  })
+})

@@ -10,7 +10,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { BUFFER_PREFS, inIntro, playPrefs, QUALITY_LABEL, seekTrack, shortcut, trackName, type BufferPref, type Quality } from '../../sections/entracte/films'
+  import { BUFFER_PREFS, inIntro, nearEnd, playPrefs, QUALITY_LABEL, seekTrack, shortcut, trackName, type BufferPref, type Quality } from '../../sections/entracte/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 
@@ -61,6 +61,7 @@
     player?.command({ action: 'seek', position: intro.fin })
     void requestAt<void>(filmsApi.base, 'POST', `/titles/${encodeURIComponent(titre)}/intro-skipped`).catch(() => {})
   }
+  const nextDue = $derived(!!player && !!s && s.provider === 'film' && canDrive && s.queue.length > 0 && !player.error && nearEnd(player.position, player.duration))
   const key = (e: KeyboardEvent) => {
     if (shortcut(e) !== 'skip' || e.defaultPrevented || !skippable) return
     if (document.querySelector('plbls-modal, [aria-modal="true"], [role="menu"]')) return
@@ -134,6 +135,8 @@
         {/if}
         {#if skippable}
           <button class="plbls-button watch-skip" onclick={skip} title="S" aria-keyshortcuts="S"><Icon name="suivant" size={16} /> Passer l’intro</button>
+        {:else if nextDue}
+          <button class="plbls-button watch-skip" onclick={stop} title={s.queue[0]?.meta?.title}><Icon name="suivant" size={16} /> Épisode suivant</button>
         {/if}
         {#if player && !live}
           <div class="watch-bar" role="group" aria-label="Lecture">
