@@ -137,6 +137,12 @@ describe('FilmPlayer : pistes par défaut', () => {
     expect(adapter.setSubtitle).toHaveBeenLastCalledWith(1)
     expect(adapter.setAudio).toHaveBeenCalledWith(1)
   })
+  it('choisit les sous-titres forcés de la langue demandée sans attendre la réouverture du flux', async () => {
+    const { adapter, vue } = await ouvrir()
+    await fireEvent.change(vue.getByLabelText('Audio'), { target: { value: 'vff' } })
+    await fireEvent.change(vue.getByLabelText('Sous-titres'), { target: { value: 'forced' } })
+    expect(adapter.setSubtitle).toHaveBeenLastCalledWith(1)
+  })
 })
 
 describe('FilmPlayer : préchargement réservé au Wi-Fi', () => {

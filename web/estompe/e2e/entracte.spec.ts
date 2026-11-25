@@ -167,6 +167,14 @@ test('Lecteur : langue, sous-titres et volume retenus, commandes au clavier', as
   await expect(page.getByRole('button', { name: 'VFF (AC3, 5.1)' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Français forcés' })).toHaveAttribute('aria-pressed', 'true')
   expect([...new Set(s.ouvertures.map((o) => o.audio))]).toEqual([2])
+  const modes = () => page.evaluate(() => [...document.querySelector('video')!.textTracks].map((t) => t.mode))
+  await expect.poll(modes).toEqual(['disabled', 'disabled', 'showing'])
+  await page.getByRole('button', { name: 'Aucun', exact: true }).click()
+  await expect.poll(modes).toEqual(['disabled', 'disabled', 'disabled'])
+  await page.reload()
+  await page.getByRole('button', { name: 'Audio et sous-titres' }).click()
+  await expect(page.getByRole('button', { name: 'Français forcés' })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(modes).toEqual(['disabled', 'disabled', 'showing'])
 })
 
 test('Administration : suivi des demandes, recherche interactive, file, manquants et fiche d’un titre', async ({ page }) => {
