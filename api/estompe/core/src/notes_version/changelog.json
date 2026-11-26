@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.114.1",
+    "date": "2026-11-26",
+    "new": [
+      "Entracte : l'historique est classé par jour, et les épisodes d'une même série vus le même jour sont regroupés sur une seule ligne.",
+      "Stats : la page Jeu et trophées devient une vitrine, avec votre série en cours, votre activité de l'année et les trophées presque débloqués."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.112.1",
     "date": "2026-11-25",
     "new": [
