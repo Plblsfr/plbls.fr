@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, setUnauthorizedHandler } from '../../lib/api'
 import { categorie, CATEGORIES, commercant, dejaImporte, fauxClient, file, groupe, importe, operation, OPERATIONS, page, pdf, refuse, regle, releve } from './essais'
 import { actives, bilan, budget, conditionDe, deplacer, ENVOI_MAX, FICHIER_MAX, filtreActif, filtres, filtresDe, lots, memesFiltres, montantSaisi, motCle, nomExport, pastilles, recherche, requeteDe, requeteExport, teinte, messageErreur, messageRefus, natureDe, parGravite, parJour, raisonControle, requeteOperations, tirelireApi, titreDe, totaux, totauxConnus, totauxDe, type Filtres, type Issue } from './tirelire'
+import { simuler, type Reglages } from './simulation'
+import { resumeStats, simulationStats } from './essais-decision'
+import { estOutil, ongletActif, periodeDe, periodeValide, vueDe } from './onglets'
 import { EtatTirelire } from './tirelire.svelte'
 
 const json = (status: number, body?: unknown) =>
@@ -485,5 +488,51 @@ describe('état de la section', () => {
     expect(etat.operation(3)?.label).toBe('CARTE 22/11 LIVREO*CMD PARIS')
     await etat.chargerDetail(404)
     expect([etat.operation(404), etat.detailAbsent]).toEqual([null, true])
+  })
+
+  it('résumé et simulation : chargement, période introuvable, panne, oubli au changement de mode', async () => {
+    const resume = vi.fn(async (_mode: string, periode?: string) => { if (periode === '2020-01') throw new ApiError(404, 'not_found', ''); if (periode === 'panne') throw new ApiError(503, 'unavailable', ''); return resumeStats() })
+    const simulerApi = vi.fn(async (_mode: string, r: Reglages) => simuler(simulationStats(), r))
+    const etat = new EtatTirelire(fauxClient({ resume, simuler: simulerApi }))
+    await etat.chargerResume('2026-11')
+    expect(resume).toHaveBeenLastCalledWith('calendar', '2026-11')
+    expect([etat.resume?.period.id, etat.resumeAbsent, etat.erreurResume]).toEqual(['2026-11', false, ''])
+    await etat.chargerResume('2020-01')
+    expect([etat.resume, etat.resumeAbsent, etat.erreurResume]).toEqual([null, true, ''])
+    await etat.chargerResume('panne')
+    expect([etat.resume, etat.resumeAbsent, etat.erreurResume]).toEqual([null, false, 'Tirelire est indisponible pour le moment.'])
+    await etat.chargerSimulation()
+    expect(simulerApi).toHaveBeenLastCalledWith('calendar', { categories: {}, arrets: [] })
+    expect(etat.simulation?.result.monthly).toBe(0)
+    const regles: Reglages = { categories: { 3: { percent: 30 } }, arrets: ['54-monthly'] }
+    expect((await etat.simuler(regles))?.result.monthly).toBe(7104 + 1399)
+    expect(etat.simulation?.result.monthly).toBe(0)
+    simulerApi.mockRejectedValueOnce(new ApiError(400, 'invalid', ''))
+    expect(await etat.simuler(regles)).toBeNull()
+    expect(etat.erreurSimulation).toBe('Tirelire n’a pas pu lire la demande.')
+    etat.changerMode('statement')
+    expect([etat.resume, etat.simulation, etat.erreurSimulation]).toEqual([null, null, ''])
+    simulerApi.mockRejectedValueOnce(new ApiError(503, 'unavailable', ''))
+    await etat.chargerSimulation()
+    expect([etat.simulation, etat.erreurSimulation]).toEqual([null, 'Tirelire est indisponible pour le moment.'])
+  })
+
+  it('fixe les plafonds simulés par la route des catégories, puis périme les statistiques', async () => {
+    const modifierCategorie = vi.fn(async () => categorie())
+    const categories = vi.fn(async () => CATEGORIES)
+    const etat = new EtatTirelire(fauxClient({ modifierCategorie, categories }))
+    const version = etat.version
+    expect(await etat.fixerPlafonds([{ id: 3, name: 'Restaurants', cap: 16_576, avant: 15_000 }, { id: 4, name: 'Shopping', cap: 14_988, avant: null }])).toBe(true)
+    expect(modifierCategorie.mock.calls).toEqual([[3, { monthly_cap: 16_576 }], [4, { monthly_cap: 14_988 }]])
+    expect(etat.version).toBe(version + 1)
+    expect(categories).toHaveBeenCalledTimes(1)
+    modifierCategorie.mockRejectedValueOnce(new ApiError(404, 'not_found', ''))
+    expect(await etat.fixerPlafonds([{ id: 99, name: 'Disparue', cap: 100, avant: null }])).toBe(false)
+    expect(etat.erreurClassement).toBe('Cet élément n’existe plus.')
+  })
+
+  it('écran d’aide à la décision : adresse, onglet actif et période', () => {
+    expect([vueDe('decision'), vueDe('decision', 'x'), ongletActif('decision'), estOutil('decision')]).toEqual(['decision', 'decision', undefined, false])
+    expect(periodeValide(periodeDe('periode=2026-10&cible=3:15000'))).toBe('2026-10')
   })
 })

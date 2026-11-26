@@ -10,6 +10,8 @@
   import TirelireAccueil from './TirelireAccueil.svelte'
   import TirelireCategorie from './TirelireCategorie.svelte'
   import TirelireCategories from './TirelireCategories.svelte'
+  import TirelireDecision from './TirelireDecision.svelte'
+  import { prefillDe } from './simulation'
   import TirelireEvolution from './TirelireEvolution.svelte'
   import TirelireClasser from './TirelireClasser.svelte'
   import TirelireAbonnements from './TirelireAbonnements.svelte'
@@ -39,7 +41,7 @@
     if (filtre) return nomReleve(filtre).toLowerCase()
     return tirelire.releves?.length ? pluriel(tirelire.releves.length, 'relevé', 'relevés') : ''
   })
-  const cible = $derived(vue === 'mois' ? periodeValide(id) : vue === 'categorie' ? periodeValide(periodeDe(requete)) : undefined)
+  const cible = $derived(vue === 'mois' ? periodeValide(id) : vue === 'categorie' || vue === 'decision' ? periodeValide(periodeDe(requete)) : undefined)
   const mois = $derived(tirelire.mois)
   const aJour = $derived(!!mois && (cible ? mois.period.id === cible : mois.next_id === null))
   const detail = $derived(vue === 'categorie' && tirelire.categorieDuMois?.category.id === Number(id) ? tirelire.categorieDuMois : null)
@@ -48,6 +50,8 @@
   function charger() {
     if (vue === 'habitudes' || vue === 'abonnements' || vue === 'accueil') void tirelire.chargerRecurrents()
     if (vue === 'abonnements') return
+    if (vue === 'accueil' || vue === 'mois' || vue === 'decision') void tirelire.chargerResume(cible)
+    if (vue === 'decision') return void tirelire.chargerSimulation()
     if (vue === 'habitudes') void tirelire.chargerHabitudes()
     else if (vue === 'evolution') void tirelire.chargerEvolution()
     else if (vue === 'categorie') void tirelire.chargerCategorieDuMois(Number(id), cible)
@@ -55,7 +59,7 @@
   }
 
   $effect(() => {
-    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie' || vue === 'evolution' || vue === 'habitudes' || vue === 'abonnements')
+    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie' || vue === 'evolution' || vue === 'habitudes' || vue === 'abonnements' || vue === 'decision')
     const cle = [vue, id, cible, tirelire.mode, tirelire.version, vue === 'evolution' ? tirelire.fenetre : vue === 'habitudes' ? tirelire.fenetreHabitudes : ''].join()
     untrack(() => {
       if (!pret || !cle) return
@@ -80,6 +84,8 @@
     <TirelireTete titre={detail?.category.name ?? 'Catégorie'} sous={detail ? `${NATURES_LONGUES[detail.category.kind].toLowerCase()} · ${titrePeriode(detail.period, detail.mode).toLowerCase()}` : ''} retour={hrefs.tirelire('mois', detail?.period.id ?? cible)} retourLabel="Retour à la vue du mois">
       <a class="tir-ib" href={hrefs.tirelire('categories')} aria-label="Catégories et règles" title="Catégories et règles"><Icon name="curseurs" size={20} /></a>
     </TirelireTete>
+  {:else if vue === 'decision'}
+    <TirelireTete titre="Aide à la décision" sous="résumé de la période et simulateur" retour={hrefs.tirelire()} retourLabel="Retour à l’accueil" />
   {:else if vue === 'abonnements'}
     <TirelireTete titre="Abonnements" sous="et paiements récurrents" retour={hrefs.tirelire('habitudes')} retourLabel="Retour aux habitudes" />
   {:else if vue === 'operation'}
@@ -112,6 +118,10 @@
           <p class="tir-note tir-note--texte">Les statistiques se calculent à partir de tes relevés.</p>
           <a class="tir-btn tir-btn--plein" href={hrefs.tirelire('import')}>Importer un relevé PDF</a>
         </section>
+      {:else if tirelire.releves && vue === 'decision' && (tirelire.simulation || tirelire.erreurSimulation)}
+        {#key JSON.stringify(prefillDe(requete))}<TirelireDecision resume={tirelire.resume} simulation={tirelire.simulation} {requete} />{/key}
+      {:else if tirelire.releves && vue === 'decision'}
+        <div class="tir-etat" role="status"><Loader text="Calcul du résumé et de la base du simulateur…" /></div>
       {:else if tirelire.releves && vue === 'abonnements' && tirelire.recurrents}
         <TirelireAbonnements recurrents={tirelire.recurrents} />
       {:else if tirelire.releves && (vue === 'abonnements' ? tirelire.erreurRecurrents : vue === 'habitudes' && tirelire.erreurHabitudes)}
@@ -153,9 +163,9 @@
       {:else if tirelire.releves && vue === 'categorie' && detail}
         <TirelireCategorie {detail} />
       {:else if tirelire.releves && vue === 'accueil' && mois && aJour}
-        <TirelireAccueil {mois} recurrents={tirelire.recurrents} />
+        <TirelireAccueil {mois} recurrents={tirelire.recurrents} resume={tirelire.resume} />
       {:else if tirelire.releves && vue === 'mois' && mois}
-        <div class="tir-col" style:gap="12px" style:opacity={aJour ? undefined : 0.6} aria-busy={!aJour}><TirelireMois {mois} /></div>
+        <div class="tir-col" style:gap="12px" style:opacity={aJour ? undefined : 0.6} aria-busy={!aJour}><TirelireMois {mois} resume={tirelire.resume} /></div>
       {:else if tirelire.releves}
         <div class="tir-etat" role="status"><Loader text="Calcul des statistiques…" /></div>
       {:else if tirelire.erreur}

@@ -2,7 +2,9 @@
   import Icon from '../../components/Icon.svelte'
   import { hrefs } from '../../lib/route.svelte'
   import { euros, eurosSignes, pluriel } from './formats'
+  import type { Resume } from './decision'
   import type { Recurrents } from './habitudes'
+  import TirelireBref from './TirelireBref.svelte'
   import TirelireCourbe from './TirelireCourbe.svelte'
   import TirelireEcart from './TirelireEcart.svelte'
   import TirelireEtincelle from './TirelireEtincelle.svelte'
@@ -11,7 +13,7 @@
   import { teinte } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
-  let { mois, recurrents = null }: { mois: Mois; recurrents?: Recurrents | null } = $props()
+  let { mois, recurrents = null, resume = null }: { mois: Mois; recurrents?: Recurrents | null; resume?: Resume | null } = $props()
 
   let en = $state<'euros' | 'pourcent'>('euros')
 
@@ -133,6 +135,8 @@
     </div>
   </section>
 
+  {#if resume && resume.period.id === mois.period.id}<TirelireBref {resume} extrait />{/if}
+
   <div class="tir-tb-courbe"><TirelireCourbe {mois} /></div>
 
   <section class="tir-col tir-tb-depasse" style:gap="10px" aria-label="Ce qui dépasse">
@@ -190,4 +194,9 @@
       <Icon name="droite" size={18} />
     </a>
   {/if}
+  <a class="tir-bandeau tir-bandeau--calme tir-tb-simulateur" href={hrefs.tirelire('decision')}>
+    <span class="tir-pas tir-pas--rose"><Icon name="curseurs" size={18} /></span>
+    <span class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Simulateur</span><span class="tir-note">si je baisse une catégorie, combien j’économise par mois et par an</span></span>
+    <Icon name="droite" size={18} />
+  </a>
 </div>

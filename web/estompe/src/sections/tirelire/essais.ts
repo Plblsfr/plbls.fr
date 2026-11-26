@@ -1,6 +1,8 @@
 import type { Annees, Historique, LigneHistorique, Soldes, Tendance } from './evolution'
 import type { DetailCategorie, LigneCategorie, Mois, Periode } from './stats'
 import type { Categorie, ClientTirelire, Commercant, FileAClasser, Groupe, Operation, PageOperations, Regle, Releve, ResultatImport } from './tirelire'
+import { simuler } from './simulation'
+import { resumeStats, simulationStats } from './essais-decision'
 import { habitudesStats, recurrentsStats } from './essais-habitudes'
 
 export const releve = (o: Partial<Releve> = {}): Releve => ({
@@ -196,5 +198,7 @@ export const fauxClient = (o: Partial<ClientTirelire> = {}): ClientTirelire => (
   recurrents: async () => recurrentsStats(),
   modifierRecurrent: async () => recurrentsStats(),
   inhabituelle: async () => null,
+  resume: async () => resumeStats(),
+  simuler: async (_mode, reglages) => simuler(simulationStats(), reglages),
   ...o,
 })

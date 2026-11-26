@@ -1,7 +1,11 @@
 import type { Page, Route } from '@playwright/test'
 import { simuler, type Profil } from './faux-sablier'
+import type { Resume } from '../src/sections/tirelire/decision'
+import { simuler as simulerReglages, type Reglages, type Simulation } from '../src/sections/tirelire/simulation'
+import { resumePremier, resumeStats, simulationStats } from '../src/sections/tirelire/essais-decision'
 import { habitudesStats, RECURRENTS_ESSAI, recurrentsCourts, totaliser } from '../src/sections/tirelire/essais-habitudes'
 import type { Habitudes } from '../src/sections/tirelire/habitudes'
+import type { Mois } from '../src/sections/tirelire/stats'
 
 export const TIRELIRE = 'http://tirelire.test'
 export const PORT = 4179
@@ -345,6 +349,28 @@ function habitudesFausses(srv: Tirelire, mode: Mode, fenetre: string | null): Ha
   return { ...base, previous: null, covered_days: 26, variable: 0, merchants: [], merchants_total: 0, small: { ...base.small, count: 0, amount: 0, yearly: null, merchants: [], merchants_total: 0 }, weekdays: { ...vide, buckets: base.weekdays.buckets.map((t) => ({ ...t, ...vide, per_day: 0 })) }, weeks: { ...vide, buckets: base.weeks.buckets.map((t) => ({ ...t, ...vide, per_day: t.days ? 0 : null })) }, unusual: { total: 0, operations: [] } }
 }
 
+function resumeFaux(srv: Tirelire, m: Mois): Resume {
+  const base = srv.court || m.periods === 1 ? resumePremier() : resumeStats()
+  return {
+    ...base, mode: m.mode, period: m.period, previous_id: m.previous_id, next_id: m.next_id, partial: !m.period.complete, operations: m.operations,
+    expenses: { total: m.expenses.total, previous: base.previous ? m.expenses.previous : null, usual: base.usual ? m.expenses.avg3 : null, budget: m.budget?.total ?? null, budget_delta: m.budget?.delta ?? null },
+    previous: base.previous && { ...base.previous, period_id: m.previous_id },
+  }
+}
+
+function simulationFausse(srv: Tirelire, corps: { mode?: string; categories?: ({ id: number } & Reglages['categories'][number])[]; subscriptions?: string[] }): Simulation {
+  const plafonds = new Map(srv.categories.map((c) => [c.id, c.monthly_cap]))
+  const plafonnees = srv.categories.filter((c) => !c.archived && (c.kind === 'fixe' || c.kind === 'variable') && c.monthly_cap !== null)
+  const modele = simulationStats()
+  const base = simulationStats({
+    mode: corps.mode === 'statement' ? 'statement' : 'calendar',
+    categories: modele.categories.map((c) => ({ ...c, monthly_cap: plafonds.get(c.id) ?? null })),
+    reference: { ...modele.reference, budget: plafonnees.length ? plafonnees.reduce((n, c) => n + (c.monthly_cap ?? 0), 0) : null },
+    ...(srv.court ? { basis: { method: 'current', periods: 1, period_ids: ['2026-11'], from: '2026-11-01', to: '2026-11-26', fragile: true }, subscriptions: [] } : {}),
+  })
+  return simulerReglages(base, { categories: Object.fromEntries((corps.categories ?? []).map(({ id, ...r }) => [id, r])), arrets: corps.subscriptions ?? [] })
+}
+
 export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boolean } = {}, srv: Tirelire = serveurTirelire()) {
   await simuler(page, { acces: false, ...p }, undefined, PORT)
   const origine = new URL(page.url() === 'about:blank' ? `http://localhost:${PORT}` : page.url()).origin
@@ -449,6 +475,7 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
         if (m.seen) x.alerts = x.alerts.map((a) => ({ ...a, seen: true }))
         return json(route, recurrents())
       }
+      if (url.pathname === '/stats/simulate' && methode === 'POST') return json(route, simulationFausse(srv, corps()))
       const st = statistiques(srv, mode)
       if (url.pathname === '/stats/months') return json(route, { mode, periods: st.periodes.map((p, i) => ({ ...p, operations: st.agregats[i].ops.length, expenses: st.agregats[i].depenses, income: st.agregats[i].revenus, savings: st.agregats[i].epargne, remaining: st.agregats[i].reste })) })
       if (url.pathname === '/stats/history') return json(route, st.historique(url.searchParams.get('window')))
@@ -457,6 +484,7 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
       if (i < 0) return inconnu()
       if (url.pathname === '/stats/years') return json(route, st.annees(i))
       if (url.pathname === '/stats/month') return json(route, st.mois(i))
+      if (url.pathname === '/stats/summary') return json(route, resumeFaux(srv, st.mois(i) as unknown as Mois))
       const c = srv.categories.find((x) => x.id === Number(/^\/stats\/month\/categories\/(\d+)$/.exec(url.pathname)?.[1]))
       return c ? json(route, st.detail(i, c)) : inconnu()
     }
