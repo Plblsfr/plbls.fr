@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "deny": [
-      "Bash(curl *api.github.com*)",
-      "Bash(wget *api.github.com*)"
-    ]
+    "deny": []
   }
 }
