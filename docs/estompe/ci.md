@@ -53,7 +53,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 - `changelog` : exige un nouveau `changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
   tests des scripts communs, liens Markdown internes (`scripts/check-links.mjs`), `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque
-  espace npm touché (sortie `espaces` de `changements`), et pour Estompe l'e2e des sections selon les permissions (`npm run e2e:entracte`, `npm run e2e:sillon`, `npm run e2e:regie`, `npm run e2e:sablier` et `npm run e2e:cinema`,
+  espace npm touché (sortie `espaces` de `changements`), et pour Estompe l'e2e des sections selon les permissions (`npm run e2e:entracte`, `npm run e2e:sillon`, `npm run e2e:regie`, `npm run e2e:sablier`, `npm run e2e:tirelire` et `npm run e2e:cinema`,
   API simulées, Chromium installé par Playwright). Le futur front unique s'y branche en devenant un espace npm de plus (ou le seul).
 - `rust-lint` : une seule fois pour tout le workspace : toolchain de `rust-toolchain.toml`, version de Rust des `FROM rust:` des Dockerfiles,
   `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, règle « le cœur d'Estompe ne dépend d'aucun bloc »,

@@ -4,6 +4,8 @@ import { entracte } from '../sections/entracte/entracte.svelte'
 import { sillonApi, sillonOn, type SillonMe } from '../sections/sillon/sillon'
 import { sablierApi, sablierOn, type SablierMe } from '../sections/sablier/sablier'
 import { sablier } from '../sections/sablier/sablier.svelte'
+import { tirelireApi, tirelireOn, type TirelireMe } from '../sections/tirelire/tirelire'
+import { tirelire } from '../sections/tirelire/tirelire.svelte'
 import { aimes, lecteur } from '../sections/sillon/sillon.svelte'
 import { regieApi, regieOn } from '../sections/regie/regie'
 import { Realtime, coupureDifferee, wsUrl, type RealtimeEvent } from './realtime'
@@ -70,6 +72,8 @@ export class AppStore {
   musique = $state(false)
   sablierMe = $state.raw<SablierMe | null>(null)
   stats = $state(false)
+  tirelireMe = $state.raw<TirelireMe | null>(null)
+  tirelire = $state(false)
   /** Administration des médias ouverte (`regie:admin` annoncé par Régie). */
   regie = $state(false)
   servers = $state<Server[]>([])
@@ -147,20 +151,27 @@ export class AppStore {
     else sablier.reinitialiser()
   }
 
+  private async loadTirelire() {
+    if (!tirelireOn()) { this.tirelireMe = null; this.tirelire = false; return }
+    try { this.tirelireMe = await tirelireApi.me() } catch { this.tirelireMe = null }
+    this.tirelire = !!this.tirelireMe?.permissions.access
+    if (!this.tirelire) tirelire.reinitialiser()
+  }
+
   private async loadRegie() {
     if (!regieOn()) { this.regie = false; return }
     try { this.regie = (await regieApi.me()).permissions.admin } catch { this.regie = false }
   }
 
   private async loadSections(): Promise<boolean> {
-    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon(), this.loadRegie(), this.loadSablier()])
+    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon(), this.loadRegie(), this.loadSablier(), this.loadTirelire()])
     return films || musique
   }
 
   private openSectionsOnly() {
     this.movies = !!this.entracteMe?.permissions.access
     this.stopRealtime()
-    const ici = (this.movies && location.hash.startsWith('#/films')) || (this.musique && location.hash.startsWith('#/musique')) || (this.stats && location.hash.startsWith('#/stats'))
+    const ici = (this.movies && location.hash.startsWith('#/films')) || (this.musique && location.hash.startsWith('#/musique')) || (this.stats && location.hash.startsWith('#/stats')) || (this.tirelire && location.hash.startsWith('#/tirelire'))
     if (!ici) {
       const cible = this.movies ? hrefs.films() : hrefs.musique()
       history.replaceState(null, '', cible)

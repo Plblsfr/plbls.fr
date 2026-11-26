@@ -51,7 +51,7 @@ Trois sources, de la moins prioritaire à la plus prioritaire :
 2. **[`plbls.env`](../plbls.env)** (racine du dépôt) : toutes les valeurs non secrètes de production, copiées dans chaque image au build
    (`/etc/plbls.env`, autre chemin par `PLBLS_ENV`). Format `CLE=valeur`, sans guillemets ni interpolation. Changer une valeur = une PR,
    puis les images reconstruites par la CI. `estompe-web` en lit `API_URL`, `GATEWAY_URL`, `VOICE_URL`, `KEYCLOAK_ISSUER`,
-   `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL`, `REGIE_PUBLIC_URL` et `SABLIER_PUBLIC_URL` au démarrage.
+   `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL`, `REGIE_PUBLIC_URL`, `SABLIER_PUBLIC_URL` et `TIRELIRE_PUBLIC_URL` au démarrage.
 3. **Environnement du conteneur** : l'onglet Environment de la stack, qui contient [`.env.example`](.env.example) puis le `.env.example`
    de chaque projet, mis bout à bout. Dokploy l'écrit dans `.env` à côté du compose à chaque déploiement. Les backends Rust
    (`auth-gateway`, `aegis`, `entracte-api`, `sillon-api`, `sablier-api`, `regie-api`, `estompe-api`) le chargent en entier (`env_file: .env`) ; les autres

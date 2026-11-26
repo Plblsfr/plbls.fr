@@ -14,6 +14,7 @@ interface ImportMetaEnv {
   /** URL de l'API de Régie (ex. https://regie-api.plbls.fr) ; vide = pas de section Régie. */
   readonly VITE_REGIE_URL?: string
   readonly VITE_SABLIER_URL?: string
+  readonly VITE_TIRELIRE_URL?: string
 }
 
 declare module 'virtual:pwa-register' {

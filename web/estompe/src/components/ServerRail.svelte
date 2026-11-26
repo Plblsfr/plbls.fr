@@ -87,6 +87,9 @@
     {#if app.stats}
       <a class="rail-tool rail-stats" class:active={route.name === 'stats'} href={hrefs.stats()} title="Stats" aria-label={sablier.pastille ? 'Stats, du nouveau' : 'Stats'} aria-current={route.name === 'stats' ? 'page' : undefined}><Icon name="sablier" size={22} />{#if sablier.pastille}<span class="sab-pip sab-pip--coin"></span>{/if}</a>
     {/if}
+    {#if app.tirelire}
+      <a class="rail-tool" class:active={route.name === 'tirelire'} href={hrefs.tirelire()} title="Tirelire · comptes" aria-label="Tirelire, comptes" aria-current={route.name === 'tirelire' ? 'page' : undefined}><Icon name="tirelire" size={22} /></a>
+    {/if}
     {#if app.regie}
       <a class="rail-tool" class:active={route.name === 'regie'} href={hrefs.regie()} title="Régie · administration des médias" aria-label="Régie, administration des médias" aria-current={route.name === 'regie' ? 'page' : undefined}><Icon name="curseurs" size={22} /></a>
     {/if}

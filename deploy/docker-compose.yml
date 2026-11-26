@@ -118,6 +118,7 @@ services:
       SILLON_PUBLIC_URL: ${SILLON_PUBLIC_URL:-}
       REGIE_PUBLIC_URL: ${REGIE_PUBLIC_URL:-}
       SABLIER_PUBLIC_URL: ${SABLIER_PUBLIC_URL:-}
+      TIRELIRE_PUBLIC_URL: ${TIRELIRE_PUBLIC_URL:-}
     expose: ["8080"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]

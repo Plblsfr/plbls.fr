@@ -7,6 +7,8 @@
   import SablierNav from '../sections/sablier/SablierNav.svelte'
   import SablierSpace from '../sections/sablier/SablierSpace.svelte'
   import { sablier } from '../sections/sablier/sablier.svelte'
+  import TirelireNav from '../sections/tirelire/TirelireNav.svelte'
+  import TirelireSpace from '../sections/tirelire/TirelireSpace.svelte'
   import { lecteur } from '../sections/sillon/sillon.svelte'
   import Icon from '../components/Icon.svelte'
   import { router, hrefs } from '../lib/route.svelte'
@@ -18,19 +20,21 @@
   const films = $derived(route.name === 'films' && app.movies)
   const musique = $derived(route.name === 'musique' && app.musique)
   const stats = $derived(route.name === 'stats' && app.stats)
+  const comptes = $derived(route.name === 'tirelire' && app.tirelire)
   const nom = $derived(app.entracteMe?.name ?? app.sillonMe?.name ?? '')
-  $effect(() => { if (!films && !musique && !stats) router.go(app.movies ? hrefs.films() : hrefs.musique()) })
+  $effect(() => { if (!films && !musique && !stats && !comptes) router.go(app.movies ? hrefs.films() : hrefs.musique()) })
 </script>
 
 <div class="app sections-seules" data-nav={nav ? 'open' : 'closed'}>
   <div class="nav-drawer" role="presentation" onclick={(e) => { if ((e.target as HTMLElement).closest('a')) nav = false }}>
     <aside class="side">
-      {#if stats}<SablierNav />{:else if musique}<SillonNav />{:else}<FilmsNav />{/if}
-      {#if Number(app.movies) + Number(app.musique) + Number(app.stats) > 1}
+      {#if stats}<SablierNav />{:else if comptes}<TirelireNav />{:else if musique}<SillonNav />{:else}<FilmsNav />{/if}
+      {#if Number(app.movies) + Number(app.musique) + Number(app.stats) + Number(app.tirelire) > 1}
         <nav class="sections-choix" aria-label="Sections">
           {#if app.movies}<a class="nav-item" class:active={films} href={hrefs.films()} aria-current={films ? 'page' : undefined}><Icon name="film" size={18} /><span class="grow truncate">Entracte · films et séries</span></a>{/if}
           {#if app.musique}<a class="nav-item" class:active={musique} href={hrefs.musique()} aria-current={musique ? 'page' : undefined}><Icon name="note" size={18} /><span class="grow truncate">Sillon · musique</span></a>{/if}
           {#if app.stats}<a class="nav-item" class:active={stats} href={hrefs.stats()} aria-current={stats ? 'page' : undefined}><Icon name="sablier" size={18} /><span class="grow truncate">Stats</span>{#if sablier.pastille}<span class="sab-pip" role="img" aria-label="Du nouveau dans Stats"></span>{/if}</a>{/if}
+          {#if app.tirelire}<a class="nav-item" class:active={comptes} href={hrefs.tirelire()} aria-current={comptes ? 'page' : undefined}><Icon name="tirelire" size={18} /><span class="grow truncate">Tirelire · comptes</span></a>{/if}
         </nav>
       {/if}
       <div class="dock-w">
@@ -46,6 +50,8 @@
   <main class="main" id="main" tabindex="-1">
     {#if stats}
       <SablierSpace section={route.name === 'stats' ? route.section : undefined} id={route.name === 'stats' ? route.id : undefined} detail={route.name === 'stats' ? route.detail : undefined} onmenu={() => (nav = true)} />
+    {:else if comptes}
+      <TirelireSpace section={route.name === 'tirelire' ? route.section : undefined} id={route.name === 'tirelire' ? route.id : undefined} onmenu={() => (nav = true)} />
     {:else if musique}
       <SillonSpace section={route.name === 'musique' ? route.section : undefined} id={route.name === 'musique' ? route.id : undefined} onmenu={() => (nav = true)} />
     {:else if films}
