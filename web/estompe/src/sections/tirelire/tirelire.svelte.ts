@@ -1,5 +1,10 @@
 import { enregistrer, filtreActif, lots, messageErreur, SANS_FILTRE, tirelireApi, totauxDe, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle, type Totaux } from './tirelire'
 import type { Releve } from './tirelire'
+import { CLE_MODE, lireMode, type DetailCategorie, type Mode, type Mois, type ResumePeriode } from './stats'
+
+function modeMemorise(): Mode {
+  try { return lireMode(localStorage.getItem(CLE_MODE)) } catch { return 'calendar' }
+}
 
 export interface Annulable { titre: string; detail: string; commercant: number | null; operation: number | null }
 
@@ -31,6 +36,17 @@ export class EtatTirelire {
   classeesIci = $state(0)
   passes = $state.raw<string[]>([])
   enTete = $state('')
+  mode = $state<Mode>(modeMemorise())
+  mois = $state.raw<Mois | null>(null)
+  moisAbsent = $state(false)
+  erreurMois = $state('')
+  periodes = $state.raw<ResumePeriode[] | null>(null)
+  categorieDuMois = $state.raw<DetailCategorie | null>(null)
+  categorieAbsente = $state(false)
+  version = $state(0)
+  private tourMois = 0
+  private tourCategorie = 0
+  private tourPeriodes = 0
   private recherche = ''
   private tourReference = 0
   private tourDetail = 0
@@ -78,6 +94,69 @@ export class EtatTirelire {
     this.passes = []
     this.enTete = ''
     this.recherche = ''
+    this.oublierStats()
+  }
+
+  private oublierStats() {
+    this.tourMois++
+    this.tourCategorie++
+    this.tourPeriodes++
+    this.mois = null
+    this.moisAbsent = false
+    this.erreurMois = ''
+    this.periodes = null
+    this.categorieDuMois = null
+    this.categorieAbsente = false
+  }
+
+  private perimer() { this.version++ }
+
+  changerMode(mode: Mode) {
+    if (mode === this.mode) return
+    this.mode = mode
+    try { localStorage.setItem(CLE_MODE, mode) } catch { this.mode = mode }
+    this.oublierStats()
+  }
+
+  async chargerMois(periode?: string) {
+    const tour = ++this.tourMois
+    this.erreurMois = ''
+    this.moisAbsent = false
+    try {
+      const mois = await this.api.mois(this.mode, periode)
+      if (tour === this.tourMois) this.mois = mois
+    } catch (e) {
+      if (tour !== this.tourMois) return
+      this.mois = null
+      if ((e as { status?: number }).status === 404 || (e as { status?: number }).status === 400) this.moisAbsent = true
+      else this.erreurMois = messageErreur(e)
+    }
+  }
+
+  async chargerPeriodes() {
+    const tour = ++this.tourPeriodes
+    try {
+      const periodes = await this.api.periodes(this.mode)
+      if (tour === this.tourPeriodes) this.periodes = periodes
+    } catch {
+      if (tour === this.tourPeriodes) this.periodes = null
+    }
+  }
+
+  async chargerCategorieDuMois(id: number, periode?: string) {
+    const tour = ++this.tourCategorie
+    this.erreurMois = ''
+    this.categorieAbsente = false
+    if (this.categorieDuMois && this.categorieDuMois.category.id !== id) this.categorieDuMois = null
+    try {
+      const detail = await this.api.categorieDuMois(id, this.mode, periode)
+      if (tour === this.tourCategorie) this.categorieDuMois = detail
+    } catch (e) {
+      if (tour !== this.tourCategorie) return
+      this.categorieDuMois = null
+      if ((e as { status?: number }).status === 404 || (e as { status?: number }).status === 400) this.categorieAbsente = true
+      else this.erreurMois = messageErreur(e)
+    }
   }
 
   async ouvrir() {
@@ -153,6 +232,7 @@ export class EtatTirelire {
 
   private async apresClassement(file = false) {
     this.operations = null
+    this.perimer()
     const avecFile = file || !!this.file
     await Promise.all([this.chargerReference(!avecFile), avecFile ? this.chargerFile() : null, this.regles ? this.chargerRegles() : null, this.commercants ? this.chargerCommercants() : null])
   }
@@ -215,6 +295,7 @@ export class EtatTirelire {
   async enregistrerCategorie(id: number | null, c: Partial<SaisieCategorie & { archived: boolean }>): Promise<boolean> {
     const r = await this.agir(() => (id === null ? this.api.creerCategorie(c as SaisieCategorie) : this.api.modifierCategorie(id, c)))
     if (!r) return false
+    this.perimer()
     await this.chargerReference()
     return true
   }
@@ -362,6 +443,8 @@ export class EtatTirelire {
     this.operations = null
     this.file = null
     this.commercants = null
+    this.oublierStats()
+    this.perimer()
     await Promise.all([this.chargerReleves(), this.chargerReference()])
   }
 
@@ -418,6 +501,8 @@ export class EtatTirelire {
     this.file = null
     this.commercants = null
     this.detail = null
+    this.oublierStats()
+    this.perimer()
     await Promise.all([this.chargerReleves(), this.chargerReference()])
     return true
   }

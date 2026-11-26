@@ -105,6 +105,121 @@ export function serveurTirelire(avecReleves = false) {
 }
 export type Tirelire = ReturnType<typeof serveurTirelire>
 
+type Mode = 'calendar' | 'statement'
+interface PeriodeFausse { id: string; from: string; to: string; days: number; known_through: string; elapsed_days: number; complete: boolean; open: boolean; statement_ids: number[] }
+const JOUR_MS = 86_400_000
+const ecartJours = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / JOUR_MS)
+const division = (a: number, b: number) => Math.sign(a) * Math.round(Math.abs(a) / b)
+const bp = (part: number, total: number) => (total > 0 ? division(part * 10_000, total) : null)
+const ecart = (actuel: number, reference: number) => ({ amount: reference, delta: actuel - reference, delta_bp: bp(actuel - reference, reference) })
+const reference = (o: Op) => String(o.purchase_date ?? o.date)
+
+function periodesFausses(srv: Tirelire, mode: Mode): PeriodeFausse[] {
+  const releves = srv.releves as { id: number; from: string; to: string }[]
+  if (!releves.length) return []
+  if (mode === 'statement') return [...releves].sort((a, b) => a.to.localeCompare(b.to)).map((r) => ({ id: r.to, from: r.from, to: r.to, days: Math.max(1, ecartJours(r.from, r.to)), known_through: r.to, elapsed_days: Math.max(1, ecartJours(r.from, r.to)), complete: true, open: false, statement_ids: [r.id] }))
+  const fin = releves.map((r) => r.to).sort().at(-1)!
+  const mois = [...new Set([...(srv.operations as Op[]).map((o) => reference(o).slice(0, 7)), ...releves.map((r) => r.to.slice(0, 7))])].sort()
+  return mois.map((id) => {
+    const [a, m] = id.split('-').map(Number)
+    const jours = new Date(Date.UTC(a, m, 0)).getUTCDate()
+    const to = `${id}-${String(jours).padStart(2, '0')}`
+    const open = fin < to && fin >= `${id}-01`
+    return { id, from: `${id}-01`, to, days: jours, known_through: open ? fin : to, elapsed_days: open ? Number(fin.slice(8)) : jours, complete: !open, open, statement_ids: releves.filter((r) => r.to.slice(0, 7) === id).map((r) => r.id) }
+  })
+}
+
+function statistiques(srv: Tirelire, mode: Mode) {
+  const periodes = periodesFausses(srv, mode)
+  const nature = (o: Op) => srv.categories.find((c) => c.id === o.category_id)?.kind ?? null
+  const dans = (p: PeriodeFausse) => (srv.operations as Op[]).filter((o) => (mode === 'calendar' ? reference(o).slice(0, 7) === p.id : p.statement_ids.includes(Number(o.statement_id))))
+  const sortie = (o: Op) => (o.direction === 'debit' ? o.amount : -o.amount)
+  const depense = (o: Op) => (nature(o) === 'fixe' || nature(o) === 'variable' ? sortie(o) : nature(o) === null && o.direction === 'debit' ? o.amount : 0)
+  const agregats = periodes.map((p) => {
+    const ops = dans(p)
+    const somme = (f: (o: Op) => boolean, v: (o: Op) => number = sortie) => ops.filter(f).reduce((n, o) => n + v(o), 0)
+    const fixe = somme((o) => nature(o) === 'fixe')
+    const variable = somme((o) => nature(o) === 'variable')
+    const aClasser = somme((o) => nature(o) === null && o.direction === 'debit')
+    const revenus = -somme((o) => nature(o) === 'revenu') + somme((o) => nature(o) === null && o.direction === 'credit', (o) => o.amount)
+    const epargne = somme((o) => nature(o) === 'epargne')
+    const parJour = Array.from({ length: p.days }, () => 0)
+    for (const o of ops) parJour[Math.min(p.days, Math.max(1, mode === 'calendar' ? Number(reference(o).slice(8)) : ecartJours(p.from, reference(o)))) - 1] += depense(o)
+    let total = 0
+    return { ops, fixe, variable, aClasser, depenses: fixe + variable + aClasser, revenus, epargne, reste: revenus - fixe - variable - aClasser - epargne, cumul: parJour.map((j) => (total += j)), montant: (id: number) => ops.filter((o) => o.category_id === id).reduce((n, o) => n + sortie(o), 0) }
+  })
+  const completes = (i: number, n: number) => periodes.map((p, j) => (j < i && p.complete ? j : -1)).filter((j) => j >= 0).slice(-n)
+  const moyenne = (i: number, n: number, f: (a: (typeof agregats)[number]) => number) => {
+    const js = completes(i, n)
+    if (!js.length) return null
+    const m = division(js.reduce((s, j) => s + f(agregats[j]), 0), js.length)
+    return { ...ecart(f(agregats[i]), m), periods: js.length }
+  }
+  const avant = (i: number, f: (a: (typeof agregats)[number]) => number) => (i > 0 ? ecart(f(agregats[i]), f(agregats[i - 1])) : null)
+  const fenetre = (i: number) => periodes.map((_, j) => j).slice(Math.max(0, i - 11), i + 1)
+  const ligne = (i: number, c: Categorie) => {
+    const f = (a: (typeof agregats)[number]) => a.montant(c.id)
+    const montant = f(agregats[i])
+    return { id: c.id, name: c.name, kind: c.kind, color: c.color, archived: c.archived, monthly_cap: c.monthly_cap, amount: montant, operations: agregats[i].ops.filter((o) => o.category_id === c.id).length, share_bp: c.kind === 'fixe' || c.kind === 'variable' ? bp(montant, agregats[i].depenses) : null, previous: avant(i, f), avg3: moyenne(i, 3, f), avg12: moyenne(i, 12, f), cap_delta: c.monthly_cap === null ? null : montant - c.monthly_cap, cap_bp: c.monthly_cap === null ? null : bp(montant, c.monthly_cap), trend: fenetre(i).map((j) => f(agregats[j])) }
+  }
+  const aligne = (cumul: number[], jours: number) => Array.from({ length: jours }, (_, j) => (j === jours - 1 || j >= cumul.length ? cumul.at(-1)! : cumul[j]))
+  const mois = (i: number) => {
+    const p = periodes[i]
+    const a = agregats[i]
+    const lignes = srv.categories.filter((c) => c.kind === 'fixe' || c.kind === 'variable').map((c) => ligne(i, c)).filter((l) => l.amount !== 0 || l.operations > 0 || (!l.archived && (l.monthly_cap !== null || !!l.previous?.amount || !!l.avg3?.amount))).sort((x, y) => y.amount - x.amount || x.name.localeCompare(y.name))
+    const depassements = lignes.flatMap((l) => {
+      const ref = l.monthly_cap !== null ? { reference: 'cap', montant: l.monthly_cap, periods: null as number | null } : l.avg3 ? { reference: 'average', montant: l.avg3.amount, periods: l.avg3.periods as number | null } : null
+      if (!ref) return []
+      const exces = l.amount - ref.montant
+      const enBp = bp(exces, ref.montant)
+      return (ref.reference === 'cap' ? exces >= 100 : exces >= 1000 && (enBp ?? 0) >= 1000) ? [{ category_id: l.id, reference: ref.reference, reference_amount: ref.montant, periods: ref.periods, excess: exces, excess_bp: enBp, rank_amount: 0, rank_percent: 0 }] : []
+    }).sort((x, y) => y.excess - x.excess)
+    depassements.forEach((d, rang) => (d.rank_amount = rang + 1))
+    ;[...depassements].sort((x, y) => (y.excess_bp ?? -1) - (x.excess_bp ?? -1)).forEach((d, rang) => (d.rank_percent = rang + 1))
+    const plafonnees = srv.categories.filter((c) => !c.archived && (c.kind === 'fixe' || c.kind === 'variable') && c.monthly_cap !== null)
+    const budgetTotal = plafonnees.reduce((n, c) => n + (c.monthly_cap ?? 0), 0)
+    const budget = plafonnees.length ? { total: budgetTotal, spent: a.depenses, bp: bp(a.depenses, budgetTotal), delta: a.depenses - budgetTotal, uncapped: a.depenses - plafonnees.reduce((n, c) => n + a.montant(c.id), 0) } : null
+    const js = completes(i, 12)
+    let projection = null
+    let raison: string | null = p.open ? null : 'complete'
+    if (p.open && p.elapsed_days < 5) raison = 'too_early'
+    else if (p.open) {
+      const variable = division((a.variable + a.aClasser) * p.days, p.elapsed_days)
+      const fixe = srv.categories.filter((c) => c.kind === 'fixe').reduce((n, c) => n + Math.max(a.montant(c.id), moyenne(i, 3, (x) => x.montant(c.id))?.amount ?? 0), 0)
+      projection = { total: variable + fixe, variable, fixed: fixe, fixed_pending: fixe - a.fixe, daily_variable: division(a.variable + a.aClasser, p.elapsed_days), remaining_days: p.days - p.elapsed_days, budget_delta: budget ? variable + fixe - budget.total : null }
+    }
+    const courant = p.open ? a.cumul.slice(0, p.elapsed_days) : a.cumul
+    const precedent = i > 0 ? aligne(agregats[i - 1].cumul, p.days) : null
+    return {
+      mode, period: p, previous_id: periodes[i - 1]?.id ?? null, next_id: periodes[i + 1]?.id ?? null, periods: periodes.length, operations: a.ops.length,
+      expenses: { total: a.depenses, fixed: a.fixe, variable: a.variable, unclassified: a.aClasser, fixed_bp: bp(a.fixe, a.depenses), variable_bp: bp(a.variable, a.depenses), unclassified_bp: bp(a.aClasser, a.depenses), previous: avant(i, (x) => x.depenses), previous_to_date: p.open && precedent ? ecart(a.depenses, precedent[p.elapsed_days - 1]) : null, avg3: moyenne(i, 3, (x) => x.depenses), avg12: moyenne(i, 12, (x) => x.depenses) },
+      income: { total: a.revenus, classified: a.revenus, unclassified: 0, unclassified_operations: 0, previous: avant(i, (x) => x.revenus) },
+      savings: { total: a.epargne, rate_bp: bp(a.epargne, a.revenus), previous: avant(i, (x) => x.epargne) },
+      remaining: { total: a.reste, previous: avant(i, (x) => x.reste) },
+      budget, categories: lignes,
+      unclassified: { amount: a.aClasser, operations: a.ops.filter((o) => o.category_id === null && o.direction === 'debit').length, share_bp: bp(a.aClasser, a.depenses), previous: avant(i, (x) => x.aClasser) },
+      overruns: depassements, overrun_total: depassements.reduce((n, d) => n + d.excess, 0),
+      cumulative: { current: courant, previous: precedent ? { id: periodes[i - 1].id, values: precedent } : null, average: js.length ? { periods: js.length, values: Array.from({ length: p.days }, (_, j) => division(js.reduce((s, k) => s + aligne(agregats[k].cumul, p.days)[j], 0), js.length)) } : null },
+      projection, projection_reason: raison,
+      history: fenetre(i).map((j) => ({ id: periodes[j].id, from: periodes[j].from, to: periodes[j].to, complete: periodes[j].complete, expenses: agregats[j].depenses, income: agregats[j].revenus, savings: agregats[j].epargne, remaining: agregats[j].reste, savings_rate_bp: bp(agregats[j].epargne, agregats[j].revenus) })),
+    }
+  }
+  const detail = (i: number, c: Categorie) => {
+    const siennes = (j: number) => agregats[j].ops.filter((o) => o.category_id === c.id)
+    const groupes = (j: number) => {
+      const res = new Map<number | null, { montant: number; nombre: number }>()
+      for (const o of siennes(j)) { const g = res.get(o.merchant_id) ?? { montant: 0, nombre: 0 }; g.montant += sortie(o); g.nombre += 1; res.set(o.merchant_id, g) }
+      return res
+    }
+    const precedents = i > 0 ? groupes(i - 1) : null
+    const commercants = [...groupes(i).entries()].map(([id, g]) => ({ merchant_id: id, name: srv.commercants.find((m) => m.id === id)?.name ?? null, amount: g.montant, operations: g.nombre, average: division(g.montant, g.nombre), previous: precedents ? ecart(g.montant, precedents.get(id)?.montant ?? 0) : null })).sort((x, y) => y.amount - x.amount)
+    const operations = [...siennes(i)].sort((x, y) => reference(y).localeCompare(reference(x)) || y.id - x.id)
+    const historique = fenetre(i).map((j) => ({ id: periodes[j].id, from: periodes[j].from, to: periodes[j].to, complete: periodes[j].complete, amount: agregats[j].montant(c.id) }))
+    return { mode, period: periodes[i], previous_id: periodes[i - 1]?.id ?? null, next_id: periodes[i + 1]?.id ?? null, periods: periodes.length, category: ligne(i, c), history: historique, over_cap: c.monthly_cap === null ? 0 : historique.filter((h) => h.amount > c.monthly_cap!).length, merchants: commercants.slice(0, 20), merchants_total: commercants.length, operations: operations.slice(0, 5), operations_total: operations.length }
+  }
+  return { periodes, agregats, mois, detail, index: (cle: string | null) => (cle ? periodes.findIndex((p) => p.id === cle) : periodes.length - 1) }
+}
+
 const MOIS = /releve-(\d{4})-(\d{2})/
 
 function importer(srv: Tirelire, fichier: string) {
@@ -176,7 +291,8 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
       const q = url.searchParams
       const plat = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
       const mots = plat(q.get('q') ?? '').split(/\s+/).filter(Boolean)
-      const filtrees = ops.filter((o) => (!q.get('statement') || o.statement_id === Number(q.get('statement'))) && (!q.get('from') || String(o.date) >= q.get('from')!) && (!q.get('to') || String(o.date) <= q.get('to')!)
+      const quand = (o: Op) => (q.get('date') === 'purchase' ? reference(o) : String(o.date))
+      const filtrees = ops.filter((o) => (!q.get('statement') || o.statement_id === Number(q.get('statement'))) && (!q.get('from') || quand(o) >= q.get('from')!) && (!q.get('to') || quand(o) <= q.get('to')!)
         && (!q.get('category') || o.category_id === Number(q.get('category'))) && (!q.get('merchant') || o.merchant_id === Number(q.get('merchant'))) && (q.get('unclassified') !== 'true' || o.category_id === null)
         && mots.every((m) => plat([o.label, ...(o.details as string[]), o.merchant ?? '', o.merchant_name ?? ''].join('\n')).includes(m))
         && (!q.get('min') || o.amount >= Number(q.get('min'))) && (!q.get('max') || o.amount <= Number(q.get('max'))) && (!q.get('direction') || o.direction === q.get('direction')) && (!q.get('type') || o.type === q.get('type')))
@@ -210,6 +326,16 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
         srv.rejouer()
       }
       return json(route, { operation: o, reclassified: reclassees })
+    }
+    if (url.pathname.startsWith('/stats/')) {
+      const mode: Mode = url.searchParams.get('mode') === 'statement' ? 'statement' : 'calendar'
+      const st = statistiques(srv, mode)
+      if (url.pathname === '/stats/months') return json(route, { mode, periods: st.periodes.map((p, i) => ({ ...p, operations: st.agregats[i].ops.length, expenses: st.agregats[i].depenses, income: st.agregats[i].revenus, savings: st.agregats[i].epargne, remaining: st.agregats[i].reste })) })
+      const i = st.index(url.searchParams.get('period'))
+      if (i < 0) return inconnu()
+      if (url.pathname === '/stats/month') return json(route, st.mois(i))
+      const c = srv.categories.find((x) => x.id === Number(/^\/stats\/month\/categories\/(\d+)$/.exec(url.pathname)?.[1]))
+      return c ? json(route, st.detail(i, c)) : inconnu()
     }
     if (url.pathname === '/unclassified/count') return json(route, compteur())
     if (url.pathname === '/unclassified') {

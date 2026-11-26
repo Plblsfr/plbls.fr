@@ -1,6 +1,7 @@
 import { ApiError, fichierAt, requestAt } from '../../lib/api'
 import { config } from '../../lib/config'
 import { centimes, dateCourte, euros, signe, type Sens } from './formats'
+import type { DetailCategorie, Mode, Mois, ResumePeriode } from './stats'
 
 export const TIRELIRE_URL = config.tirelireUrl
 export const tirelireOn = () => !!TIRELIRE_URL
@@ -91,8 +92,8 @@ export interface SaisieCategorie { name: string; kind: Nature; monthly_cap: numb
 export interface SaisieRegle { keywords: string[]; category_id: number }
 
 export interface PageOperations { operations: Operation[]; total: number; total_debits?: number; total_credits?: number; limit: number; offset: number }
-export interface Filtres { releve: number | null; du: string; au: string; categorie: number | null; commercant: number | null; aClasser: boolean; q: string; min: number | null; max: number | null; sens: Sens | null; type: TypeOperation | null }
-export const SANS_FILTRE: Filtres = { releve: null, du: '', au: '', categorie: null, commercant: null, aClasser: false, q: '', min: null, max: null, sens: null, type: null }
+export interface Filtres { releve: number | null; du: string; au: string; categorie: number | null; commercant: number | null; aClasser: boolean; q: string; min: number | null; max: number | null; sens: Sens | null; type: TypeOperation | null; parAchat: boolean }
+export const SANS_FILTRE: Filtres = { releve: null, du: '', au: '', categorie: null, commercant: null, aClasser: false, q: '', min: null, max: null, sens: null, type: null, parAchat: false }
 export const RECHERCHE_MAX = 100
 export const MOTS_MAX = 8
 export const DELAI_RECHERCHE = 300
@@ -126,6 +127,7 @@ export function parametres(f: Filtres): URLSearchParams {
   if (f.max !== null) q.set('max', String(f.max))
   if (f.sens) q.set('direction', f.sens)
   if (f.type) q.set('type', f.type)
+  if (f.parAchat && (f.du || f.au)) q.set('date', 'purchase')
   return q
 }
 
@@ -155,11 +157,12 @@ export function filtresDe(requete: string): Filtres {
   const type = q.get('type') ?? ''
   const f = filtres({
     releve: entier('statement'), du: jour('from'), au: jour('to'), categorie: entier('category'), commercant: entier('merchant'), aClasser: q.get('unclassified') === 'true',
-    q: recherche(q.get('q') ?? ''), min: entier('min'), max: entier('max'), sens: sens === 'debit' || sens === 'credit' ? sens : null, type: Object.hasOwn(TYPES, type) ? (type as TypeOperation) : null,
+    q: recherche(q.get('q') ?? ''), min: entier('min'), max: entier('max'), sens: sens === 'debit' || sens === 'credit' ? sens : null, type: Object.hasOwn(TYPES, type) ? (type as TypeOperation) : null, parAchat: q.get('date') === 'purchase',
   })
   if (f.aClasser) f.categorie = null
   if (f.du && f.au && f.du > f.au) f.au = ''
   if (f.min !== null && f.max !== null && f.min > f.max) f.max = null
+  if (!f.du && !f.au) f.parAchat = false
   return f
 }
 
@@ -193,6 +196,9 @@ export const tirelireApi = {
   commercant: async (id: number) => (await get<{ merchant: Commercant }>(`/merchants/${id}`)).merchant,
   classerCommercant: (id: number, categorie: number | null) => envoyer<{ merchant: Commercant; reclassified: number }>('PUT', `/merchants/${id}/category`, { category_id: categorie }),
   fusionner: (id: number, autres: number[]) => envoyer<{ merchant: Commercant; reclassified: number }>('POST', `/merchants/${id}/merge`, { merchant_ids: autres }),
+  periodes: async (mode: Mode) => (await get<{ periods: ResumePeriode[] }>(`/stats/months?mode=${mode}`)).periods,
+  mois: (mode: Mode, periode?: string) => get<Mois>(`/stats/month?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
+  categorieDuMois: (id: number, mode: Mode, periode?: string) => get<DetailCategorie>(`/stats/month/categories/${id}?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
   separer: (id: number, cles: string[]) => envoyer<{ merchant: Commercant; created: Commercant[] }>('POST', `/merchants/${id}/split`, { keys: cles }),
 }
 
@@ -337,6 +343,7 @@ export function pastilles(f: Filtres, noms: { releves: Releve[]; categories: Cat
   if (f.releve !== null) { const r = noms.releves.find((x) => x.id === f.releve); ajouter('releve', r ? nomReleve(r) : 'Un relevé', { releve: null }) }
   if (f.du) ajouter('du', `Depuis le ${dateCourte(f.du)}`, { du: '' })
   if (f.au) ajouter('au', `Jusqu’au ${dateCourte(f.au)}`, { au: '' })
+  if (f.parAchat && (f.du || f.au)) ajouter('achat', 'Par date d’achat', { parAchat: false })
   if (f.aClasser) ajouter('categorie', 'À classer', { aClasser: false })
   else if (f.categorie !== null) ajouter('categorie', noms.categories.find((c) => c.id === f.categorie)?.name ?? 'Une catégorie', { categorie: null })
   if (f.commercant !== null) ajouter('commercant', noms.commercants.find((c) => c.id === f.commercant)?.name ?? 'Un commerçant', { commercant: null })

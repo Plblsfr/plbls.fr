@@ -1,21 +1,25 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
   import { hrefs } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
   import { dateCourte, euros, periode, pluriel } from './formats'
-  import { estOutil, ONGLETS, ongletActif, voletDe, vueDe } from './onglets'
+  import { estOutil, ONGLETS, ongletActif, periodeDe, periodeValide, voletDe, vueDe } from './onglets'
+  import { titrePeriode } from './stats'
+  import TirelireAccueil from './TirelireAccueil.svelte'
+  import TirelireCategorie from './TirelireCategorie.svelte'
   import TirelireCategories from './TirelireCategories.svelte'
   import TirelireClasser from './TirelireClasser.svelte'
   import TirelireAttente from './TirelireAttente.svelte'
   import TirelireImport from './TirelireImport.svelte'
+  import TirelireMois from './TirelireMois.svelte'
   import TirelireOnglets from './TirelireOnglets.svelte'
   import TirelireOperation from './TirelireOperation.svelte'
   import TirelireOperations from './TirelireOperations.svelte'
   import TirelireTete from './TirelireTete.svelte'
   import TirelireVide from './TirelireVide.svelte'
-  import { natureDe, nomReleve } from './tirelire'
+  import { NATURES_LONGUES, natureDe, nomReleve } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
   let { section, id, requete, onmenu }: { section?: string; id?: string; requete?: string; onmenu: () => void } = $props()
@@ -33,7 +37,26 @@
     if (filtre) return nomReleve(filtre).toLowerCase()
     return tirelire.releves?.length ? pluriel(tirelire.releves.length, 'relevé', 'relevés') : ''
   })
-  const titre = $derived(vue === 'accueil' ? (vide ? 'Bienvenue' : 'Accueil') : (ONGLETS.find((o) => o.id === actif)?.long ?? 'Tirelire'))
+  const cible = $derived(vue === 'mois' ? periodeValide(id) : vue === 'categorie' ? periodeValide(periodeDe(requete)) : undefined)
+  const mois = $derived(tirelire.mois)
+  const aJour = $derived(!!mois && (cible ? mois.period.id === cible : mois.next_id === null))
+  const detail = $derived(vue === 'categorie' && tirelire.categorieDuMois?.category.id === Number(id) ? tirelire.categorieDuMois : null)
+  const titre = $derived(vue === 'accueil' ? (vide ? 'Bienvenue' : mois && aJour ? titrePeriode(mois.period, mois.mode) : 'Accueil') : (ONGLETS.find((o) => o.id === actif)?.long ?? 'Tirelire'))
+
+  function charger() {
+    if (vue === 'categorie') void tirelire.chargerCategorieDuMois(Number(id), cible)
+    else void tirelire.chargerMois(cible)
+  }
+
+  $effect(() => {
+    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie')
+    const cle = [vue, id, cible, tirelire.mode, tirelire.version].join()
+    untrack(() => {
+      if (!pret || !cle) return
+      charger()
+      if (vue === 'mois' && !tirelire.periodes) void tirelire.chargerPeriodes()
+    })
+  })
 
   onMount(() => { void tirelire.ouvrir() })
 </script>
@@ -47,6 +70,10 @@
     </TirelireTete>
   {:else if vue === 'categories'}
     <TirelireTete titre="Catégories et règles" sous={tirelire.categories ? [pluriel(tirelire.categories.length, 'catégorie', 'catégories'), tirelire.regles ? pluriel(tirelire.regles.length, 'règle', 'règles') : '', tirelire.commercants ? pluriel(tirelire.commercants.length, 'commerçant', 'commerçants') : ''].filter(Boolean).join(' · ') : ''} retour={hrefs.tirelire()} retourLabel="Retour à l’accueil" />
+  {:else if vue === 'categorie'}
+    <TirelireTete titre={detail?.category.name ?? 'Catégorie'} sous={detail ? `${NATURES_LONGUES[detail.category.kind].toLowerCase()} · ${titrePeriode(detail.period, detail.mode).toLowerCase()}` : ''} retour={hrefs.tirelire('mois', detail?.period.id ?? cible)} retourLabel="Retour à la vue du mois">
+      <a class="tir-ib" href={hrefs.tirelire('categories')} aria-label="Catégories et règles" title="Catégories et règles"><Icon name="curseurs" size={20} /></a>
+    </TirelireTete>
   {:else if vue === 'operation'}
     <TirelireTete titre="Opération" sous={operation ? `${dateCourte(operation.date)} · ${natureDe(operation)}` : ''} retour={hrefs.tirelire('operations')} retourLabel="Retour aux opérations" />
   {:else}
@@ -68,8 +95,39 @@
         {#key id}<TirelireOperation id={Number(id)} />{/key}
       {:else if vue === 'operations'}
         <TirelireOperations {requete} />
+      {:else if tirelire.releves && vide && vue === 'accueil'}
+        <TirelireVide />
+      {:else if tirelire.releves && (vue === 'evolution' || vue === 'habitudes')}
+        <TirelireAttente {vue} releves={tirelire.releves} />
+      {:else if tirelire.releves && vide}
+        <section class="tir-carte tir-etat" aria-label="Aucun relevé">
+          <span class="tir-pas tir-pas--grand tir-pas--rose"><Icon name="envoie" size={22} /></span>
+          <h2 class="tir-h2">Aucun relevé importé</h2>
+          <p class="tir-note tir-note--texte">Les statistiques se calculent à partir de tes relevés.</p>
+          <a class="tir-btn tir-btn--plein" href={hrefs.tirelire('import')}>Importer un relevé PDF</a>
+        </section>
+      {:else if tirelire.releves && tirelire.erreurMois}
+        <section class="tir-carte tir-etat" role="alert">
+          <span class="tir-pas tir-pas--grand tir-pas--danger"><Icon name="alerte" size={22} /></span>
+          <h2 class="tir-h2">Statistiques indisponibles</h2>
+          <p class="tir-note tir-note--texte">{tirelire.erreurMois}</p>
+          <button class="tir-btn tir-btn--plein" onclick={charger}><Icon name="actualise" size={16} />Réessayer</button>
+        </section>
+      {:else if tirelire.releves && (vue === 'categorie' ? tirelire.categorieAbsente : tirelire.moisAbsent)}
+        <section class="tir-carte tir-etat" aria-label="Introuvable">
+          <span class="tir-pas tir-pas--grand"><Icon name="calendar" size={22} /></span>
+          <h2 class="tir-h2">{vue === 'categorie' ? 'Catégorie ou période introuvable' : 'Période introuvable'}</h2>
+          <p class="tir-note tir-note--texte">Aucun relevé importé ne couvre cette période{vue === 'categorie' ? ', ou cette catégorie n’existe plus' : ''}.</p>
+          <a class="tir-btn tir-btn--plein" href={hrefs.tirelire('mois')}>Voir la période la plus récente</a>
+        </section>
+      {:else if tirelire.releves && vue === 'categorie' && detail}
+        <TirelireCategorie {detail} />
+      {:else if tirelire.releves && vue === 'accueil' && mois && aJour}
+        <TirelireAccueil {mois} />
+      {:else if tirelire.releves && vue === 'mois' && mois}
+        <div class="tir-col" style:gap="12px" style:opacity={aJour ? undefined : 0.6} aria-busy={!aJour}><TirelireMois {mois} /></div>
       {:else if tirelire.releves}
-        {#if vide && vue === 'accueil'}<TirelireVide />{:else}<TirelireAttente {vue} releves={tirelire.releves} />{/if}
+        <div class="tir-etat" role="status"><Loader text="Calcul des statistiques…" /></div>
       {:else if tirelire.erreur}
         <section class="tir-carte tir-etat" role="alert">
           <span class="tir-pas tir-pas--grand tir-pas--danger"><Icon name="alerte" size={22} /></span>
