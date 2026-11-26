@@ -23,35 +23,42 @@ pub struct CategorieParDefaut {
     pub cle: &'static str,
     pub nom: &'static str,
     pub nature: &'static str,
+    pub couleur: i32,
 }
 
 const fn categorie(
     cle: &'static str,
     nom: &'static str,
     nature: &'static str,
+    couleur: i32,
 ) -> CategorieParDefaut {
-    CategorieParDefaut { cle, nom, nature }
+    CategorieParDefaut {
+        cle,
+        nom,
+        nature,
+        couleur,
+    }
 }
 
 pub const CATEGORIES: [CategorieParDefaut; 18] = [
-    categorie("logement", "Logement", "fixe"),
-    categorie("credit", "Crédit", "fixe"),
-    categorie("assurances", "Assurances", "fixe"),
-    categorie("telecom", "Télécom", "fixe"),
-    categorie("energie", "Énergie", "fixe"),
-    categorie("abonnements", "Abonnements", "fixe"),
-    categorie("frais", "Frais bancaires", "fixe"),
-    categorie("impots", "Impôts et taxes", "fixe"),
-    categorie("courses", "Courses", "variable"),
-    categorie("restaurants", "Restaurants", "variable"),
-    categorie("transports", "Transports", "variable"),
-    categorie("sante", "Santé", "variable"),
-    categorie("loisirs", "Loisirs et sorties", "variable"),
-    categorie("shopping", "Shopping", "variable"),
-    categorie("divers", "Divers", "variable"),
-    categorie("epargne", "Épargne", "epargne"),
-    categorie("revenus", "Revenus", "revenu"),
-    categorie("transferts", "Transferts neutres", "neutre"),
+    categorie("logement", "Logement", "fixe", 0),
+    categorie("credit", "Crédit", "fixe", 8),
+    categorie("assurances", "Assurances", "fixe", 9),
+    categorie("telecom", "Télécom", "fixe", 10),
+    categorie("energie", "Énergie", "fixe", 11),
+    categorie("abonnements", "Abonnements", "fixe", 12),
+    categorie("frais", "Frais bancaires", "fixe", 13),
+    categorie("impots", "Impôts et taxes", "fixe", 14),
+    categorie("courses", "Courses", "variable", 1),
+    categorie("restaurants", "Restaurants", "variable", 2),
+    categorie("transports", "Transports", "variable", 5),
+    categorie("sante", "Santé", "variable", 6),
+    categorie("loisirs", "Loisirs et sorties", "variable", 4),
+    categorie("shopping", "Shopping", "variable", 3),
+    categorie("divers", "Divers", "variable", 15),
+    categorie("epargne", "Épargne", "epargne", 7),
+    categorie("revenus", "Revenus", "revenu", 16),
+    categorie("transferts", "Transferts neutres", "neutre", 17),
 ];
 
 pub struct RegleParDefaut {
@@ -178,13 +185,14 @@ pub async fn creer_defauts(c: &mut PgConnection, sub: &str) -> Result<(), sqlx::
     for (rang, d) in CATEGORIES.iter().enumerate() {
         let rang = i32::try_from(rang).unwrap_or(i32::MAX);
         sqlx::query(
-            "INSERT INTO categories (sub, cle, nom, nature, couleur, rang) VALUES ($1, $2, $3, $4, $5, $5)
+            "INSERT INTO categories (sub, cle, nom, nature, couleur, rang) VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT DO NOTHING",
         )
         .bind(sub)
         .bind(d.cle)
         .bind(d.nom)
         .bind(d.nature)
+        .bind(d.couleur)
         .bind(rang)
         .execute(&mut *c)
         .await?;

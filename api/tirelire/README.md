@@ -16,7 +16,13 @@ routes dans [`openapi.yaml`](../../docs/tirelire/openapi.yaml).
 | `metriques.rs` | caractères et largeurs des polices standard (Helvetica, Times, Courier) que les relevés n'embarquent pas : nom de glyphe, largeur par police (métriques AFM d'Adobe), table WinAnsi |
 | `cmb.rs` | parseur des relevés du Crédit Mutuel de Bretagne (`analyser`), sur les mots positionnés seulement : en-tête, sections, opérations et détails, soldes, totaux, contrôles |
 | `import.rs` | `POST /statements/import` : empreinte, lecture hors du fil asynchrone, enregistrement en une transaction, réponse par fichier |
-| `releves.rs` | `GET /accounts`, `GET /statements`, `DELETE /statements/{id}`, `GET /operations` |
+| `releves.rs` | `GET /accounts`, `GET /statements`, `DELETE /statements/{id}`, `GET /operations` (filtres), `GET /operations/{id}`, `PUT /operations/{id}/category` |
+| `normalisation.rs` | texte normalisé d'un libellé (`texte`, `contient` en mots entiers) et clé de commerçant ou de tiers d'une opération (`tiers`, `nom`) |
+| `classement.rs` | moteur de règles (`choisir`), rejeu idempotent sur toutes les opérations d'une personne (`rejouer`), premier accès et verrou par personne (`verrouiller`, `pret`), version de la normalisation |
+| `categories.rs` | catégories et règles par défaut (`CATEGORIES`, `REGLES`), `GET` et `POST /categories`, `PATCH /categories/{id}` |
+| `regles.rs` | `GET` et `POST /rules`, `PATCH` et `DELETE /rules/{id}`, `PUT /rules/order` |
+| `commercants.rs` | `GET /merchants`, `GET` et `PATCH /merchants/{id}`, catégorie, fusion et séparation, file `GET /unclassified` et son compteur |
+| `bilan.rs` | totaux d'une période par catégorie : remboursements déduits, épargne, revenus et transferts hors dépenses |
 
 ## Développement
 
@@ -28,4 +34,6 @@ just tirelire-dev-run   # 127.0.0.1:8096, variables de deploy/dev.env
 Aucun PDF dans le dépôt : les fixtures de `tests/fixtures/*.mots` sont des mots positionnés aux données inventées (format décrit en
 tête de chaque fichier), et les tests d'API fabriquent leurs PDF à partir d'elles (`testutil::pdf`).
 `TIRELIRE_RELEVES_REELS=<dossier hors du dépôt> cargo test -p tirelire releves_reels -- --nocapture` lit chaque PDF du dossier et échoue
-si un relevé est refusé ; il n'affiche que des nombres (opérations, pages, écarts). Sans la variable, ce test ne fait rien.
+si un relevé est refusé ; `releves_reels_categorises` les importe dans une base jetable et compte ce que donnent la normalisation et les
+règles par défaut. Ils n'affichent que des nombres (opérations, pages, écarts, opérations classées et à classer, commerçants distincts).
+Sans la variable, ces tests ne font rien.
