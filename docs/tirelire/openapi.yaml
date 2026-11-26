@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Suivi des comptes bancaires de plbls.fr : import des relevés de compte PDF du Crédit Mutuel de Bretagne, relevés et opérations,
-    catégories, règles de classement et commerçants.
+    catégories, règles de classement, commerçants et statistiques par période.
     Ce document suit le code : chaque route de `api/tirelire/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
 
     Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
@@ -67,7 +67,36 @@ components:
         normalisés regroupés ; `key` : libellé normalisé (majuscules, sans accent ni ponctuation, sans numéro de magasin ou de terminal,
         sans forme juridique) ; `manual` : variante rattachée par une fusion ou une séparation.
       type: object
+    Periode:
+      description: |
+        `{id, from, to, days, known_through, elapsed_days, complete, open, statement_ids}`. `id` : `AAAA-MM` en mode `calendar`, date
+        d'arrêté `AAAA-MM-JJ` en mode `statement`. `from`, `to` : premier et dernier jour du mois, ou date de l'ancien solde et date
+        d'arrêté du relevé ; `days` : nombre de jours de la période. `complete` : les relevés importés couvrent toute la période
+        (toujours vrai en mode `statement`). `open` : la période dépasse la date d'arrêté du dernier relevé importé ; `known_through`
+        est alors cette date et `elapsed_days` le nombre de jours connus, sinon la fin et la durée de la période.
+      type: object
+    Ecart:
+      description: |
+        `{amount, delta, delta_bp}` : montant de la référence en centimes, écart de la période par rapport à elle, et cet écart en
+        points de base de la référence (1 % = 100), `null` si la référence est nulle ou négative. Une moyenne ajoute `periods`,
+        le nombre de périodes complètes qui la composent.
+      type: object
+    LigneCategorie:
+      description: |
+        `{id, name, kind, color, archived, monthly_cap, amount, operations, share_bp, previous, avg3, avg12, cap_delta, cap_bp, trend}`.
+        `amount` : débits moins crédits de la catégorie sur la période (crédits moins débits pour `revenu` et `neutre`) ; `share_bp` :
+        part des dépenses en points de base (`null` hors dépenses) ; `previous` : Ecart avec la période précédente ; `avg3`, `avg12` :
+        Ecart avec la moyenne des 3 et des 12 dernières périodes complètes ; `cap_delta` : `amount` moins le plafond ; `cap_bp` :
+        `amount` en points de base du plafond ; `trend` : montants des 12 dernières périodes, celle-ci en dernier.
+      type: object
   parameters:
+    mode:
+      name: mode
+      in: query
+      description: "`calendar` : mois calendaires ; `statement` : une période par relevé, de la date de l'ancien solde à la date d'arrêté"
+      schema: { type: string, enum: [calendar, statement], default: calendar }
+    period: { name: period, in: query, description: "Identifiant de la période (`AAAA-MM` ou date d'arrêté `AAAA-MM-JJ`) ; absent : la plus récente", schema: { type: string } }
+    date: { name: date, in: query, description: "Date à laquelle `from` et `to` s'appliquent : `operation`, ou `purchase` (date d'achat d'un paiement par carte, sinon date d'opération), comme les statistiques en mode `calendar`", schema: { type: string, enum: [operation, purchase], default: operation } }
     statement: { name: statement, in: query, description: "Identifiant d'un relevé", schema: { type: integer } }
     from: { name: from, in: query, description: "Date d'opération minimale, incluse", schema: { type: string, format: date } }
     to: { name: to, in: query, description: "Date d'opération maximale, incluse", schema: { type: string, format: date } }
@@ -205,6 +234,7 @@ paths:
         - { $ref: "#/components/parameters/max" }
         - { $ref: "#/components/parameters/direction" }
         - { $ref: "#/components/parameters/type" }
+        - { $ref: "#/components/parameters/date" }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
@@ -238,6 +268,7 @@ paths:
         - { $ref: "#/components/parameters/max" }
         - { $ref: "#/components/parameters/direction" }
         - { $ref: "#/components/parameters/type" }
+        - { $ref: "#/components/parameters/date" }
       responses:
         "200":
           description: "Fichier CSV, `Content-Disposition: attachment`"
@@ -473,5 +504,88 @@ paths:
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
         "404": { description: "`not_found` : commerçant inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /stats/months:
+    get:
+      summary: "Périodes disponibles et leurs totaux, de la plus ancienne à la plus récente (`tirelire:access`)"
+      description: |
+        Mode `calendar` : chaque mois couvert par un relevé ou qui porte une opération. Mode `statement` : une période par date
+        d'arrêté. Aucun relevé : liste vide.
+      parameters:
+        - { $ref: "#/components/parameters/mode" }
+      responses:
+        "200": { description: "`{mode, periods: [Periode + {operations, expenses, income, savings, remaining}]}`, montants en centimes" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /stats/month:
+    get:
+      summary: "Statistiques d'une période : totaux, catégories, dépassements, cumul et projection (`tirelire:access`)"
+      description: |
+        Rattachement : en mode `calendar`, une opération appartient au mois de sa date d'achat (paiement par carte), sinon de sa date
+        d'opération ; en mode `statement`, à la période du relevé qui la porte, au jour de cette même date ramené dans la période.
+
+        Dépenses : débits moins crédits des catégories `fixe` et `variable`, plus les débits à classer. Revenus : crédits moins débits
+        des catégories `revenu`, plus les crédits à classer. Épargne : versements moins retraits. Les catégories `neutre` ne
+        comptent nulle part. Reste à vivre : revenus − dépenses − épargne. Les rapports sont des entiers en points de base
+        (1 % = 100), arrondis au plus proche, `null` quand le dénominateur est nul ou négatif ; une moyenne est arrondie au centime.
+
+        `overruns` : catégories de dépense au-dessus de leur plafond (`reference: cap`, dès 1 € d'écart), sinon au-dessus de leur
+        moyenne des 3 dernières périodes complètes (`reference: average`, dès 10 € et 10 % d'écart, moyenne strictement positive).
+        `cumulative` : dépenses cumulées jour par jour ; `previous` et `average` (au plus 12 périodes complètes) sont ramenées à la
+        durée de la période, leur dernier jour portant leur total. `projection` : seulement pour une période `open` du mode
+        `calendar`, couverte depuis son premier jour et connue sur 5 jours au moins ; dépenses variables et à classer prolongées au
+        rythme des jours connus, chaque catégorie fixe portée à sa moyenne des 3 dernières périodes complètes si elle n'y est pas
+        encore. Sinon `projection` est `null` et `projection_reason` vaut `complete`, `partial` ou `too_early`.
+      parameters:
+        - { $ref: "#/components/parameters/mode" }
+        - { $ref: "#/components/parameters/period" }
+      responses:
+        "200":
+          description: |
+            `{mode, period: Periode, previous_id, next_id, periods, operations,
+            expenses: {total, fixed, variable, unclassified, fixed_bp, variable_bp, unclassified_bp, previous, previous_to_date, avg3, avg12},
+            income: {total, classified, unclassified, unclassified_operations, previous}, savings: {total, rate_bp, previous},
+            remaining: {total, previous}, budget: {total, spent, bp, delta, uncapped} | null, categories: [LigneCategorie],
+            unclassified: {amount, operations, share_bp, previous},
+            overruns: [{category_id, reference, reference_amount, periods, excess, excess_bp, rank_amount, rank_percent}], overrun_total,
+            cumulative: {current: [centimes], previous: {id, values} | null, average: {periods, values} | null},
+            projection: {total, variable, fixed, fixed_pending, daily_variable, remaining_days, budget_delta} | null, projection_reason,
+            history: [{id, from, to, complete, expenses, income, savings, remaining, savings_rate_bp}]}`.
+            `previous`, `avg3`, `avg12` : Ecart ou `null` ; `previous_to_date` : Ecart avec la période précédente arrêtée au même
+            jour, pour une période `open` ; `budget` : somme des plafonds des catégories de dépense non archivées, `null` sans aucun
+            plafond, `uncapped` : dépenses hors catégories plafonnées ; `categories` : catégories de dépense, de la plus forte à la
+            plus faible ; `overruns` : du plus fort écart en centimes au plus faible, `rank_percent` donne le rang en pourcentage ;
+            `history` : 12 périodes au plus, celle-ci en dernier.
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : période sans relevé" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /stats/month/categories/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: "Une catégorie sur une période : historique, commerçants et dernières opérations (`tirelire:access`)"
+      parameters:
+        - { $ref: "#/components/parameters/mode" }
+        - { $ref: "#/components/parameters/period" }
+      responses:
+        "200":
+          description: |
+            `{mode, period: Periode, previous_id, next_id, periods, category: LigneCategorie,
+            history: [{id, from, to, complete, amount}], over_cap,
+            merchants: [{merchant_id, name, amount, operations, average, previous}], merchants_total,
+            operations: [Operation], operations_total}`. `history` : 12 périodes au plus, celle-ci en dernier ; `over_cap` : nombre
+            de ces périodes au-dessus du plafond actuel ; `merchants` : 20 au plus, du plus fort montant au plus faible, `average`
+            le montant moyen par opération, `previous` l'Ecart avec la période précédente ; `operations` : les 5 plus récentes.
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : période sans relevé, catégorie inconnue ou d'une autre personne" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }

@@ -153,7 +153,7 @@ pub async fn operations(
     let resume = selection.resumer(state.pool(), p.sub()).await.map_err(bd)?;
     let lignes: Vec<Value> = lier!(
         sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-            "SELECT {OPERATION} FROM {OPERATIONS} WHERE {} ORDER BY {ORDRE} LIMIT $13 OFFSET $14",
+            "SELECT {OPERATION} FROM {OPERATIONS} WHERE {} ORDER BY {ORDRE} LIMIT $14 OFFSET $15",
             *OU
         ))),
         p.sub(),

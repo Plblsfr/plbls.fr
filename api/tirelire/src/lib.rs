@@ -16,12 +16,14 @@ pub mod identite;
 pub mod import;
 pub mod interne;
 pub mod metriques;
+pub mod mois;
 pub mod mots;
 pub mod normalisation;
 pub mod regles;
 pub mod releves;
 pub mod routes;
 pub mod selection;
+pub mod stats;
 
 #[cfg(test)]
 mod tests_api;
@@ -29,6 +31,8 @@ mod tests_api;
 mod tests_categories;
 #[cfg(test)]
 mod tests_recherche;
+#[cfg(test)]
+mod tests_stats;
 #[cfg(test)]
 mod testutil;
 
