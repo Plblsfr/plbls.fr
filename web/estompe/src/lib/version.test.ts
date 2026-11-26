@@ -26,7 +26,7 @@ describe('éléments concernés', () => {
   it('services : leur dossier, api/commun/ pour chaque service Rust', () => {
     expect(concerned(['api/sillon/src/main.rs', 'packages/ui/src/a.css']).sort()).toEqual(['sillon', 'ui'])
     expect(concerned(['api/security/Cargo.toml'])).toEqual(['security'])
-    expect(concerned(['api/commun/src/lib.rs']).sort()).toEqual(['aegis', 'entracte', 'regie', 'sablier', 'security', 'sillon'])
+    expect(concerned(['api/commun/src/lib.rs']).sort()).toEqual(['aegis', 'entracte', 'regie', 'sablier', 'security', 'sillon', 'tirelire'])
   })
   it('services : un fichier .md ne compte pas', () => expect(concerned(['api/entracte/README.md', 'packages/ui/CHANGELOG.md', 'api/commun/NOTES.md'])).toEqual([]))
 })

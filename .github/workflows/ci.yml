@@ -42,7 +42,7 @@ jobs:
         run: |
           autres="$(git diff --name-only "origin/$BASE_REF...HEAD" | grep -vxF -f <(node scripts/estompe/bump-version.mjs --fichiers) || true)"
           [ -z "$autres" ] || { echo "::error::la PR de version ne doit modifier que .version et les manifestes des services, pas : $autres"; exit 1; }
-          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).filter((e) => e !== "natif").sort().join(); if (k !== "aegis,android,api,entracte,regie,sablier,security,sillon,ui,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
+          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).filter((e) => e !== "natif").sort().join(); if (k !== "aegis,android,api,entracte,regie,sablier,security,sillon,tirelire,ui,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
           node scripts/estompe/bump-version.mjs --manifestes
           git diff --exit-code || { echo "::error::les manifestes des services ne reprennent pas les versions de .version"; exit 1; }
 
@@ -177,7 +177,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.sablier_server == 'true' || needs.changements.outputs.regie_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.sablier_server == 'true' || needs.changements.outputs.regie_server == 'true' || needs.changements.outputs.tirelire_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -213,7 +213,7 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
       - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP, file d'évènements avec Redis)
-        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.sablier_server == 'true' || needs.changements.outputs.regie_server == 'true'
+        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.sablier_server == 'true' || needs.changements.outputs.regie_server == 'true' || needs.changements.outputs.tirelire_server == 'true'
         env:
           TEST_REDIS_URL: redis://localhost:6379
         run: cargo test --locked -p commun
@@ -250,6 +250,11 @@ jobs:
       - name: Tests de Régie (services simulés)
         if: needs.changements.outputs.regie_server == 'true'
         run: cargo test --locked -p regie
+      - name: Tests de Tirelire (PostgreSQL 17)
+        if: needs.changements.outputs.tirelire_server == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: cargo test --locked -p tirelire
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -461,6 +466,37 @@ jobs:
       - if: always()
         run: docker rm -f regie-pr-api-${{ github.run_id }}
 
+  tirelire-image:
+    needs: changements
+    if: needs.changements.outputs.image_tirelire == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: api/tirelire/Dockerfile
+          push: false
+          load: true
+          tags: tirelire:pr-${{ github.run_id }}
+          cache-from: type=gha,scope=tirelire
+      - name: L'image démarre, applique ses migrations et répond sur /readyz
+        run: |
+          docker run -d --name tirelire-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=tirelire postgres:17-alpine
+          timeout 60 sh -c 'until docker exec tirelire-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
+          docker run -d --name tirelire-pr-api-${{ github.run_id }} --network container:tirelire-pr-pg-${{ github.run_id }} --env-file deploy/tirelire/.env.example \
+            -e DATABASE_URL='postgres://127.0.0.1:5432?sslmode=disable' -e DATABASE_USER=postgres -e DATABASE_PASSWORD=postgres \
+            tirelire:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until docker run --rm --network container:tirelire-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
+            || { docker logs tirelire-pr-api-${{ github.run_id }}; exit 1; }
+          docker exec tirelire-pr-pg-${{ github.run_id }} psql -U postgres -d tirelire -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 1 \
+            || { docker logs tirelire-pr-api-${{ github.run_id }}; exit 1; }
+      - if: always()
+        run: docker rm -f tirelire-pr-api-${{ github.run_id }} tirelire-pr-pg-${{ github.run_id }}
+
   image-aegis:
     needs: changements
     if: needs.changements.outputs.image_aegis == 'true'
@@ -505,7 +541,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, tirelire-image, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

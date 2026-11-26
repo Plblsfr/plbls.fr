@@ -1,6 +1,6 @@
 # aegis
 
-Permissions des comptes plbls.fr. aegis décide qui peut utiliser quelle fonctionnalité d'Estompe, d'Entracte, de Sillon, de Régie et de Sablier : les
+Permissions des comptes plbls.fr. aegis décide qui peut utiliser quelle fonctionnalité d'Estompe, d'Entracte, de Sillon, de Régie, de Sablier et de Tirelire : les
 applications déclarent leurs permissions, un administrateur règle les droits de chaque compte depuis Estompe
 (Administration › accès), et les applications lisent les droits calculés, mis en cache et invalidés en direct.
 
