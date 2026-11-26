@@ -2,13 +2,14 @@
 
 Suivi des comptes bancaires de plbls.fr. Ce document décrit ce qui existe aujourd'hui : l'import des relevés de compte PDF du Crédit
 Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations, la suppression d'un relevé, les catégories, les
-règles de classement, les commerçants et la file « à classer ». Les statistiques (mois, évolution, habitudes) n'existent pas encore.
+règles de classement, les commerçants, la file « à classer », la recherche, les filtres et l'export CSV des opérations. Les statistiques
+(mois, évolution, habitudes) n'existent pas encore.
 
 | Où | Quoi |
 |---|---|
 | [`api/tirelire`](../../api/tirelire/README.md) | API Rust (axum, sqlx), membre du workspace Cargo, base `tirelire` de PostgreSQL |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
-| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : import, opérations, à classer, catégories et règles |
+| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : import, opérations (recherche, filtres, export), à classer, catégories et règles |
 | [`deploy/tirelire/.env.example`](../../deploy/tirelire/.env.example) | secrets, service `tirelire-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 
 ## Permission et cloisonnement
@@ -17,7 +18,7 @@ Déclarée à aegis par manifeste (application `tirelire`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `tirelire:access` | importer ses relevés, voir ses comptes, ses relevés et ses opérations, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
+| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/tirelire/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -35,7 +36,7 @@ Il n'y a ni route d'administration ni partage : un identifiant d'une autre perso
 
 - Le PDF n'est pas conservé : il est lu en mémoire, puis seuls restent en base son empreinte SHA-256, les métadonnées du relevé,
   ses opérations et le rapport de contrôle. Aucune donnée ne quitte le service : la lecture du PDF est faite dans le processus, sans service tiers.
-- Les journaux ne contiennent ni libellé, ni commerçant, ni mot-clé, ni montant, ni IBAN, ni nom de fichier : un import y laisse le nombre d'opérations et de pages.
+- Les journaux ne contiennent ni libellé, ni commerçant, ni mot-clé, ni texte cherché, ni montant, ni IBAN, ni nom de fichier : un import y laisse le nombre d'opérations et de pages.
   Les lignes non reconnues d'un relevé refusé ne sont rendues qu'à la personne qui l'a envoyé, dans la réponse.
 - L'IBAN, le numéro de compte et le titulaire sont en base (ils distinguent les comptes) et rendus à leur seul propriétaire.
 
@@ -159,6 +160,34 @@ normalisées et classées à l'accès suivant.
 `bilan.rs` (`bilan`, `calculer`) additionne une période par catégorie : un crédit classé dans une catégorie de dépense (un
 remboursement) diminue le total de cette catégorie ; l'épargne, les revenus et les transferts neutres sont comptés à part, hors
 dépenses. Aucune route ne l'expose encore.
+
+## Recherche, filtres et export
+
+`GET /operations` et `GET /operations/export.csv` partagent la même sélection (`selection.rs`), toujours limitée aux opérations de
+la personne ; les filtres se combinent (ET) :
+
+| Paramètre | Sélectionne |
+|---|---|
+| `q` | les opérations dont le libellé, les détails, le commerçant lu sur le relevé ou le nom du commerçant contiennent chaque mot cherché (8 mots et 100 caractères au plus), sans tenir compte de la casse ni des accents ; `%`, `_` et `\` sont cherchés tels quels (`commun::sql::contient`) |
+| `min`, `max` | un montant en centimes, bornes incluses, sans tenir compte du sens ; `min` supérieur à `max` : 400 |
+| `direction` | `debit` ou `credit` |
+| `type` | `carte`, `prelevement`, `virement`, `virement_instantane`, `echeance_pret`, `cotisation` ou `autre` |
+| `statement`, `from`, `to`, `category`, `merchant`, `unclassified` | un relevé, une période (dates d'opération incluses), une catégorie, un commerçant, les opérations sans catégorie |
+
+La casse et les accents sont retirés en SQL des deux côtés de la comparaison (`lower` et `translate`, sans extension PostgreSQL) :
+la recherche lit les opérations de la personne sans index dédié, ce qui convient à quelques milliers de lignes par personne.
+`GET /operations` rend, en plus de la page, `total`, `total_debits` et `total_credits` : le nombre et les sommes de toute la sélection.
+
+`GET /operations/export.csv` rend toutes les lignes de la sélection, de la plus récente à la plus ancienne, lues et envoyées en flux
+(une seule requête SQL, morceaux de 16 Ko). Le fichier s'ouvre dans un tableur français : UTF-8 avec BOM, séparateur `;`, fins de
+ligne CRLF, dates `JJ/MM/AAAA`, montants à virgule décimale sans séparateur de milliers. Colonnes : Date, Date de valeur, Date
+d'achat, Libellé, Détails (séparés par ` | `), Commerçant (nom du commerçant, sinon celui lu sur le relevé), Catégorie, Nature,
+Type, Section, Débit et Crédit (positifs, l'un des deux vide), Montant (signé, négatif pour un débit), Relevé. Une cellule de
+texte qui commence par `=`, `+`, `-`, `@`, une tabulation ou un retour à la ligne est précédée d'une apostrophe, pour qu'un
+tableur ne l'évalue pas comme une formule ; une cellule qui contient `;`, un guillemet ou un saut de ligne est mise entre
+guillemets, guillemets doublés ; les caractères de contrôle sont retirés. Le fichier s'appelle
+`tirelire-operations-<début>_<fin>.csv`, d'après `from` et `to`, sinon d'après la première et la dernière date de la sélection.
+La réponse n'est pas mise en cache (`Cache-Control: no-store`) et l'export ne laisse rien dans les journaux.
 
 ## Données
 
