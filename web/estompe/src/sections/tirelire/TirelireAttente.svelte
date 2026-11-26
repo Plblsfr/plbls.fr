@@ -5,12 +5,8 @@
   import type { Releve } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
-  let { vue, releves }: { vue: 'evolution' | 'habitudes'; releves: Releve[] } = $props()
+  let { releves }: { releves: Releve[] } = $props()
 
-  const TEXTES = {
-    evolution: 'L’évolution comparera les catégories d’un mois à l’autre sur toute l’année. Elle arrive bientôt ; la vue du mois donne déjà les écarts.',
-    habitudes: 'Les habitudes (commerçants réguliers, abonnements, prélèvements) arrivent bientôt.',
-  }
   const operations = $derived(releves.reduce((n, r) => n + r.operations, 0))
   const etendue = $derived(releves.length ? periode(releves.reduce((a, r) => (r.from < a ? r.from : a), releves[0].from), releves.reduce((a, r) => (r.to > a ? r.to : a), releves[0].to)) : '')
 </script>
@@ -18,7 +14,7 @@
 <section class="tir-carte tir-etat" aria-label="Pas encore disponible">
   <span class="tir-pas tir-pas--grand tir-pas--rose"><Icon name="horloge" size={22} /></span>
   <h2 class="tir-h2">Bientôt disponible</h2>
-  <p class="tir-note tir-note--texte">{TEXTES[vue]}</p>
+  <p class="tir-note tir-note--texte">Les habitudes (commerçants réguliers, abonnements, prélèvements) arrivent bientôt.</p>
 </section>
 
 <section class="tir-carte tir-liste" aria-label="Déjà disponible">
@@ -26,6 +22,11 @@
     <a class="tir-li" href={hrefs.tirelire('mois')}>
       <span class="tir-pas"><Icon name="calendar" size={18} /></span>
       <span class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Vue du mois</span><span class="tir-note">dépenses par catégorie, écarts, cumul jour par jour</span></span>
+      <Icon name="droite" size={18} />
+    </a>
+    <a class="tir-li" href={hrefs.tirelire('evolution')}>
+      <span class="tir-pas"><Icon name="tendance" size={18} /></span>
+      <span class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Évolution</span><span class="tir-note">catégories mois par mois, tendances, solde, année sur l’autre</span></span>
       <Icon name="droite" size={18} />
     </a>
     <a class="tir-li" href={hrefs.tirelire('operations')}>

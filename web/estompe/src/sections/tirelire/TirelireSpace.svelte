@@ -10,6 +10,7 @@
   import TirelireAccueil from './TirelireAccueil.svelte'
   import TirelireCategorie from './TirelireCategorie.svelte'
   import TirelireCategories from './TirelireCategories.svelte'
+  import TirelireEvolution from './TirelireEvolution.svelte'
   import TirelireClasser from './TirelireClasser.svelte'
   import TirelireAttente from './TirelireAttente.svelte'
   import TirelireImport from './TirelireImport.svelte'
@@ -44,13 +45,14 @@
   const titre = $derived(vue === 'accueil' ? (vide ? 'Bienvenue' : mois && aJour ? titrePeriode(mois.period, mois.mode) : 'Accueil') : (ONGLETS.find((o) => o.id === actif)?.long ?? 'Tirelire'))
 
   function charger() {
-    if (vue === 'categorie') void tirelire.chargerCategorieDuMois(Number(id), cible)
+    if (vue === 'evolution') void tirelire.chargerEvolution()
+    else if (vue === 'categorie') void tirelire.chargerCategorieDuMois(Number(id), cible)
     else void tirelire.chargerMois(cible)
   }
 
   $effect(() => {
-    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie')
-    const cle = [vue, id, cible, tirelire.mode, tirelire.version].join()
+    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie' || vue === 'evolution')
+    const cle = [vue, id, cible, tirelire.mode, tirelire.version, vue === 'evolution' ? tirelire.fenetre : ''].join()
     untrack(() => {
       if (!pret || !cle) return
       charger()
@@ -97,8 +99,8 @@
         <TirelireOperations {requete} />
       {:else if tirelire.releves && vide && vue === 'accueil'}
         <TirelireVide />
-      {:else if tirelire.releves && (vue === 'evolution' || vue === 'habitudes')}
-        <TirelireAttente {vue} releves={tirelire.releves} />
+      {:else if tirelire.releves && vue === 'habitudes'}
+        <TirelireAttente releves={tirelire.releves} />
       {:else if tirelire.releves && vide}
         <section class="tir-carte tir-etat" aria-label="Aucun relevé">
           <span class="tir-pas tir-pas--grand tir-pas--rose"><Icon name="envoie" size={22} /></span>
@@ -106,6 +108,17 @@
           <p class="tir-note tir-note--texte">Les statistiques se calculent à partir de tes relevés.</p>
           <a class="tir-btn tir-btn--plein" href={hrefs.tirelire('import')}>Importer un relevé PDF</a>
         </section>
+      {:else if tirelire.releves && vue === 'evolution' && tirelire.erreurEvolution}
+        <section class="tir-carte tir-etat" role="alert">
+          <span class="tir-pas tir-pas--grand tir-pas--danger"><Icon name="alerte" size={22} /></span>
+          <h2 class="tir-h2">Évolution indisponible</h2>
+          <p class="tir-note tir-note--texte">{tirelire.erreurEvolution}</p>
+          <button class="tir-btn tir-btn--plein" onclick={charger}><Icon name="actualise" size={16} />Réessayer</button>
+        </section>
+      {:else if tirelire.releves && vue === 'evolution' && tirelire.evolution}
+        <TirelireEvolution evolution={tirelire.evolution} />
+      {:else if tirelire.releves && vue === 'evolution'}
+        <div class="tir-etat" role="status"><Loader text="Calcul de l’évolution…" /></div>
       {:else if tirelire.releves && tirelire.erreurMois}
         <section class="tir-carte tir-etat" role="alert">
           <span class="tir-pas tir-pas--grand tir-pas--danger"><Icon name="alerte" size={22} /></span>
