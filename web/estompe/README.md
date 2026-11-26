@@ -18,6 +18,7 @@ npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe se
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
+npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations, détail, écran de téléphone, Tirelire arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -122,10 +123,32 @@ système de Chromium doivent être présentes).
     `chargerPartage`, `partager`. Sablier injoignable : `erreur` et l'écran `SablierErreur` avec « Réessayer », le reste de l'app continue.
   - Styles : `src/styles/sablier.css` (classes `sab-*`, jetons de l'app, requêtes de conteneur). Icônes des trophées : noms d'`Icon.svelte`,
     `trophee` en repli pour un nom inconnu (`SablierMedaille`).
+- `src/sections/tirelire` : section Tirelire (relevés de compte, API à part : service `tirelire`, permission `tirelire:access`), `#/tirelire[/<onglet>[/<id>]]`,
+  route `tirelire`. Affichée selon `GET /me` de Tirelire (`permissions.access`, lu au démarrage par `app.loadTirelire` : `app.tirelireMe`, `app.tirelire`) ;
+  `/me` en échec ou Tirelire absent : pas de section, rien d'autre ne change. `tirelireUrl` : `TIRELIRE_PUBLIC_URL` de l'image, `VITE_TIRELIRE_URL` au build
+  des apps ; sans elle, pas de section. Entrée dans le rail (`ServerRail`) et dans `SectionsShell` ; comme Stats, elle ne suffit pas à ouvrir la phase `sections`.
+  - Coque `TirelireSpace` : en-tête (`TirelireTete`), contenu, et barre d'onglets en bas sous 900 px (`TirelireOnglets` : Accueil, Mois, Évolution,
+    Habitudes, Opérations) ; au-dessus, les mêmes entrées et « Import » sont dans le panneau latéral (`TirelireNav`). Cibles tactiles de 44 px au moins.
+  - `#/tirelire` : sans relevé, `TirelireVide` (premier lancement) ; sinon `TirelireAttente`, comme `#/tirelire/mois`, `/evolution` et `/habitudes` :
+    « Disponible quand les catégories seront en place », sans aucun chiffre, avec les liens vers ce qui existe.
+  - `#/tirelire/import` : `TirelireImport`. Dépôt ou choix de plusieurs PDF, envoyés à `POST /statements/import` par lots (`lots` : 24 fichiers et
+    32 Mo au plus par envoi ; un fichier de plus de 8 Mo est refusé sur place, sans envoi). Une carte par fichier (`TirelireFichier`), refus en tête :
+    importé, déjà importé, refusé (motif traduit par `messageRefus` ; pour `checks_failed`, tableau des écarts entre totaux lus et totaux du relevé,
+    éléments introuvables, lignes non reconnues avec leur page), ou « non envoyé » quand l'envoi lui-même échoue (401, 403, 413, réseau : `messageErreur`),
+    avec « Réessayer ». Liste des relevés importés (période, nombre d'opérations, date d'import) et suppression après la confirmation partagée `ConfirmModal`.
+  - `#/tirelire/operations` : `TirelireOperations`. Opérations groupées par jour (`parJour`, total du jour seulement quand le jour est entièrement chargé),
+    pages de 50 (« Afficher la suite »), filtre par relevé et par période (`statement`, `from`, `to` de `GET /operations`). Débits et crédits ne sont
+    affichés que s'ils sont exacts (`totauxConnus` : tout est chargé, ou un relevé entier est choisi). `#/tirelire/operations/<id>` : `TirelireOperation`,
+    détail d'une opération de la liste chargée (libellé brut, détails, dates d'achat, d'opération et de valeur, section, type, relevé) ; l'API n'a pas de
+    lecture par identifiant.
+  - `formats.ts` : montants à partir de centimes entiers, sans flottant (`euros` : « 1 234,56 € », espace fine insécable des milliers, espace insécable
+    avant le symbole ; `montant` signé selon le sens ; `ecart`), dates `AAAA-MM-JJ` lues en UTC (`jourLong`, `dateCourte`, `dateLongue`, `periode`).
+    `tirelire.ts` : `tirelireApi`, types de l'API, messages d'erreur, calculs purs. `tirelire.svelte.ts` : état (`tirelire`, classe `EtatTirelire`, client
+    injectable). `essais.ts` : jeux d'essai inventés. Styles : `src/styles/tirelire.css` (classes `tir-*`, jetons de l'app).
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément d’Estompe et des services : api, web, windows, android, security, aegis…).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
-  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie, `SABLIER_PUBLIC_URL` pour Sablier) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
-  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, Régie, Sablier, gateway) : un fichier vidéo ou un flux HLS
+  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie, `SABLIER_PUBLIC_URL` pour Sablier, `TIRELIRE_PUBLIC_URL` pour Tirelire) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
+  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, Régie, Sablier, Tirelire, gateway) : un fichier vidéo ou un flux HLS
   hébergé ailleurs ne se lit pas dans « Regarder ensemble » ni dans le salon Vidéos. Les apps Windows et Android ont la même règle
   (`tauri.conf.json`) et n'ouvrent dans le navigateur système que les liens `https:`, `mailto:` et `tel:`. Les en-têtes de sécurité
   (`estompe-headers.inc`) s'appliquent aussi à `/updates/` et `/healthz` ; HSTS relève du proxy TLS, cette image ne le pose pas.
@@ -143,7 +166,9 @@ dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les d
 `npm run e2e:regie` (`playwright.regie.config.ts`, `e2e/regie.spec.ts`) vérifie la section Régie avec et sans `regie:admin`. `npm run e2e:sablier`
 (`playwright.sablier.config.ts`, `e2e/sablier.spec.ts`, faux Sablier et fausse API d'Estompe dans `e2e/faux-sablier.ts`, horloge du navigateur
 fixée) vérifie la section Stats : permissions, périodes, récap au clavier et au toucher, pastille, partage et profil, export (fichier
-téléchargé comparé à celui du serveur), effacement, parcours d'administration, Sablier arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
+téléchargé comparé à celui du serveur), effacement, parcours d'administration, Sablier arrêté, axe. `npm run e2e:tirelire`
+(`playwright.tirelire.config.ts`, `e2e/tirelire.spec.ts`, faux Tirelire dans `e2e/faux-tirelire.ts`) vérifie la section Tirelire : permission, premier lancement, import
+(les trois issues, refus au contrôle), suppression, opérations et détail, écran de 390 px sans débordement, Tirelire arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. `npm run e2e:cinema` (`playwright.cinema.config.ts`, `e2e/cinema.spec.ts`) vérifie le mode cinéma du salon cinéma
 sur un écran de téléphone, en portrait et en paysage : il tourne sur le serveur de dev de Vite, parce que le vocal (LiveKit) n'est pas simulé et que le test
 marque le salon comme rejoint en important le module `voice.svelte.ts` dans la page. La CI les lance dans le job `front`.
@@ -151,8 +176,8 @@ marque le salon comme rejoint en important le module `voice.svelte.ts` dans la p
 ## Application Windows
 
 Nécessite Rust et, sous Windows, WebView2 (présent sur Windows 11). Configuration figée à la compilation
-(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL`, `REGIE_PUBLIC_URL` et `SABLIER_PUBLIC_URL`
-(vide = pas de section Entracte, Sillon ou Régie, pas de battement vers Sablier). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL`, `VITE_SILLON_URL`, `VITE_REGIE_URL` ou `VITE_SABLIER_URL` de l'environnement l'emporte.
+(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL`, `REGIE_PUBLIC_URL`, `SABLIER_PUBLIC_URL` et `TIRELIRE_PUBLIC_URL`
+(vide = pas de section Entracte, Sillon, Régie ou Tirelire, pas de battement vers Sablier). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL`, `VITE_SILLON_URL`, `VITE_REGIE_URL`, `VITE_SABLIER_URL` ou `VITE_TIRELIRE_URL` de l'environnement l'emporte.
 
 ```sh
 cd ../../apps/estompe/windows && PATH=../../../node_modules/.bin:$PATH tauri build   # installeur NSIS dans apps/estompe/windows/src-tauri/target/release/bundle/nsis (le CLI Tauri est installé par `npm ci` à la racine du dépôt)

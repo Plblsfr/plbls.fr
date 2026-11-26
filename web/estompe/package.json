@@ -19,6 +19,7 @@
     "e2e:sillon": "playwright test --config playwright.sillon.config.ts",
     "e2e:regie": "playwright test --config playwright.regie.config.ts",
     "e2e:sablier": "playwright test --config playwright.sablier.config.ts",
+    "e2e:tirelire": "playwright test --config playwright.tirelire.config.ts",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -196,8 +196,8 @@ function recap(id: number, srv: Sablier, p: Profil) {
   }
 }
 
-export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSablier()) {
-  const origine = new URL(page.url() === 'about:blank' ? 'http://localhost:4177' : page.url()).origin
+export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSablier(), port = 4177) {
+  const origine = new URL(page.url() === 'about:blank' ? `http://localhost:${port}` : page.url()).origin
   const cors = { 'access-control-allow-origin': origine, 'access-control-allow-credentials': 'true' }
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: cors })
   const vide = (route: Route) => route.fulfill({ status: 204, headers: cors })
