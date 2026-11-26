@@ -8,6 +8,7 @@ pub mod commercants;
 pub mod config;
 pub mod droits;
 pub mod etat;
+pub mod export;
 pub mod extraction;
 pub mod garde;
 pub mod http;
@@ -20,11 +21,14 @@ pub mod normalisation;
 pub mod regles;
 pub mod releves;
 pub mod routes;
+pub mod selection;
 
 #[cfg(test)]
 mod tests_api;
 #[cfg(test)]
 mod tests_categories;
+#[cfg(test)]
+mod tests_recherche;
 #[cfg(test)]
 mod testutil;
 

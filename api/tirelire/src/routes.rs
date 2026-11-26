@@ -11,6 +11,7 @@ use crate::{
     categories, commercants,
     droits::Droit,
     etat::AppState,
+    export,
     garde::{self, Garde},
     import, interne, regles, releves,
 };
@@ -90,6 +91,12 @@ pub fn table() -> Vec<Entree> {
             "/operations",
             Garde::Droit(Droit::Acces),
             get(releves::operations),
+        ),
+        entree(
+            Method::GET,
+            "/operations/export.csv",
+            Garde::Droit(Droit::Acces),
+            get(export::exporter),
         ),
         entree(
             Method::GET,

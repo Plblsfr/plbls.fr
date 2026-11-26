@@ -67,6 +67,22 @@ components:
         normalisés regroupés ; `key` : libellé normalisé (majuscules, sans accent ni ponctuation, sans numéro de magasin ou de terminal,
         sans forme juridique) ; `manual` : variante rattachée par une fusion ou une séparation.
       type: object
+  parameters:
+    statement: { name: statement, in: query, description: "Identifiant d'un relevé", schema: { type: integer } }
+    from: { name: from, in: query, description: "Date d'opération minimale, incluse", schema: { type: string, format: date } }
+    to: { name: to, in: query, description: "Date d'opération maximale, incluse", schema: { type: string, format: date } }
+    category: { name: category, in: query, description: "Identifiant d'une catégorie", schema: { type: integer } }
+    merchant: { name: merchant, in: query, description: "Identifiant d'un commerçant", schema: { type: integer } }
+    unclassified: { name: unclassified, in: query, description: "`true` : seulement les opérations sans catégorie", schema: { type: boolean, default: false } }
+    q:
+      name: q
+      in: query
+      description: "Recherche dans le libellé, les détails, le commerçant lu sur le relevé et le nom du commerçant, sans tenir compte de la casse ni des accents ; chaque mot doit s'y trouver ; `%` et `_` sont cherchés tels quels"
+      schema: { type: string, maxLength: 100 }
+    min: { name: min, in: query, description: "Montant minimal en centimes, inclus (valeur absolue, débit ou crédit)", schema: { type: integer, minimum: 0 } }
+    max: { name: max, in: query, description: "Montant maximal en centimes, inclus ; au moins `min`", schema: { type: integer, minimum: 0 } }
+    direction: { name: direction, in: query, description: "Sens de l'opération", schema: { type: string, enum: [debit, credit] } }
+    type: { name: type, in: query, description: "Type d'opération", schema: { type: string, enum: [carte, prelevement, virement, virement_instantane, echeance_pret, cotisation, autre] } }
   responses:
     "400":
       description: "`invalid` : corps ou paramètre illisible (le message dit lequel)"
@@ -175,18 +191,59 @@ paths:
   /operations:
     get:
       summary: "Opérations de la personne, de la plus récente à la plus ancienne (`tirelire:access`)"
+      description: |
+        Les filtres se combinent (ET). `total`, `total_debits` et `total_credits` portent sur toute la sélection, pas sur la page rendue.
       parameters:
-        - { name: statement, in: query, description: "Identifiant d'un relevé", schema: { type: integer } }
-        - { name: from, in: query, description: "Date d'opération minimale, incluse", schema: { type: string, format: date } }
-        - { name: to, in: query, description: "Date d'opération maximale, incluse", schema: { type: string, format: date } }
-        - { name: category, in: query, description: "Identifiant d'une catégorie", schema: { type: integer } }
-        - { name: merchant, in: query, description: "Identifiant d'un commerçant", schema: { type: integer } }
-        - { name: unclassified, in: query, description: "`true` : seulement les opérations sans catégorie", schema: { type: boolean, default: false } }
+        - { $ref: "#/components/parameters/statement" }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/category" }
+        - { $ref: "#/components/parameters/merchant" }
+        - { $ref: "#/components/parameters/unclassified" }
+        - { $ref: "#/components/parameters/q" }
+        - { $ref: "#/components/parameters/min" }
+        - { $ref: "#/components/parameters/max" }
+        - { $ref: "#/components/parameters/direction" }
+        - { $ref: "#/components/parameters/type" }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
-        "200": { description: "`{operations: [Operation], total, limit, offset}` ; `total` : nombre d'opérations qui répondent aux filtres" }
+        "200": { description: "`{operations: [Operation], total, total_debits, total_credits, limit, offset}` ; `total` : nombre d'opérations qui répondent aux filtres, `total_debits` et `total_credits` : leurs sommes en centimes" }
         "400": { description: "`invalid` : filtre ou pagination illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /operations/export.csv:
+    get:
+      summary: "Export CSV des opérations qui répondent aux filtres, sans pagination (`tirelire:access`)"
+      description: |
+        Mêmes filtres que `GET /operations`, toutes les lignes, de la plus récente à la plus ancienne, envoyées en flux.
+        CSV pour un tableur français : UTF-8 avec BOM, séparateur `;`, fins de ligne CRLF, dates `JJ/MM/AAAA`, montants à virgule
+        décimale sans séparateur de milliers. Colonnes : Date, Date de valeur, Date d'achat, Libellé, Détails (séparés par ` | `),
+        Commerçant, Catégorie, Nature, Type, Section, Débit (positif), Crédit (positif), Montant (signé, négatif pour un débit), Relevé.
+        Une cellule de texte qui commence par `=`, `+`, `-`, `@`, une tabulation ou un retour à la ligne est précédée d'une
+        apostrophe ; une cellule qui contient `;`, un guillemet ou un saut de ligne est entre guillemets, guillemets doublés.
+        Nom du fichier (`Content-Disposition`) : `tirelire-operations-<début>_<fin>.csv`, d'après `from` et `to`, sinon d'après
+        la première et la dernière date de la sélection.
+      parameters:
+        - { $ref: "#/components/parameters/statement" }
+        - { $ref: "#/components/parameters/from" }
+        - { $ref: "#/components/parameters/to" }
+        - { $ref: "#/components/parameters/category" }
+        - { $ref: "#/components/parameters/merchant" }
+        - { $ref: "#/components/parameters/unclassified" }
+        - { $ref: "#/components/parameters/q" }
+        - { $ref: "#/components/parameters/min" }
+        - { $ref: "#/components/parameters/max" }
+        - { $ref: "#/components/parameters/direction" }
+        - { $ref: "#/components/parameters/type" }
+      responses:
+        "200":
+          description: "Fichier CSV, `Content-Disposition: attachment`"
+          content:
+            text/csv: { schema: { type: string } }
+        "400": { description: "`invalid` : filtre illisible" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
         "502": { $ref: "#/components/responses/502" }
