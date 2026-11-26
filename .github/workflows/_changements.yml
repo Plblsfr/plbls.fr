@@ -17,6 +17,7 @@ on:
       sillon_server: { value: "${{ jobs.changements.outputs.sillon_server }}" }
       sablier_server: { value: "${{ jobs.changements.outputs.sablier_server }}" }
       regie_server: { value: "${{ jobs.changements.outputs.regie_server }}" }
+      tirelire_server: { value: "${{ jobs.changements.outputs.tirelire_server }}" }
       lint: { value: "${{ jobs.changements.outputs.lint }}" }
       front: { value: "${{ jobs.changements.outputs.front }}" }
       espaces: { value: "${{ jobs.changements.outputs.espaces }}" }
@@ -26,6 +27,7 @@ on:
       image_sillon: { value: "${{ jobs.changements.outputs.image_sillon }}" }
       image_sablier: { value: "${{ jobs.changements.outputs.image_sablier }}" }
       image_regie: { value: "${{ jobs.changements.outputs.image_regie }}" }
+      image_tirelire: { value: "${{ jobs.changements.outputs.image_tirelire }}" }
       image_security: { value: "${{ jobs.changements.outputs.image_security }}" }
       image_ui: { value: "${{ jobs.changements.outputs.image_ui }}" }
 
@@ -48,6 +50,7 @@ jobs:
       sillon_server: ${{ steps.c.outputs.sillon_server }}
       sablier_server: ${{ steps.c.outputs.sablier_server }}
       regie_server: ${{ steps.c.outputs.regie_server }}
+      tirelire_server: ${{ steps.c.outputs.tirelire_server }}
       lint: ${{ steps.c.outputs.lint }}
       front: ${{ steps.e.outputs.front }}
       espaces: ${{ steps.e.outputs.espaces }}
@@ -57,6 +60,7 @@ jobs:
       image_sillon: ${{ steps.c.outputs.image_sillon }}
       image_sablier: ${{ steps.c.outputs.image_sablier }}
       image_regie: ${{ steps.c.outputs.image_regie }}
+      image_tirelire: ${{ steps.c.outputs.image_tirelire }}
       image_security: ${{ steps.c.outputs.image_security }}
       image_ui: ${{ steps.c.outputs.image_ui }}
     steps:
@@ -92,6 +96,7 @@ jobs:
           c sillon_server 'api/sillon/**' 'api/commun/**' '!**/*.md' docs/sillon/openapi.yaml "${cargo[@]}"
           c sablier_server 'api/sablier/**' 'api/commun/**' '!**/*.md' docs/sablier/openapi.yaml "${cargo[@]}"
           c regie_server 'api/regie/**' 'api/commun/**' '!**/*.md' docs/regie/openapi.yaml "${cargo[@]}"
+          c tirelire_server 'api/tirelire/**' 'api/commun/**' '!**/*.md' docs/tirelire/openapi.yaml "${cargo[@]}"
           c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' '**/*.md' \
             .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
           c npm "${npm[@]}" 'scripts/*' biome.json tsconfig.base.json
@@ -104,6 +109,7 @@ jobs:
           c image_sillon "${cargo[@]}" .dockerignore 'api/sillon/**' 'api/commun/**' '!**/*.md' deploy/sillon/.env.example plbls.env
           c image_sablier "${cargo[@]}" .dockerignore 'api/sablier/**' 'api/commun/**' '!**/*.md' deploy/sablier/.env.example plbls.env
           c image_regie "${cargo[@]}" .dockerignore 'api/regie/**' 'api/commun/**' '!**/*.md' deploy/regie/.env.example plbls.env
+          c image_tirelire "${cargo[@]}" .dockerignore 'api/tirelire/**' 'api/commun/**' '!**/*.md' deploy/tirelire/.env.example plbls.env
           c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
       - id: e
         name: Projets npm à vérifier (job front)

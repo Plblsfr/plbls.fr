@@ -58,7 +58,7 @@ Règles du cycle :
 ## Nom de la branche = numéro de version
 
 Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android` pour Estompe ; `security`, `aegis`, `entracte`,
-`sillon`, `sablier`, `regie`, `ui` pour les services), stockée dans `.version` et mise à jour
+`sillon`, `sablier`, `regie`, `tirelire`, `ui` pour les services), stockée dans `.version` et mise à jour
 par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version` de `livraison.yml`) :
 
 | Branche | Effet à la fusion dans `main` |

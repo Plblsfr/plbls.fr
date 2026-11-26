@@ -8,6 +8,7 @@ members = [
   "api/sillon",
   "api/sablier",
   "api/regie",
+  "api/tirelire",
   "api/estompe/estompe-api",
   "api/estompe/core",
   "api/estompe/block",
@@ -36,6 +37,7 @@ image = { version = "0.25", default-features = false, features = ["gif", "jpeg",
 include_dir = "0.7"
 jsonschema = { version = "0.60", default-features = false }
 jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+lopdf = { version = "0.47", default-features = false }
 percent-encoding = "2"
 quick-xml = "0.42"
 rand = "0.10"

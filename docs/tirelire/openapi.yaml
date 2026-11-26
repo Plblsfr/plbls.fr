@@ -1,0 +1,153 @@
+openapi: 3.1.0
+info:
+  title: Tirelire
+  version: 0.1.0
+  description: |
+    Suivi des comptes bancaires de plbls.fr : import des relevés de compte PDF du Crédit Mutuel de Bretagne, relevés et opérations.
+    Ce document suit le code : chaque route de `api/tirelire/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
+
+    Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
+    vérifié par `GET /auth/me` du gateway. Droits : permission aegis `tirelire:access`, fermée par défaut.
+    Requêtes modifiantes avec cookie : `Origin` dans `TIRELIRE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
+    Erreurs : `{"error": "<code>", "message": "…"}`.
+
+    Chaque personne ne lit et ne supprime que ses propres comptes, relevés et opérations : un identifiant d'une autre personne
+    répond 404. Les montants sont des entiers en centimes ; les dates sont au format `AAAA-MM-JJ`.
+servers:
+  - url: https://tirelire-api.plbls.fr
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Secure-plbls_sid
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    "401":
+      description: "`unauthorized` : connexion requise"
+    "403":
+      description: "`forbidden` : permission manquante (le message la nomme) ; `bad_origin` : origine non autorisée"
+    "502":
+      description: "`gateway_unavailable` : service de connexion injoignable"
+    "503":
+      description: "`aegis_unavailable` : service de droits injoignable"
+security:
+  - session: []
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: "Santé du processus"
+      security: []
+      responses:
+        "200": { description: "`{status, version}`" }
+  /readyz:
+    get:
+      summary: "Base joignable"
+      security: []
+      responses:
+        "200": { description: "`{status: ready}`" }
+        "503": { description: "`not_ready`" }
+  /me:
+    get:
+      summary: "Identité et permissions (aucune permission exigée)"
+      description: "aegis injoignable : `access` faux."
+      responses:
+        "200": { description: "`{sub, name, email, permissions: {access}}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "502": { $ref: "#/components/responses/502" }
+  /accounts:
+    get:
+      summary: "Comptes de la personne (`tirelire:access`)"
+      description: "Un compte est créé à l'import de son premier relevé (identifié par son IBAN) et supprimé avec son dernier relevé."
+      responses:
+        "200": { description: "`{accounts: [{id, bank, iban, bic, number, reference, holder, statements}]}` ; `bank` : `cmb` ; `statements` : nombre de relevés" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /statements:
+    get:
+      summary: "Relevés de la personne, du plus récent au plus ancien (`tirelire:access`)"
+      responses:
+        "200":
+          description: |
+            `{statements: [statement]}`. `statement` : `{id, account_id, number, year, from, to, old_balance, new_balance,
+            total_debits, total_credits, operations, pages, sha256, checks, imported_at}`.
+            `from` : date de l'ancien solde ; `to` : date d'arrêté ; soldes négatifs si débiteurs ; `operations` : nombre d'opérations ;
+            `checks` : rapport du contrôle `{total_debits: {expected, read}, total_credits: {expected, read}, new_balance: {expected, read}, operations, unrecognized_lines}`.
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /statements/import:
+    post:
+      summary: "Importer un ou plusieurs relevés PDF (`tirelire:access`)"
+      description: |
+        Corps `multipart/form-data`, un champ `file` par PDF (24 au plus, 8 Mo par fichier, 32 Mo par envoi).
+        Chaque fichier est traité indépendamment des autres ; la réponse est 200 dès que l'envoi est lisible, avec un résultat par fichier, dans l'ordre :
+        - `{file, status: "imported", statement}` : relevé enregistré avec ses opérations ;
+        - `{file, status: "already_imported", statement}` : même fichier (empreinte SHA-256) ou même relevé (compte, numéro, année, date d'arrêté) déjà importé, rien n'est modifié ;
+        - `{file, status: "rejected", error: {code, message, …}}` : rien n'est enregistré. Codes : `not_a_pdf`, `unreadable_pdf`, `too_large`,
+          `unknown_format` (ce n'est pas un relevé du Crédit Mutuel de Bretagne), `conflict` (même relevé en cours d'import), `checks_failed`.
+
+        `checks_failed` ajoute `missing` (éléments absents : numéro du relevé, date d'arrêté, IBAN, soldes, totaux, en-tête du tableau),
+        `gaps: [{check, expected, read}]` (`check` : `total_debits`, `total_credits` ou `new_balance`, en centimes) et
+        `unrecognized_lines: [{page, text}]`. Un relevé n'est accepté que si la somme des débits et celle des crédits lus égalent les
+        totaux du relevé, si l'ancien solde plus les mouvements donne le nouveau solde et si aucune ligne du tableau n'est restée non reconnue.
+        Le PDF n'est pas conservé.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: array, items: { type: string, format: binary } }
+      responses:
+        "200": { description: "`{results: [{file, status, statement?, error?}]}`" }
+        "400": { description: "`invalid` : corps illisible, aucun champ `file`, ou plus de 24 fichiers" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "413": { description: "`too_large` : envoi de plus de 32 Mo" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /statements/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    delete:
+      summary: "Supprimer un relevé et ses opérations (`tirelire:access`)"
+      description: "Le compte est supprimé avec son dernier relevé. Le même PDF peut ensuite être importé de nouveau."
+      responses:
+        "204": { description: "supprimé" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : relevé inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /operations:
+    get:
+      summary: "Opérations de la personne, de la plus récente à la plus ancienne (`tirelire:access`)"
+      parameters:
+        - { name: statement, in: query, description: "Identifiant d'un relevé", schema: { type: integer } }
+        - { name: from, in: query, description: "Date d'opération minimale, incluse", schema: { type: string, format: date } }
+        - { name: to, in: query, description: "Date d'opération maximale, incluse", schema: { type: string, format: date } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: |
+            `{operations: [operation], total, limit, offset}` ; `total` : nombre d'opérations qui répondent aux filtres.
+            `operation` : `{id, statement_id, account_id, date, value_date, purchase_date, section, type, label, details, merchant,
+            amount, direction, merchant_id, category_id}`.
+            `section` : titre de la section du relevé (`VIREMENTS RECUS`, `PAIEMENTS PAR CARTE`…) ; `type` : `carte`, `prelevement`,
+            `virement`, `virement_instantane`, `echeance_pret`, `cotisation` ou `autre` ; `label` : libellé brut ; `details` : lignes
+            de détail ; `purchase_date` et `merchant` (commerçant et ville bruts) : paiements par carte seulement ; `amount` : centimes,
+            toujours positif ; `direction` : `debit` ou `credit` ; `merchant_id` et `category_id` : toujours `null` pour l'instant.
+        "400": { description: "`invalid` : filtre ou pagination illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }

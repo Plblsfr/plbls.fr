@@ -7,7 +7,7 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 |---|---|---|
 | `ci.yml` | toute PR (un push annule le run précédent de la PR) | contrôles de ce que la PR touche, puis job final `ci` |
 | `pr-conventions.yml` | toute PR, et à chaque modification de sa description | nom de branche et description (`scripts/ci-conventions-pr.mjs`) |
-| `livraison.yml` | push sur `main`, tags `aegis-v*`, `entracte-v*`, `sillon-v*`, `sablier-v*`, `regie-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
+| `livraison.yml` | push sur `main`, tags `aegis-v*`, `entracte-v*`, `sillon-v*`, `sablier-v*`, `regie-v*`, `tirelire-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
 | `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel (case `beta` : appelle `estompe-beta.yml`) | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
 | `estompe-beta.yml` | lancement manuel sur la branche d'une PR | check, tests et build du front de la PR, puis image `ghcr.io/plblsfr/estompe-web:beta` (et `beta-pr<n>`, `beta-<sha>`) ; ni `latest`, ni tag, ni release |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
@@ -37,6 +37,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 | `sillon_server` | `api/sillon/**`, `api/commun/**`, `docs/sillon/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Sillon, avec PostgreSQL ; commun) |
 | `sablier_server` | `api/sablier/**`, `api/commun/**`, `docs/sablier/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Sablier, avec PostgreSQL et Redis ; commun) |
 | `regie_server` | `api/regie/**`, `api/commun/**`, `docs/regie/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Régie, services simulés ; commun) |
+| `tirelire_server` | `api/tirelire/**`, `api/commun/**`, `docs/tirelire/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Tirelire, avec PostgreSQL ; commun) |
 | `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates/core`), sans l'app native (`natif`, `crates/{client,plateforme}`), qui n'est plus construite ni testée par la CI ([natif.md](natif.md)) | `estompe-tauri` |
 | `estompe` | `{api,web,apps,docs,deploy,scripts}/estompe/**`, `.version`, `CHANGELOG.md`, `changelog.d/**`, `agents/**` | `changelog` |
 | `lint` | JS, TS, Svelte, CSS, JSON, shell, Python, Markdown, configs des linters, `scripts/**` | `front` (`just lint`, dont les liens Markdown internes) |
@@ -48,7 +49,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 
 - `version-seule` : seul job de la PR de version (branche `ci/version`, `changements` et donc tous les autres jobs sont ignorés) ; échoue si un
   autre fichier que `.version` et les manifestes des services (`bump-version.mjs --fichiers`) change, si `.version` n'a pas les éléments `api`, `web`, `windows`, `android`,
-  `security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `ui` (plus `natif`, facultatif : ancienne clé de l'app native, que `bump-version.mjs` ne calcule plus et retire) au format `x.y.z`,
+  `security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `tirelire`, `ui` (plus `natif`, facultatif : ancienne clé de l'app native, que `bump-version.mjs` ne calcule plus et retire) au format `x.y.z`,
   ou si un manifeste ne reprend pas la version de `.version` (`bump-version.mjs --manifestes` ne doit rien changer).
 - `changelog` : exige un nouveau `changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
@@ -60,7 +61,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   `cargo deny check`.
 - `rust-test` : tests des crates d'Estompe (PostgreSQL 17, port 5432), d'aegis, d'Entracte
   (PostgreSQL 17, ffmpeg installé par apt) de Sillon (PostgreSQL 17), de Sablier (PostgreSQL 17 et Redis : consommation de la file d'évènements)
-  et de Régie (sans base), chacun selon son groupe ; ceux de `commun` publient dans le même Redis (émission des évènements).
+  de Tirelire (PostgreSQL 17) et de Régie (sans base), chacun selon son groupe ; ceux de `commun` publient dans le même Redis (émission des évènements).
   Les services tournent à côté du runner : joignables par `localhost` et leur port publié. Une base par test sur un seul serveur.
 - `estompe-tauri` : tests des apps Tauri (GTK/WebKit), dont ceux des features `overlay-natif` et `instant-replay` (logique sans GPU ; l'éditeur de clips y exporte un clip de synthèse avec le ffmpeg installé par apt), `cargo check` de l'app Android,
   ffmpeg épinglé, puis `cargo check` de l'app Windows pour la cible `x86_64-pc-windows-gnu` avec `instant-replay` (seul contrôle du code Windows du moteur : il n'est jamais exécuté en CI).
@@ -71,6 +72,8 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 - `sillon-image` : de même pour Sillon (cache GitHub Actions `sillon`), démarrée avec `deploy/sillon/.env.example` : `GET /readyz`,
   migration 1 appliquée, ffmpeg et ffprobe présents.
 - `sablier-image` : de même pour Sablier (cache GitHub Actions `sablier`), démarrée avec `deploy/sablier/.env.example` sans Redis :
+  `GET /readyz` et migration 1 appliquée.
+- `tirelire-image` : de même pour Tirelire (cache GitHub Actions `tirelire`), démarrée avec `deploy/tirelire/.env.example` :
   `GET /readyz` et migration 1 appliquée.
 - `regie-image` : construit l'image de Régie sans la publier (cache GitHub Actions `regie`), la démarre avec `deploy/regie/.env.example`
   et attend `GET /healthz` (60 s au plus).

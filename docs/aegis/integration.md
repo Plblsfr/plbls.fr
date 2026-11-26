@@ -2,7 +2,7 @@
 
 ## Brancher une application
 
-1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`, `AEGIS_TOKEN_SILLON`, `AEGIS_TOKEN_REGIE`, `AEGIS_TOKEN_SABLIER`),
+1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`, `AEGIS_TOKEN_SILLON`, `AEGIS_TOKEN_REGIE`, `AEGIS_TOKEN_SABLIER`, `AEGIS_TOKEN_TIRELIRE`),
    déclarée dans le `.env.example` de l'application et lue aussi par aegis, qui en tire le nom de l'application (suffixe en minuscules,
    `_` devenant `-`) ; un jeton par application, comparé en temps constant, révocable séparément. Le jeton ne lit que les droits de son application (plus `aegis:admin`) et ne déclare que son application.
 2. **Manifeste** au démarrage puis toutes les 10 minutes :
@@ -100,9 +100,14 @@ et lit les droits comme Entracte. Sans aegis, sa permission est refusée. Voir [
 que celui de leur application. Pour son administration, il lit par `POST /v1/accounts/lookup` le nom des
 personnes et celles qui n'ont plus de compte. Sans aegis, toutes ses permissions sont refusées. Voir [docs/sablier](../sablier/README.md).
 
+## Tirelire
+
+`AEGIS_URL` et `AEGIS_TOKEN_TIRELIRE` (application `tirelire` chez aegis) : Tirelire envoie son manifeste (`tirelire:access`, fermée par défaut)
+et lit les droits comme Entracte. Sans aegis, sa permission est refusée. Voir [docs/tirelire](../tirelire/README.md).
+
 ## Mise en service
 
-1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe, d'Entracte, de Sillon, de Régie et de Sablier.
+1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe, d'Entracte, de Sillon, de Régie, de Sablier et de Tirelire.
 2. Donner le rôle Keycloak `aegis-admin` (et `user`) aux administrateurs.
 3. Démarrer Estompe pour qu'il envoie son manifeste, puis configurer dans Administration › accès : un rôle `Membre` avec
-   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access`, `sillon:access` et `sablier:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.
+   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access`, `sillon:access`, `sablier:access` et `tirelire:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.

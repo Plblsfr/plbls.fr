@@ -1,5 +1,5 @@
 // Versions de chaque élément, stockées dans .version à la racine et mises à jour par la CI à chaque fusion dans main :
-//  - éléments d'Estompe (api, web, windows, android) et services (security, aegis, entracte, sillon, sablier, regie, ui) ;
+//  - éléments d'Estompe (api, web, windows, android) et services (security, aegis, entracte, sillon, sablier, regie, tirelire, ui) ;
 //  - les éléments concernés sont ceux dont un dossier a changé dans la fusion (ELEMENTS) ; pour un service, un fichier .md ne compte pas ;
 //  - fusion d'une branche feat/… = minor +1 (patch remis à 0), tout autre = patch +1, sauf release/… (notes de version) qui ne change rien.
 // Le nom de la branche est lu dans le sujet du commit de fusion de GitHub (« Merge pull request #1 from <compte>/feat/x »).
@@ -7,7 +7,7 @@
 // Pour une version majeure (ou pour repartir d'un autre numéro), il suffit de modifier la valeur dans .version à la main.
 // Un élément absent de .version part de 0.0.0 : sa première fusion feat/ lui donne 0.1.0.
 
-export const SERVICES_RUST = ['security', 'aegis', 'entracte', 'sillon', 'sablier', 'regie']
+export const SERVICES_RUST = ['security', 'aegis', 'entracte', 'sillon', 'sablier', 'regie', 'tirelire']
 export const SERVICES = [...SERVICES_RUST, 'ui']
 
 /** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/core dans les apps Tauri, api/commun dans chaque service Rust ; l'app native (abandonnée) ne monte aucune version. */

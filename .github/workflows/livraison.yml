@@ -5,7 +5,7 @@ name: livraison
 on:
   push:
     branches: [main]
-    tags: ["aegis-v*", "entracte-v*", "sillon-v*", "sablier-v*", "regie-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+    tags: ["aegis-v*", "entracte-v*", "sillon-v*", "sablier-v*", "regie-v*", "tirelire-v*", "security-v*", "ui-v*", "estompe-api-v*"]
   workflow_dispatch:
 
 permissions:
@@ -94,6 +94,20 @@ jobs:
       context: .
       dockerfile: api/regie/Dockerfile
       dir: api/regie
+    secrets: inherit
+
+  image-tirelire:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_tirelire == 'true') || startsWith(github.ref, 'refs/tags/tirelire-v')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: tirelire
+      name: tirelire
+      context: .
+      dockerfile: api/tirelire/Dockerfile
+      dir: api/tirelire
     secrets: inherit
 
   image-security:
@@ -255,7 +269,7 @@ jobs:
           git add -- "${fichiers[@]}"
           git commit -m "$title"
           git push origin "$b"
-          body="Versions calculées par livraison.yml (job estompe-version) d'après toutes les fusions dans main depuis la dernière PR de version, jusqu'à $sha : éléments d'Estompe et services (security, aegis, entracte, sillon, sablier, regie, ui). Chaque nouvelle fusion met à jour cette PR au lieu d'en ouvrir une autre. La fusion de cette PR ne change aucune version : elle ne modifie que .version et les manifestes des services ($(echo "${fichiers[@]:1}" | sed 's/ /, /g'))."
+          body="Versions calculées par livraison.yml (job estompe-version) d'après toutes les fusions dans main depuis la dernière PR de version, jusqu'à $sha : éléments d'Estompe et services (security, aegis, entracte, sillon, sablier, regie, tirelire, ui). Chaque nouvelle fusion met à jour cette PR au lieu d'en ouvrir une autre. La fusion de cette PR ne change aucune version : elle ne modifie que .version et les manifestes des services ($(echo "${fichiers[@]:1}" | sed 's/ /, /g'))."
           pr="$(gh pr list --head "$b" --base main --state open --json number --jq '.[0].number // empty')"
           if [ -n "$pr" ]; then gh pr edit "$pr" --title "$title" --body "$body"; else gh pr create --base main --head "$b" --title "$title" --body "$body"; fi
       - run: |

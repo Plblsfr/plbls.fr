@@ -3,7 +3,7 @@ Monorepo :
 
 | Dossier | Contenu |
 |---|---|
-| `api/` | API et services Rust (workspace Cargo racine) : `commun` (code partagé par security, aegis, entracte, sillon, sablier, regie et estompe), `security` (auth-gateway), `aegis` (permissions), `entracte` (films et séries, [`docs/entracte`](docs/entracte/README.md)), `sillon` (musique, [`docs/sillon`](docs/sillon/README.md)), `sablier` (statistiques, [`docs/sablier`](docs/sablier/README.md)), `regie` (administration des médias, [`docs/regie`](docs/regie/README.md)), `estompe` |
+| `api/` | API et services Rust (workspace Cargo racine) : `commun` (code partagé par security, aegis, entracte, sillon, sablier, regie, tirelire et estompe), `security` (auth-gateway), `aegis` (permissions), `entracte` (films et séries, [`docs/entracte`](docs/entracte/README.md)), `sillon` (musique, [`docs/sillon`](docs/sillon/README.md)), `sablier` (statistiques, [`docs/sablier`](docs/sablier/README.md)), `regie` (administration des médias, [`docs/regie`](docs/regie/README.md)), `tirelire` (comptes bancaires, [`docs/tirelire`](docs/tirelire/README.md)), `estompe` |
 | `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (l'app : messagerie et section Entracte ; sa plateforme web, image nginx) |
 | `apps/` | applications natives : `estompe/windows`, `estompe/android` (Tauri) et leur code commun `estompe/crates` |
 | `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
