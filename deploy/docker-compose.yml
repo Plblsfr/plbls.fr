@@ -94,6 +94,14 @@ services:
     expose: ["8080"]
     networks: [default, postgres-net, redis]
 
+  tirelire-api:
+    image: ghcr.io/plblsfr/tirelire:${TIRELIRE_TAG:-latest}
+    restart: unless-stopped
+    <<: [*durci, *lecture-seule]
+    env_file: .env
+    expose: ["8080"]
+    networks: [default, postgres-net]
+
   regie-api:
     image: ghcr.io/plblsfr/regie:${REGIE_TAG:-latest}
     restart: unless-stopped

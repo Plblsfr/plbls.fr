@@ -118,6 +118,10 @@ test-sablier:
 test-regie:
     cargo test --locked -p regie
 
+# Tirelire : une base jetable par test (TEST_DATABASE_URL, sinon testcontainers) ; TIRELIRE_RELEVES_REELS=<dossier> lit aussi de vrais relevés PDF
+test-tirelire:
+    cargo test --locked -p tirelire
+
 # Reconstruit packages/ui/dist (non versionné)
 build-ui:
     npm ci && npm run build --workspace packages/ui
@@ -188,3 +192,10 @@ regie-dev-run:
 
 regie-image:
     docker build -f api/regie/Dockerfile -t regie:local .
+
+# Tirelire : backend sur 127.0.0.1:8096, demande dev-up, le gateway et aegis (AEGIS_URL=http://127.0.0.1:8091)
+tirelire-dev-run:
+    set -a && . deploy/dev.env && set +a && AEGIS_URL="${AEGIS_URL:-http://127.0.0.1:8091}" cargo run -p tirelire
+
+tirelire-image:
+    docker build -f api/tirelire/Dockerfile -t tirelire:local .

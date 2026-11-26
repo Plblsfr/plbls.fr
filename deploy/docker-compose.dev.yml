@@ -63,3 +63,4 @@ configs:
       CREATE DATABASE estompe;
       CREATE DATABASE sillon;
       CREATE DATABASE sablier;
+      CREATE DATABASE tirelire;
