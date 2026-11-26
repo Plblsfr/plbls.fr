@@ -56,11 +56,44 @@ export interface Operation {
   amount: number
   direction: Sens
   merchant_id: number | null
+  merchant_name: string | null
   category_id: number | null
+  category_source: SourceCategorie | null
+  rule_id: number | null
 }
 
+export type SourceCategorie = 'operation' | 'commercant' | 'regle'
+export type Nature = 'fixe' | 'variable' | 'epargne' | 'revenu' | 'neutre'
+export type Portee = 'operation' | 'merchant'
+
+export interface Categorie {
+  id: number
+  key: string | null
+  name: string
+  kind: Nature
+  monthly_cap: number | null
+  color: number
+  position: number
+  archived: boolean
+  operations: number
+  merchants: number
+  rules: number
+}
+
+export interface Regle { id: number; key: string | null; keywords: string[]; type: TypeOperation | null; section: string | null; category_id: number; position: number; operations: number }
+export interface Variante { key: string; manual: boolean; operations: number }
+export interface Commercant { id: number; name: string; category_id: number | null; operations: number; debits: number; credits: number; last_date: string | null; variants: number; variant_list?: Variante[] }
+export interface Compteur { operations: number; merchants: number; debits: number; credits: number }
+export interface Groupe { merchant_id: number | null; merchant_name: string | null; operations: number; debits: number; credits: number; first_date: string; last_date: string; sample: Operation[] }
+export interface FileAClasser extends Compteur { groups: Groupe[] }
+
+export interface SaisieCategorie { name: string; kind: Nature; monthly_cap: number | null }
+export interface SaisieRegle { keywords: string[]; category_id: number }
+
 export interface PageOperations { operations: Operation[]; total: number; limit: number; offset: number }
-export interface Filtres { releve: number | null; du: string; au: string }
+export interface Filtres { releve: number | null; du: string; au: string; categorie: number | null; commercant: number | null; aClasser: boolean }
+export const SANS_FILTRE: Filtres = { releve: null, du: '', au: '', categorie: null, commercant: null, aClasser: false }
+export const filtres = (f: Partial<Filtres> = {}): Filtres => ({ ...SANS_FILTRE, ...f })
 
 export type CodeRefus = 'not_a_pdf' | 'unreadable_pdf' | 'too_large' | 'unknown_format' | 'conflict' | 'checks_failed'
 export interface Refus { code: CodeRefus | (string & {}); message: string; missing?: string[]; gaps?: Ecart[]; unrecognized_lines?: LigneInconnue[] }
@@ -73,12 +106,16 @@ export type ResultatImport =
 export type Issue = ResultatImport | { file: string; status: 'failed'; message: string }
 
 const get = <T>(chemin: string) => requestAt<T>(TIRELIRE_URL, 'GET', chemin)
+const envoyer = <T>(methode: string, chemin: string, corps?: unknown) => requestAt<T>(TIRELIRE_URL, methode, chemin, corps)
 
 export function requeteOperations(f: Filtres, offset = 0, limit = PAGE): string {
   const q = new URLSearchParams()
   if (f.releve !== null) q.set('statement', String(f.releve))
   if (f.du) q.set('from', f.du)
   if (f.au) q.set('to', f.au)
+  if (f.categorie !== null) q.set('category', String(f.categorie))
+  if (f.commercant !== null) q.set('merchant', String(f.commercant))
+  if (f.aClasser) q.set('unclassified', 'true')
   q.set('limit', String(limit))
   q.set('offset', String(offset))
   return `/operations?${q}`
@@ -95,6 +132,23 @@ export const tirelireApi = {
   },
   supprimer: (id: number) => requestAt<void>(TIRELIRE_URL, 'DELETE', `/statements/${id}`),
   operations: (f: Filtres, offset = 0, limit = PAGE) => get<PageOperations>(requeteOperations(f, offset, limit)),
+  operation: async (id: number) => (await get<{ operation: Operation }>(`/operations/${id}`)).operation,
+  classerOperation: (id: number, categorie: number | null, portee: Portee) => envoyer<{ operation: Operation; reclassified: number }>('PUT', `/operations/${id}/category`, { category_id: categorie, scope: portee }),
+  aClasser: () => get<FileAClasser>('/unclassified'),
+  compteur: () => get<Compteur>('/unclassified/count'),
+  categories: async () => (await get<{ categories: Categorie[] }>('/categories')).categories,
+  creerCategorie: async (c: SaisieCategorie) => (await envoyer<{ category: Categorie }>('POST', '/categories', c)).category,
+  modifierCategorie: async (id: number, c: Partial<SaisieCategorie & { archived: boolean }>) => (await envoyer<{ category: Categorie }>('PATCH', `/categories/${id}`, c)).category,
+  regles: async () => (await get<{ rules: Regle[] }>('/rules')).rules,
+  creerRegle: (r: SaisieRegle) => envoyer<{ rule: Regle; reclassified: number }>('POST', '/rules', r),
+  modifierRegle: (id: number, r: Partial<SaisieRegle>) => envoyer<{ rule: Regle; reclassified: number }>('PATCH', `/rules/${id}`, r),
+  supprimerRegle: (id: number) => envoyer<{ reclassified: number }>('DELETE', `/rules/${id}`),
+  ordonnerRegles: (ids: number[]) => envoyer<{ rules: Regle[]; reclassified: number }>('PUT', '/rules/order', { ids }),
+  commercants: async (q = '') => (await get<{ merchants: Commercant[] }>(`/merchants${q ? `?q=${encodeURIComponent(q)}` : ''}`)).merchants,
+  commercant: async (id: number) => (await get<{ merchant: Commercant }>(`/merchants/${id}`)).merchant,
+  classerCommercant: (id: number, categorie: number | null) => envoyer<{ merchant: Commercant; reclassified: number }>('PUT', `/merchants/${id}/category`, { category_id: categorie }),
+  fusionner: (id: number, autres: number[]) => envoyer<{ merchant: Commercant; reclassified: number }>('POST', `/merchants/${id}/merge`, { merchant_ids: autres }),
+  separer: (id: number, cles: string[]) => envoyer<{ merchant: Commercant; created: Commercant[] }>('POST', `/merchants/${id}/split`, { keys: cles }),
 }
 
 export type ClientTirelire = typeof tirelireApi
@@ -104,8 +158,9 @@ export function messageErreur(e: unknown): string {
     if (e.status === 401) return 'Ta session a expiré. Reconnecte-toi pour continuer.'
     if (e.code === 'bad_origin') return 'Cette adresse de l’app n’est pas autorisée par Tirelire.'
     if (e.status === 403) return 'Tu n’as pas accès à Tirelire.'
-    if (e.status === 404) return 'Ce relevé n’existe plus.'
+    if (e.status === 404) return 'Cet élément n’existe plus.'
     if (e.status === 413 || e.code === 'too_large') return 'Envoi trop volumineux : 8 Mo au plus par fichier, 32 Mo par envoi.'
+    if (e.status === 409) return 'Une catégorie porte déjà ce nom.'
     if (e.status === 400) return 'Tirelire n’a pas pu lire la demande.'
     if (e.code === 'timeout') return 'Tirelire ne répond pas. Réessaie dans un instant.'
     if (e.status >= 500) return 'Tirelire est indisponible pour le moment.'
@@ -141,7 +196,40 @@ export const typeDe = (o: Pick<Operation, 'type'>) => TYPES[o.type] ?? TYPES.aut
 
 export const natureDe = (o: Pick<Operation, 'type' | 'direction'>) => `${o.direction === 'debit' ? 'débit' : 'crédit'} · ${typeDe(o).toLowerCase()}`
 
-export const titreDe = (o: Pick<Operation, 'merchant' | 'label'>) => o.merchant?.trim() || o.label
+export const titreDe = (o: Pick<Operation, 'merchant' | 'label'> & { merchant_name?: string | null }) => o.merchant_name?.trim() || o.merchant?.trim() || o.label
+
+export const NATURES: Record<Nature, string> = { fixe: 'fixe', variable: 'variable', epargne: 'épargne', revenu: 'revenu', neutre: 'neutre' }
+export const NATURES_LONGUES: Record<Nature, string> = { fixe: 'Dépense fixe', variable: 'Dépense variable', epargne: 'Épargne', revenu: 'Revenu', neutre: 'Transfert neutre' }
+export const ORDRE_NATURES: Nature[] = ['fixe', 'variable', 'epargne', 'revenu', 'neutre']
+export const estDepense = (c: Pick<Categorie, 'kind'>) => c.kind === 'fixe' || c.kind === 'variable'
+
+export const TEINTES = 8
+export const teinte = (c: Pick<Categorie, 'color'> | null | undefined) => (c && c.color >= 0 && c.color < TEINTES ? c.color + 1 : 0)
+
+export const actives = (categories: Categorie[]) => categories.filter((c) => !c.archived)
+
+export const budget = (categories: Categorie[]) => actives(categories).filter(estDepense).reduce((n, c) => n + (c.monthly_cap ?? 0), 0)
+
+export const SOURCES: Record<SourceCategorie, string> = { operation: 'choisie pour cette opération', commercant: 'règle du commerçant', regle: 'règle par mots-clés' }
+
+export function conditionDe(r: Pick<Regle, 'type' | 'section'>): string {
+  const parts: string[] = []
+  if (r.type) parts.push(`type « ${(TYPES[r.type] ?? r.type).toLowerCase()} »`)
+  if (r.section) parts.push(`section « ${r.section} »`)
+  return parts.join(' · ')
+}
+
+export const motCle = (texte: string) => texte.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+
+export const resteDe = (g: Pick<Groupe, 'debits' | 'credits'>) => g.credits - g.debits
+
+export function deplacer<T>(liste: T[], de: number, vers: number): T[] {
+  if (de === vers || de < 0 || vers < 0 || de >= liste.length || vers >= liste.length) return liste
+  const copie = [...liste]
+  const [e] = copie.splice(de, 1)
+  copie.splice(vers, 0, e)
+  return copie
+}
 
 export const nomReleve = (r: Pick<Releve, 'number' | 'year'>) => `Relevé n° ${r.number} de ${r.year}`
 
@@ -189,7 +277,7 @@ export function totaux(operations: Operation[]): Totaux {
 
 export function totauxConnus(f: Filtres, releves: Releve[], operations: Operation[], total: number): Totaux | null {
   if (operations.length >= total) return totaux(operations)
-  const r = f.releve !== null && !f.du && !f.au ? releves.find((x) => x.id === f.releve) : undefined
+  const r = f.releve !== null && !f.du && !f.au && f.categorie === null && f.commercant === null && !f.aClasser ? releves.find((x) => x.id === f.releve) : undefined
   return r ? { debits: r.total_debits, credits: r.total_credits } : null
 }
 

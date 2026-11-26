@@ -16,7 +16,7 @@
 
 <section class="tir-carte tir-liste" aria-label="Comment ça marche">
   <div class="tir-li"><span class="tir-pas tir-pas--rose">1</span><div class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Importe</span><span class="tir-note">Un ou plusieurs PDF ; les totaux sont vérifiés.</span></div></div>
-  <div class="tir-li"><span class="tir-pas">2</span><div class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Classe l’inconnu</span><span class="tir-note">Un choix crée une règle pour tout le commerçant.</span></div><span class="tir-etq">à venir</span></div>
+  <div class="tir-li"><span class="tir-pas">2</span><div class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Classe l’inconnu</span><span class="tir-note">Un choix crée une règle pour tout le commerçant.</span></div></div>
   <div class="tir-li"><span class="tir-pas">3</span><div class="tir-col tir-col--colle tir-grandit"><span class="tir-h3">Vois ce qui dépasse</span><span class="tir-note">Plafonds, écarts, évolution et leviers d’économie.</span></div><span class="tir-etq">à venir</span></div>
 </section>
 

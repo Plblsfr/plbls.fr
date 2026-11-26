@@ -7,7 +7,7 @@ export const PORT = 4179
 type Sens = 'debit' | 'credit'
 interface Ligne { jour: string; type: string; section: string; label: string; details: string[]; merchant: string | null; achat: string | null; amount: number; direction: Sens }
 
-const COMMERCES = ['MARCHE COLLINE VILLENEUVE', 'CAFE TAMIS VILLENEUVE', 'BISTROT LUNE SAINT-ELOI', 'CINEMA LE PHARE VILLENEUVE', 'LIBRAIRIE DES QUAIS SAINT-ELOI', 'BOULANGERIE DU PONT VILLENEUVE']
+const COMMERCES = ['MARCHE COLLINE VILLENEUVE', 'CAFE TAMIS VILLENEUVE', 'BISTROT LUNE SAINT-ELOI', 'CINEMA LE PHARE VILLENEUVE', 'LIBRAIRIE DES QUAIS SAINT-ELOI', 'BOULANGERIE DU PONT VILLENEUVE', 'MARCHE COLLINE SAINT-ELOI']
 const jour = (annee: number, mois: number, j: number) => `${annee}-${String(mois).padStart(2, '0')}-${String(j).padStart(2, '0')}`
 
 function lignes(annee: number, mois: number, nombre: number): Ligne[] {
@@ -25,8 +25,51 @@ function lignes(annee: number, mois: number, nombre: number): Ligne[] {
   return res
 }
 
+type Nature = 'fixe' | 'variable' | 'epargne' | 'revenu' | 'neutre'
+interface Categorie { id: number; key: string | null; name: string; kind: Nature; monthly_cap: number | null; color: number; position: number; archived: boolean }
+interface Regle { id: number; key: string | null; keywords: string[]; type: string | null; section: string | null; category_id: number }
+interface Commercant { id: number; name: string; category_id: number | null; keys: string[] }
+type Op = Record<string, unknown> & { id: number; label: string; type: string; merchant: string | null; amount: number; direction: Sens; date: string; cle: string; exception: boolean; merchant_id: number | null; category_id: number | null; category_source: string | null; rule_id: number | null }
+
+const normaliser = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+const cleDe = (o: { type: string; label: string; merchant: string | null }) => normaliser(o.merchant ?? o.label.replace(/^(PRLV|VIR)( SEPA| INST)?( VERS| DE)? /, ''))
+const nomDe = (cle: string) => cle.split(' ').map((m) => m.charAt(0) + m.slice(1).toLowerCase()).join(' ')
+
+const categoriesParDefaut = (): Categorie[] => ([
+  ['logement', 'Logement', 'fixe', 78_000], ['courses', 'Courses', 'variable', 38_000], ['restaurants', 'Restaurants', 'variable', 15_000], ['shopping', 'Shopping', 'variable', null],
+  ['loisirs', 'Loisirs et sorties', 'variable', 12_000], ['transports', 'Transports', 'variable', null], ['sante', 'Santé', 'variable', null], ['epargne', 'Épargne', 'epargne', null],
+  ['abonnements', 'Abonnements', 'fixe', 11_000], ['frais', 'Frais bancaires', 'fixe', null], ['revenus', 'Revenus', 'revenu', null], ['transferts', 'Transferts neutres', 'neutre', null],
+] as [string, string, Nature, number | null][]).map(([key, name, kind, monthly_cap], i) => ({ id: i + 1, key, name, kind, monthly_cap, color: i, position: i, archived: false }))
+
+const reglesParDefaut = (): Regle[] => [
+  { id: 1, key: 'type-echeance-pret', keywords: [], type: 'echeance_pret', section: null, category_id: 1 },
+  { id: 2, key: 'courses', keywords: ['BOULANGERIE', 'EPICERIE'], type: null, section: null, category_id: 2 },
+  { id: 3, key: 'loisirs', keywords: ['CINEMA', 'LIBRAIRIE'], type: null, section: null, category_id: 5 },
+  { id: 4, key: 'revenus', keywords: ['SALAIRE'], type: null, section: null, category_id: 11 },
+]
+
 export function serveurTirelire(avecReleves = false) {
   const srv = {
+    categories: categoriesParDefaut(),
+    regles: reglesParDefaut(),
+    commercants: [] as Commercant[],
+    suivant: 100,
+    rejouer() {
+      let changees = 0
+      for (const o of srv.operations as Op[]) {
+        let m = srv.commercants.find((c) => c.keys.includes(o.cle))
+        if (!m) { m = { id: srv.suivant++, name: nomDe(o.cle), category_id: null, keys: [o.cle] }; srv.commercants.push(m) }
+        o.merchant_id = m.id
+        o.merchant_name = m.name
+        if (o.exception) continue
+        const texte = ` ${normaliser(o.label)} `
+        const regle = m.category_id === null ? srv.regles.find((r) => (!r.type || r.type === o.type) && (!r.keywords.length || r.keywords.some((k) => texte.includes(` ${k} `)))) : undefined
+        const voulu = m.category_id !== null ? [m.category_id, 'commercant', null] : regle ? [regle.category_id, 'regle', regle.id] : [null, null, null]
+        if (voulu[0] !== o.category_id || voulu[1] !== o.category_source || voulu[2] !== o.rule_id) changees++
+        ;[o.category_id, o.category_source, o.rule_id] = voulu as [number | null, string | null, number | null]
+      }
+      return changees
+    },
     acces: true,
     arrete: false,
     releves: [] as Record<string, unknown>[],
@@ -47,9 +90,10 @@ export function serveurTirelire(avecReleves = false) {
       }
       srv.releves.push(releve)
       srv.releves.sort((a, b) => String(b.to).localeCompare(String(a.to)))
-      for (const o of ops) srv.operations.push({ id: srv.prochain++, statement_id: id, account_id: 1, date: o.jour, value_date: o.jour, purchase_date: o.achat, section: o.section, type: o.type, label: o.label, details: o.details, merchant: o.merchant, amount: o.amount, direction: o.direction, merchant_id: null, category_id: null })
+      for (const o of ops) srv.operations.push({ id: srv.prochain++, statement_id: id, account_id: 1, date: o.jour, value_date: o.jour, purchase_date: o.achat, section: o.section, type: o.type, label: o.label, details: o.details, merchant: o.merchant, amount: o.amount, direction: o.direction, merchant_id: null, merchant_name: null, category_id: null, category_source: null, rule_id: null, cle: cleDe({ type: o.type, label: o.label, merchant: o.merchant }), exception: false })
       srv.operations.sort((a, b) => String(b.date).localeCompare(String(a.date)) || Number(a.id) - Number(b.id))
       srv.fichiers.set(fichier, id)
+      srv.rejouer()
       return releve
     },
   }
@@ -113,12 +157,125 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
       for (const [f, r] of srv.fichiers) if (r === id) srv.fichiers.delete(f)
       return route.fulfill({ status: 204, headers: cors })
     }
+    const ops = srv.operations as Op[]
+    const corps = () => (req.postDataJSON() ?? {}) as Record<string, unknown>
+    const methode = req.method()
+    const inconnu = () => json(route, { error: 'not_found', message: 'introuvable' }, 404)
+    const somme = (liste: Op[], sens: Sens) => liste.filter((o) => o.direction === sens).reduce((n, o) => n + o.amount, 0)
+    const vueCategorie = (c: Categorie) => ({ ...c, operations: ops.filter((o) => o.category_id === c.id).length, merchants: srv.commercants.filter((m) => m.category_id === c.id).length, rules: srv.regles.filter((r) => r.category_id === c.id).length })
+    const vueRegle = (r: Regle) => ({ ...r, position: srv.regles.indexOf(r), operations: ops.filter((o) => o.rule_id === r.id).length })
+    const vueCommercant = (m: Commercant, detail = false) => {
+      const siennes = ops.filter((o) => o.merchant_id === m.id)
+      return { id: m.id, name: m.name, category_id: m.category_id, operations: siennes.length, debits: somme(siennes, 'debit'), credits: somme(siennes, 'credit'), last_date: siennes[0]?.date ?? null, variants: m.keys.length, ...(detail ? { variant_list: [...m.keys].sort().map((key) => ({ key, manual: key !== m.keys[0], operations: ops.filter((o) => o.cle === key).length })) } : {}) }
+    }
+    const compteur = () => {
+      const libres = ops.filter((o) => o.category_id === null)
+      return { operations: libres.length, merchants: new Set(libres.map((o) => o.merchant_id)).size, debits: somme(libres, 'debit'), credits: somme(libres, 'credit') }
+    }
     if (url.pathname === '/operations') {
       const q = url.searchParams
       const limit = Number(q.get('limit') ?? 50)
       const offset = Number(q.get('offset') ?? 0)
-      const filtrees = srv.operations.filter((o) => (!q.get('statement') || o.statement_id === Number(q.get('statement'))) && (!q.get('from') || String(o.date) >= q.get('from')!) && (!q.get('to') || String(o.date) <= q.get('to')!))
+      const filtrees = ops.filter((o) => (!q.get('statement') || o.statement_id === Number(q.get('statement'))) && (!q.get('from') || String(o.date) >= q.get('from')!) && (!q.get('to') || String(o.date) <= q.get('to')!)
+        && (!q.get('category') || o.category_id === Number(q.get('category'))) && (!q.get('merchant') || o.merchant_id === Number(q.get('merchant'))) && (q.get('unclassified') !== 'true' || o.category_id === null))
       return json(route, { operations: filtrees.slice(offset, offset + limit), total: filtrees.length, limit, offset })
+    }
+    const uneOperation = /^\/operations\/(\d+)(\/category)?$/.exec(url.pathname)
+    if (uneOperation) {
+      const o = ops.find((x) => x.id === Number(uneOperation[1]))
+      if (!o) return inconnu()
+      if (!uneOperation[2]) return json(route, { operation: o })
+      const { category_id, scope } = corps() as { category_id: number | null; scope: string }
+      let reclassees = 1
+      if (scope === 'merchant') {
+        o.exception = false
+        const m = srv.commercants.find((c) => c.id === o.merchant_id)!
+        m.category_id = category_id
+        reclassees = srv.rejouer()
+      } else {
+        o.exception = category_id !== null
+        ;[o.category_id, o.category_source, o.rule_id] = [category_id, category_id === null ? null : 'operation', null]
+        srv.rejouer()
+      }
+      return json(route, { operation: o, reclassified: reclassees })
+    }
+    if (url.pathname === '/unclassified/count') return json(route, compteur())
+    if (url.pathname === '/unclassified') {
+      const groupes = new Map<number, Op[]>()
+      for (const o of ops) if (o.category_id === null) groupes.set(o.merchant_id!, [...(groupes.get(o.merchant_id!) ?? []), o])
+      const groups = [...groupes.entries()].map(([id, liste]) => ({ merchant_id: id, merchant_name: liste[0].merchant_name, operations: liste.length, debits: somme(liste, 'debit'), credits: somme(liste, 'credit'), first_date: liste.at(-1)!.date, last_date: liste[0].date, sample: liste.slice(0, 3) })).sort((a, b) => b.operations - a.operations || a.merchant_id - b.merchant_id)
+      return json(route, { ...compteur(), groups })
+    }
+    if (url.pathname === '/categories' && methode === 'GET') return json(route, { categories: [...srv.categories].sort((a, b) => Number(a.archived) - Number(b.archived) || a.position - b.position).map(vueCategorie) })
+    if (url.pathname === '/categories' && methode === 'POST') {
+      const c = corps() as { name: string; kind: Nature; monthly_cap: number | null }
+      if (srv.categories.some((x) => x.name.toLowerCase() === c.name.toLowerCase())) return json(route, { error: 'conflict', message: 'une catégorie porte déjà ce nom' }, 409)
+      const cree: Categorie = { id: srv.suivant++, key: null, name: c.name, kind: c.kind, monthly_cap: c.monthly_cap ?? null, color: srv.categories.length, position: srv.categories.length, archived: false }
+      srv.categories.push(cree)
+      return json(route, { category: vueCategorie(cree) }, 201)
+    }
+    const uneCategorie = /^\/categories\/(\d+)$/.exec(url.pathname)
+    if (uneCategorie && methode === 'PATCH') {
+      const c = srv.categories.find((x) => x.id === Number(uneCategorie[1]))
+      if (!c) return inconnu()
+      Object.assign(c, corps())
+      return json(route, { category: vueCategorie(c) })
+    }
+    if (url.pathname === '/rules' && methode === 'GET') return json(route, { rules: srv.regles.map(vueRegle) })
+    if (url.pathname === '/rules' && methode === 'POST') {
+      const r = corps() as { keywords: string[]; category_id: number }
+      const cree: Regle = { id: srv.suivant++, key: null, keywords: r.keywords.map(normaliser), type: null, section: null, category_id: r.category_id }
+      srv.regles.unshift(cree)
+      const reclassees = srv.rejouer()
+      return json(route, { rule: vueRegle(cree), reclassified: reclassees }, 201)
+    }
+    if (url.pathname === '/rules/order' && methode === 'PUT') {
+      const { ids } = corps() as { ids: number[] }
+      srv.regles = ids.map((id) => srv.regles.find((r) => r.id === id)!)
+      const reclassees = srv.rejouer()
+      return json(route, { rules: srv.regles.map(vueRegle), reclassified: reclassees })
+    }
+    const uneRegle = /^\/rules\/(\d+)$/.exec(url.pathname)
+    if (uneRegle) {
+      const r = srv.regles.find((x) => x.id === Number(uneRegle[1]))
+      if (!r) return inconnu()
+      if (methode === 'DELETE') {
+        srv.regles = srv.regles.filter((x) => x !== r)
+        return json(route, { reclassified: srv.rejouer() })
+      }
+      Object.assign(r, corps())
+      const reclassees = srv.rejouer()
+      return json(route, { rule: vueRegle(r), reclassified: reclassees })
+    }
+    if (url.pathname === '/merchants') {
+      const q = normaliser(url.searchParams.get('q') ?? '')
+      return json(route, { merchants: srv.commercants.filter((m) => !q || m.keys.some((k) => k.includes(q)) || normaliser(m.name).includes(q)).map((m) => vueCommercant(m)).sort((a, b) => b.operations - a.operations || a.name.localeCompare(b.name)) })
+    }
+    const unCommercant = /^\/merchants\/(\d+)(\/category|\/merge|\/split)?$/.exec(url.pathname)
+    if (unCommercant) {
+      const m = srv.commercants.find((x) => x.id === Number(unCommercant[1]))
+      if (!m) return inconnu()
+      if (!unCommercant[2]) {
+        if (methode === 'PATCH') m.name = String(corps().name)
+        return json(route, { merchant: vueCommercant(m, true) })
+      }
+      if (unCommercant[2] === '/category') {
+        m.category_id = corps().category_id as number | null
+        const reclassees = srv.rejouer()
+        return json(route, { merchant: vueCommercant(m, true), reclassified: reclassees })
+      }
+      if (unCommercant[2] === '/merge') {
+        const autres = srv.commercants.filter((x) => (corps().merchant_ids as number[]).includes(x.id))
+        for (const a of autres) { m.keys.push(...a.keys); m.category_id ??= a.category_id }
+        srv.commercants = srv.commercants.filter((x) => !autres.includes(x))
+        const reclassees = srv.rejouer()
+        return json(route, { merchant: vueCommercant(m, true), reclassified: reclassees })
+      }
+      const cles = corps().keys as string[]
+      m.keys = m.keys.filter((k) => !cles.includes(k))
+      const crees = cles.map((k) => { const n: Commercant = { id: srv.suivant++, name: nomDe(k), category_id: m.category_id, keys: [k] }; srv.commercants.push(n); return n })
+      srv.rejouer()
+      return json(route, { merchant: vueCommercant(m, true), created: crees.map((n) => vueCommercant(n, true)) })
     }
     return json(route, { error: 'not_found', message: 'route inconnue' }, 404)
   })

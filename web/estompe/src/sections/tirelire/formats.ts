@@ -85,3 +85,10 @@ export function instant(iso: string): string {
 }
 
 export const pluriel = (n: number, un: string, plusieurs: string) => `${nombre(n)} ${n > 1 ? plusieurs : un}`
+
+export function centimes(saisie: string): number | null {
+  const m = /^(\d{1,9})(?:[.,](\d{1,2}))?$/.exec(saisie.replace(/[\s\u00a0\u202f€]/g, ''))
+  return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : null
+}
+
+export const saisieEuros = (c: number | null) => (c === null ? '' : c % 100 === 0 ? String(c / 100) : `${Math.trunc(c / 100)},${String(c % 100).padStart(2, '0')}`)
