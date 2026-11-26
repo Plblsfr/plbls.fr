@@ -59,7 +59,7 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             }
         }
     }
-    assert_eq!(protegees, 30);
+    assert_eq!(protegees, 34);
 }
 
 #[tokio::test]

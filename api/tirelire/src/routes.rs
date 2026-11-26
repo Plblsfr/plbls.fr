@@ -8,7 +8,7 @@ use axum::{
 };
 
 use crate::{
-    categories, commercants,
+    abonnements, categories, commercants,
     droits::Droit,
     etat::AppState,
     export,
@@ -103,6 +103,12 @@ pub fn table() -> Vec<Entree> {
             "/operations/{id}",
             Garde::Droit(Droit::Acces),
             get(releves::operation),
+        ),
+        entree(
+            Method::GET,
+            "/operations/{id}/unusual",
+            Garde::Droit(Droit::Acces),
+            get(mois::inhabituelle),
         ),
         entree(
             Method::PUT,
@@ -241,6 +247,24 @@ pub fn table() -> Vec<Entree> {
             "/stats/years",
             Garde::Droit(Droit::Acces),
             get(mois::annees),
+        ),
+        entree(
+            Method::GET,
+            "/stats/habits",
+            Garde::Droit(Droit::Acces),
+            get(mois::habitudes),
+        ),
+        entree(
+            Method::GET,
+            "/stats/recurring",
+            Garde::Droit(Droit::Acces),
+            get(abonnements::lire),
+        ),
+        entree(
+            Method::PATCH,
+            "/stats/recurring/{id}",
+            Garde::Droit(Droit::Acces),
+            patch(abonnements::modifier),
         ),
     ]
 }

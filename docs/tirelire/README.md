@@ -4,13 +4,14 @@ Suivi des comptes bancaires de plbls.fr. Ce document décrit ce qui existe aujou
 Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations, la suppression d'un relevé, les catégories, les
 règles de classement, les commerçants, la file « à classer », la recherche, les filtres et l'export CSV des opérations, et les
 statistiques par période (accueil, vue du mois, détail d'une catégorie) et le suivi dans le temps (historique par catégorie,
-tendances, solde du compte, comparaison d'une année sur l'autre). Les habitudes n'existent pas encore.
+tendances, solde du compte, comparaison d'une année sur l'autre), les habitudes (commerçants, petits achats répétés, jours et
+semaines, opérations inhabituelles) et les abonnements et charges récurrentes avec leurs alertes.
 
 | Où | Quoi |
 |---|---|
 | [`api/tirelire`](../../api/tirelire/README.md) | API Rust (axum, sqlx), membre du workspace Cargo, base `tirelire` de PostgreSQL |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
-| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, évolution, import, opérations (recherche, filtres, export), à classer, catégories et règles |
+| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, évolution, habitudes, abonnements, import, opérations (recherche, filtres, export), à classer, catégories et règles |
 | [`deploy/tirelire/.env.example`](../../deploy/tirelire/.env.example) | secrets, service `tirelire-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 
 ## Permission et cloisonnement
@@ -19,7 +20,7 @@ Déclarée à aegis par manifeste (application `tirelire`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, voir ses statistiques, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
+| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, voir ses statistiques, ses habitudes et ses abonnements, écarter un récurrent ou marquer ses alertes comme vues, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/tirelire/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -30,7 +31,7 @@ Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Autho
 (cache de 30 s). Requête modifiante avec cookie : `Origin` dans `TIRELIRE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
 
 Les données sont cloisonnées par personne : chaque ligne des tables `comptes`, `releves`, `operations`, `categories`, `regles`,
-`commercants` et `variantes` porte le `sub` de son propriétaire, et toute lecture ou modification filtre sur celui de la session.
+`commercants`, `variantes` et `recurrents` porte le `sub` de son propriétaire, et toute lecture ou modification filtre sur celui de la session.
 Il n'y a ni route d'administration ni partage : un identifiant d'une autre personne répond 404 dans un chemin, 400 dans un corps.
 
 ## Confidentialité
@@ -279,6 +280,90 @@ mois de sa date d'arrêté. Le cumul comparé (`ytd_compared`) ne porte que sur 
 (`compared_months`), pour ne pas comparer onze mois à trois ; `partial` signale qu'un de ces mois n'est couvert qu'en partie.
 Sans aucune période l'année précédente, `has_previous` est faux et les comparaisons valent `null`.
 
+## Habitudes
+
+`GET /stats/habits` (`habitudes.rs`, sans accès à la base), avec les périodes, le rattachement et les modes des statistiques.
+`window` réunit les `1`, `3` (défaut), `6` ou `12` dernières périodes, ou toutes (`all`). La fenêtre précédente, de même longueur,
+sert aux évolutions : elle est absente (`previous: null`) si elle n'existe pas en entier, et toujours avec `all`.
+
+Tout porte sur les **dépenses variables et « à classer »**, nettes des remboursements : les catégories `fixe` (loyer, crédit,
+abonnements) relèvent des récurrents ci-dessous, et l'épargne, les revenus et le neutre restent exclus. Invariant vérifié par les
+tests, relevés réels compris : `variable` égale la somme de `expenses.variable` et `expenses.unclassified` de `/stats/month` sur
+les périodes de la fenêtre, et la somme des semaines du mois.
+
+- **Top commerçants** : montant net, nombre de débits (« passages »), panier moyen (montant ÷ passages), écart avec la fenêtre
+  précédente. Le service rend les 10 premiers par montant et les 10 premiers par nombre (`COMMERCANTS_DU_CLASSEMENT`), avec leurs
+  deux rangs ; `operations_from` et `operations_to` donnent les bornes à passer à `GET /operations` (avec `date=purchase` en mode
+  calendaire) pour lister les opérations d'un commerçant sur la fenêtre.
+- **Petits achats répétés** : débits strictement inférieurs à 15 € (`SEUIL_PETIT_ACHAT`) chez un commerçant qui en compte au moins
+  3 dans la fenêtre (`PETITS_ACHATS_REPETES`). Le coût annualisé est une estimation : montant × 365 ÷ nombre de jours de la fenêtre
+  réellement couverts par un relevé (`covered_days`) ; il est absent sous 28 jours couverts (`ANNUALISATION_JOURS_MIN`).
+- **Par jour de la semaine** : paiements par carte seulement, à leur date d'achat, la seule date qui reflète un choix (un
+  prélèvement ou un virement tombe à une date fixée par un tiers). **Par semaine du mois** : toutes les dépenses variables, selon
+  le jour du mois de la date de rattachement (1–7, 8–14, 15–21, 22–28, 29–31). Chaque tranche porte son montant, son nombre de
+  débits, le nombre de jours couverts qui lui appartiennent et la moyenne par jour couvert.
+- **Opérations inhabituelles** (`inhabituelles`, aussi `GET /operations/{id}/unusual`) : un débit variable ou à classer est comparé
+  aux autres débits du même commerçant sur tout l'historique s'il y en a au moins 4 (`INHABITUEL_COMMERCANT_MIN`), sinon aux autres
+  débits de sa catégorie s'il y en a au moins 8 (`INHABITUEL_CATEGORIE_MIN`), sinon il n'est pas jugé. Il est signalé si les trois
+  conditions sont réunies : il dépasse la médiane de plus de 3,5 écarts robustes (1,4826 × écart absolu médian), il vaut au moins
+  1,5 fois la médiane, et l'écart atteint un plancher de 20 € pour un commerçant (`PLANCHER_COMMERCANT`), 50 € pour une
+  catégorie (`PLANCHER_CATEGORIE`). La médiane et l'écart absolu médian ne sont pas déplacés par un achat exceptionnel passé ; le
+  rapport et le plancher évitent de signaler du bruit quand tous les achats sont identiques (écart nul). La raison rendue donne
+  la base, la médiane, le nombre d'achats comparés et le rapport (« 3,2 × ton panier habituel chez … »).
+
+## Abonnements et charges récurrentes
+
+`GET /stats/recurring` (`recurrents.rs`, sans accès à la base) cherche les paiements récurrents sur tout l'historique, sans mode
+ni fenêtre. La date de référence est la fin du dernier relevé importé (`as_of`), jamais la date du jour.
+
+1. **Candidats** : les débits qui ont un commerçant ou un tiers (prélèvements, cartes, virements émis, échéances de prêt), hors
+   catégories `epargne`, `revenu` et `neutre`. Date : date d'achat pour une carte, sinon date d'opération.
+2. **Montant proche** : par commerçant, les débits sont regroupés par montants voisins, à 5 % près et 1 € au moins
+   (`TOLERANCE_MONTANT_BP`, `TOLERANCE_MONTANT_MIN`).
+3. **Cadence** : un groupe est une série s'il suit une grille régulière depuis sa première échéance.
+
+   | Cadence | Tolérance | Occurrences minimales | Arrêté après |
+   |---|---|---|---|
+   | hebdomadaire (7 jours) | 2 jours | 4 | 2 échéances manquées |
+   | mensuelle (même quantième, ramené à la fin des mois courts) | 5 jours | 3, ou 2 pour des prélèvements | 2 |
+   | trimestrielle | 7 jours | 3, ou 2 pour des prélèvements | 1 |
+   | annuelle | 15 jours | 2 | 1 |
+
+   Une échéance absente ne compte pas si aucun relevé ne couvre sa date (un relevé non importé n'arrête rien). Au plus une
+   anomalie (échéance manquée alors que couverte, ou débit hors grille) est tolérée pour 4 intervalles, il faut au moins deux
+   échéances consécutives, et une série est coupée là où elle atteint le seuil d'arrêt : une reprise ultérieure forme une
+   nouvelle série. La cadence retenue est celle qui explique le plus d'opérations. Des courses hebdomadaires de montants
+   variables ne forment donc aucune série.
+4. **Changement de montant** : une série est prolongée, vers l'avant et vers l'arrière, par le débit du même commerçant qui tombe
+   à l'échéance attendue avec un montant différent, entre la moitié et le double du précédent (`CHANGEMENT_FACTEUR_MAX`).
+
+Pour chaque récurrent : cadence, dernier montant, première échéance connue, prochaine échéance estimée (la première de la grille
+qui n'est pas déjà dépassée de plus que la tolérance), coût annuel (dernier montant × 52, 12, 4 ou 1) et mensuel (annuel ÷ 12),
+catégorie de la dernière échéance. `status: stopped` quand le nombre d'échéances manquées et couvertes atteint le seuil du
+tableau ; un récurrent arrêté depuis plus de 365 jours n'est plus rendu.
+
+**Abonnements et charges** (`group`) : une seule liste, chaque récurrent étant une `charge` quand sa catégorie est de nature
+`fixe` et n'est pas la catégorie par défaut Abonnements (loyer, crédit, assurances, énergie, télécom, impôts, frais bancaires),
+un `subscription` sinon (catégorie Abonnements, catégorie variable, à classer). Les totaux (`total`, `subscriptions`, `charges`)
+ne comptent que les récurrents actifs et non écartés.
+
+**Alertes**, sur les récurrents actifs : `new` quand la première échéance date de 120 jours au plus (`NOUVEAUTE_JOURS`) et que les
+relevés couvrent l'échéance qui l'aurait précédée (sinon l'abonnement est peut-être plus ancien que les relevés) ;
+`amount_changed` quand le dernier changement de montant de la série date de 120 jours au plus, avec l'ancien et le nouveau
+montant, l'écart et son effet sur un an.
+
+`PATCH /stats/recurring/{id}` enregistre l'état choisi par la personne (table `recurrents`, par personne, commerçant et cadence) :
+`dismissed` écarte un faux abonnement (ou le rétablit), `seen: true` marque ses alertes comme vues. Un changement de montant vu
+retient le montant : un changement ultérieur redevient une alerte. L'identifiant (`<commerçant>-<cadence>`, suivi de `-2`, `-3`…
+si un même commerçant a plusieurs séries de même cadence, dans l'ordre de leur première échéance) vient du commerçant : une
+fusion ou une séparation de commerçants remet cet état à zéro.
+
+`detectable` liste les cadences que la durée couverte permet de confirmer (21 jours pour l'hebdomadaire, 35 pour la mensuelle,
+95 pour la trimestrielle, 370 pour l'annuelle) : avec un seul relevé, l'app dit ce qu'il faudrait importer.
+
+Limites connues : un montant qui varie de plus de 5 % d'une échéance à l'autre (facture d'énergie non mensualisée) n'est pas
+reconnu ; deux abonnements de même montant et de même cadence chez un même commerçant ne sont pas distingués.
+
 ## Recherche, filtres et export
 
 `GET /operations` et `GET /operations/export.csv` partagent la même sélection (`selection.rs`), toujours limitée aux opérations de
@@ -309,7 +394,7 @@ La réponse n'est pas mise en cache (`Cache-Control: no-store`) et l'export ne l
 
 ## Données
 
-Migrations `api/tirelire/migrations/` (`0001_tirelire.sql`, `0002_categories.sql`) :
+Migrations `api/tirelire/migrations/` (`0001_tirelire.sql`, `0002_categories.sql`, `0003_recurrents.sql`) :
 
 | Table | Contenu |
 |---|---|
@@ -321,6 +406,7 @@ Migrations `api/tirelire/migrations/` (`0001_tirelire.sql`, `0002_categories.sql
 | `regles` | catégorie, mots-clés normalisés, type et section facultatifs, rang, clé des règles par défaut |
 | `commercants` | nom affiché, catégorie de tout le commerçant |
 | `variantes` | clé de commerçant → commerçant, par personne ; `manuelle` après une fusion ou une séparation |
+| `recurrents` | état d'un récurrent par personne, commerçant et cadence : écarté, alerte « nouveau » vue, dernier montant changé vu ; supprimé avec le commerçant |
 
 `operations.commercant_id`, `operations.categorie_id` et `operations.regle_id` ont une clé étrangère (`ON DELETE SET NULL`).
 Supprimer un relevé supprime ses opérations ; un compte disparaît avec son dernier relevé ; les commerçants, leurs variantes, les

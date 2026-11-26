@@ -27,7 +27,10 @@ routes dans [`openapi.yaml`](../../docs/tirelire/openapi.yaml).
 | `bilan.rs` | totaux d'une liste d'opérations par catégorie : remboursements déduits, épargne, revenus et transferts hors dépenses |
 | `stats.rs` | statistiques par période, sans accès à la base (`Calcul`) : périodes calendaires ou par relevé et leur couverture, rattachement des opérations, totaux, lignes par catégorie, écarts et moyennes, dépassements classés, cumul jour par jour, projection, détail d'une catégorie |
 | `evolution.rs` | suivi dans le temps, sans accès à la base : fenêtre (`Fenetre`), historique par catégorie et totaux (`historique`), tendance de Theil-Sen (`tendance`), solde jour par jour et trous entre relevés (`soldes`), comparaison d'une année sur l'autre (`annees`) |
-| `mois.rs` | `GET /stats/months`, `GET /stats/month`, `GET /stats/month/categories/{id}`, `GET /stats/history`, `GET /stats/balance`, `GET /stats/years` : lecture des opérations, des catégories et des relevés de la personne, puis `stats.rs` et `evolution.rs` |
+| `habitudes.rs` | habitudes sur une fenêtre, sans accès à la base (`habitudes`) : classement des commerçants, petits achats répétés et annualisation, répartition par jour de la semaine et par semaine du mois, opérations inhabituelles (`inhabituelles` : médiane et écart absolu médian) |
+| `recurrents.rs` | paiements récurrents, sans accès à la base : cadences et tolérances (`Cadence`), séries par commerçant (`detecter`), prochaine échéance, arrêt, alertes et totaux (`recurrents`) |
+| `mois.rs` | `GET /stats/months`, `GET /stats/month`, `GET /stats/month/categories/{id}`, `GET /stats/history`, `GET /stats/balance`, `GET /stats/years`, `GET /stats/habits`, `GET /operations/{id}/unusual` : lecture des opérations, des catégories et des relevés de la personne, puis `stats.rs`, `evolution.rs` et `habitudes.rs` |
+| `abonnements.rs` | `GET /stats/recurring`, `PATCH /stats/recurring/{id}` : état par personne (table `recurrents`), puis `recurrents.rs` |
 
 ## Développement
 
@@ -43,6 +46,8 @@ si un relevé est refusé ; `releves_reels_categorises` les importe dans une bas
 règles par défaut ; `releves_reels_statistiques` vérifie sur eux les invariants des statistiques dans les deux modes (somme des catégories et de
 « à classer » égale aux dépenses, reste à vivre, fin du cumul, nombre d'opérations, solde) ; `releves_reels_evolution` vérifie ceux de l'évolution
 (historique égal aux dépenses de chaque période pour chaque fenêtre, solde jour par jour égal au nouveau solde de chaque relevé, jours couverts et
-trous qui remplissent la fenêtre, cumul annuel égal à la somme des catégories). Ils n'affichent que des nombres (opérations, pages,
-écarts, opérations classées et à classer, commerçants distincts, périodes), jamais un libellé ni un montant.
+trous qui remplissent la fenêtre, cumul annuel égal à la somme des catégories) ; `releves_reels_habitudes` vérifie ceux des habitudes pour chaque
+mode et chaque fenêtre (dépenses variables égales à celles de `/stats/month`, sommes des jours et des semaines, jours couverts) et la cohérence
+des totaux des récurrents. Ils n'affichent que des nombres (opérations, pages,
+écarts, opérations classées et à classer, commerçants distincts, périodes, récurrents et alertes détectés), jamais un libellé ni un montant.
 Sans la variable, ces tests ne font rien.

@@ -15,6 +15,7 @@ use crate::{
     etat::AppState,
     evolution::{self, Fenetre, Mouvement, ReleveSolde},
     garde::Personne,
+    habitudes,
     http::{bd, identifiant, introuvable, invalide, ok},
     releves::{OPERATION, OPERATIONS},
     stats::{Calcul, Categorie, Donnees, Mode, Operation, Releve},
@@ -36,7 +37,10 @@ type LigneOperation = (
     String,
     i64,
     Option<i64>,
+    bool,
 );
+
+type LigneCategorie = (i64, Option<String>, String, String, Option<i64>, i32, bool);
 
 pub async fn charger(pool: &PgPool, sub: &str) -> Result<Donnees, sqlx::Error> {
     let releves: Vec<(i64, NaiveDate, NaiveDate)> =
@@ -45,14 +49,15 @@ pub async fn charger(pool: &PgPool, sub: &str) -> Result<Donnees, sqlx::Error> {
             .fetch_all(pool)
             .await?;
     let operations: Vec<LigneOperation> = sqlx::query_as(
-        "SELECT id, releve_id, date_operation, date_achat, categorie_id, sens, montant, commercant_id
+        "SELECT id, releve_id, date_operation, date_achat, categorie_id, sens, montant, commercant_id,
+                type IN ('prelevement', 'echeance_pret', 'cotisation')
          FROM operations WHERE sub = $1 ORDER BY id",
     )
     .bind(sub)
     .fetch_all(pool)
     .await?;
-    let categories: Vec<(i64, String, String, Option<i64>, i32, bool)> = sqlx::query_as(
-        "SELECT id, nom, nature, plafond, couleur, archivee FROM categories WHERE sub = $1 ORDER BY rang, id",
+    let categories: Vec<LigneCategorie> = sqlx::query_as(
+        "SELECT id, cle, nom, nature, plafond, couleur, archivee FROM categories WHERE sub = $1 ORDER BY rang, id",
     )
     .bind(sub)
     .fetch_all(pool)
@@ -70,23 +75,27 @@ pub async fn charger(pool: &PgPool, sub: &str) -> Result<Donnees, sqlx::Error> {
         operations: operations
             .into_iter()
             .map(
-                |(id, releve, jour, achat, categorie, sens, montant, commercant)| Operation {
-                    id,
-                    releve,
-                    jour,
-                    achat,
-                    categorie,
-                    credit: sens == "credit",
-                    montant,
-                    commercant,
+                |(id, releve, jour, achat, categorie, sens, montant, commercant, preleve)| {
+                    Operation {
+                        id,
+                        releve,
+                        jour,
+                        achat,
+                        categorie,
+                        credit: sens == "credit",
+                        montant,
+                        commercant,
+                        preleve,
+                    }
                 },
             )
             .collect(),
         categories: categories
             .into_iter()
-            .filter_map(|(id, nom, nature, plafond, couleur, archivee)| {
+            .filter_map(|(id, cle, nom, nature, plafond, couleur, archivee)| {
                 Some(Categorie {
                     id,
+                    cle,
                     nom,
                     nature: Nature::lire(&nature)?,
                     plafond,
@@ -271,4 +280,35 @@ pub async fn annees(
     let calcul = Calcul::nouveau(&donnees, mode);
     let i = calcul.index(cle).ok_or_else(introuvable)?;
     Ok(ok(&evolution::annees(&calcul, i)))
+}
+
+pub async fn habitudes(
+    State(state): State<AppState>,
+    p: Personne,
+    Query(d): Query<Demande>,
+) -> Result<Response, Response> {
+    let mode = mode(&d)?;
+    let fenetre = habitudes::fenetre(d.window.as_deref())
+        .ok_or_else(|| invalide("window : 1, 3, 6, 12 ou all"))?;
+    classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    let calcul = Calcul::nouveau(&donnees, mode);
+    Ok(ok(&habitudes::habitudes(&calcul, fenetre)))
+}
+
+pub async fn inhabituelle(
+    State(state): State<AppState>,
+    p: Personne,
+    Path(id): Path<String>,
+) -> Result<Response, Response> {
+    let id = identifiant(&id)?;
+    classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    if !donnees.operations.iter().any(|o| o.id == id) {
+        return Err(introuvable());
+    }
+    let calcul = Calcul::nouveau(&donnees, Mode::Calendaire);
+    Ok(ok(
+        &json!({ "unusual": habitudes::inhabituelles(&calcul).remove(&id) }),
+    ))
 }

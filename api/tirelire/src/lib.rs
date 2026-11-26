@@ -1,5 +1,6 @@
 #![allow(clippy::result_large_err)]
 
+pub mod abonnements;
 pub mod bilan;
 pub mod categories;
 pub mod classement;
@@ -12,6 +13,7 @@ pub mod evolution;
 pub mod export;
 pub mod extraction;
 pub mod garde;
+pub mod habitudes;
 pub mod http;
 pub mod identite;
 pub mod import;
@@ -20,6 +22,7 @@ pub mod metriques;
 pub mod mois;
 pub mod mots;
 pub mod normalisation;
+pub mod recurrents;
 pub mod regles;
 pub mod releves;
 pub mod routes;
@@ -32,6 +35,8 @@ mod tests_api;
 mod tests_categories;
 #[cfg(test)]
 mod tests_evolution;
+#[cfg(test)]
+mod tests_habitudes;
 #[cfg(test)]
 mod tests_recherche;
 #[cfg(test)]

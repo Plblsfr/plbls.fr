@@ -54,17 +54,28 @@ pub struct Operation {
     pub credit: bool,
     pub montant: i64,
     pub commercant: Option<i64>,
+    pub preleve: bool,
 }
 
 impl Operation {
     pub fn reference(&self) -> NaiveDate {
         self.achat.unwrap_or(self.jour)
     }
+
+    pub fn depense(&self, nature: Option<Nature>) -> i64 {
+        match nature {
+            Some(Nature::Fixe | Nature::Variable) if self.credit => -self.montant,
+            Some(Nature::Fixe | Nature::Variable) => self.montant,
+            None if !self.credit => self.montant,
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Categorie {
     pub id: i64,
+    pub cle: Option<String>,
     pub nom: String,
     pub nature: Nature,
     pub plafond: Option<i64>,
@@ -554,12 +565,7 @@ impl<'a> Calcul<'a> {
                 .map(|c| c.nature);
             let categorie = o.categorie.zip(nature);
             let a = &mut agregats[i];
-            let sortie = if o.credit { -o.montant } else { o.montant };
-            let depense = match nature {
-                Some(Nature::Fixe | Nature::Variable) => sortie,
-                None if !o.credit => o.montant,
-                _ => 0,
-            };
+            let depense = o.depense(nature);
             if let Some(j) = a.par_jour.get_mut(usize::try_from(jour).unwrap_or(0)) {
                 *j += depense;
             }
@@ -594,6 +600,27 @@ impl<'a> Calcul<'a> {
 
     pub fn mode(&self) -> Mode {
         self.mode
+    }
+
+    pub fn donnees(&self) -> &'a Donnees {
+        self.d
+    }
+
+    pub fn categorie(&self, id: i64) -> Option<&'a Categorie> {
+        self.categories.get(&id).copied()
+    }
+
+    pub fn nature(&self, o: &Operation) -> Option<Nature> {
+        o.categorie
+            .and_then(|c| self.categorie(c))
+            .map(|c| c.nature)
+    }
+
+    pub fn operations(&self, i: usize) -> impl Iterator<Item = &'a Operation> + '_ {
+        self.agregats[i]
+            .operations
+            .iter()
+            .map(|rang| &self.d.operations[*rang])
     }
 
     pub fn depenses(&self, i: usize) -> i64 {
