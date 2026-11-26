@@ -50,6 +50,7 @@
   import SillonNav from '../sections/sillon/SillonNav.svelte'
   import RegieNav from '../sections/regie/RegieNav.svelte'
   import SablierNav from '../sections/sablier/SablierNav.svelte'
+  import TirelireNav from '../sections/tirelire/TirelireNav.svelte'
   import SillonMini from '../sections/sillon/SillonMini.svelte'
   import { lecteur } from '../sections/sillon/sillon.svelte'
   import { videos } from '../blocks/videos/videos.svelte'
@@ -147,6 +148,8 @@
     <RegieNav />
   {:else if route.name === 'stats' && app.stats}
     <SablierNav />
+  {:else if route.name === 'tirelire' && app.tirelire}
+    <TirelireNav />
   {:else if space?.visible()}
     <space.nav />
   {:else if detail}

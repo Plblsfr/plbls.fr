@@ -23,6 +23,12 @@ vi.mock('../sections/sablier/sablier', async (orig) => ({
   sablierOn: () => sablierMock.on,
   sablierApi: { me: vi.fn(async () => { if (!sablierMock.me) throw new TypeError('Failed to fetch'); return sablierMock.me }), nonVus: vi.fn(async () => ({ trophies: sablierMock.nonVus, recaps: 0 })) },
 }))
+const tirelireMock = vi.hoisted(() => ({ on: false, me: null as null | { sub: string; name: string; email: string; permissions: { access: boolean } } }))
+vi.mock('../sections/tirelire/tirelire', async (orig) => ({
+  ...(await orig<typeof import('../sections/tirelire/tirelire')>()),
+  tirelireOn: () => tirelireMock.on,
+  tirelireApi: { me: vi.fn(async () => { if (!tirelireMock.me) throw new TypeError('Failed to fetch'); return tirelireMock.me }) },
+}))
 vi.mock('./realtime', async (original) => ({ ...(await original<typeof import('./realtime')>()), Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
 import { AppStore } from './store.svelte'
@@ -181,6 +187,52 @@ describe('section Stats selon les permissions (Sablier)', () => {
     await boot(sablierMe(true), false)
     expect(s.phase).toBe('ready')
     expect(s.stats).toBe(false)
+  })
+})
+
+describe('section Tirelire selon les permissions', () => {
+  const tirelireMe = (access: boolean) => ({ sub: 'kc-me', name: 'moi', email: '', permissions: { access } })
+  const estompe = { activated: true, allowed: true, id: 'me', pseudo: 'moi', blocks: ['vocal'] }
+  const refus = { activated: false, allowed: false, admin: false, rights: [] }
+  const boot = async (me: ReturnType<typeof tirelireMe> | null, on = true, messagerie: Record<string, unknown> = estompe, hash = '#/') => {
+    tirelireMock.on = on
+    tirelireMock.me = me
+    Object.assign(api, { me: vi.fn(async () => messagerie) })
+    history.replaceState(null, '', hash)
+    await s.boot().catch(() => {})
+  }
+  afterEach(() => { tirelireMock.on = false; tirelireMock.me = null; sillonMock.on = false; sillonMock.me = null; history.replaceState(null, '', '#/') })
+
+  it('avec tirelire:access la section est annoncée, sans elle non', async () => {
+    await boot(tirelireMe(true))
+    expect(s.phase).toBe('ready')
+    expect(s.tirelire).toBe(true)
+    expect(s.tirelireMe?.sub).toBe('kc-me')
+    await boot(tirelireMe(false))
+    expect(s.phase).toBe('ready')
+    expect(s.tirelire).toBe(false)
+  })
+
+  it('Tirelire arrêté ou non configuré : l’app démarre sans la section', async () => {
+    await boot(null)
+    expect(s.phase).toBe('ready')
+    expect(s.tirelire).toBe(false)
+    expect(s.tirelireMe).toBeNull()
+    expect(s.error).toBe('')
+    await boot(tirelireMe(true), false)
+    expect(s.phase).toBe('ready')
+    expect(s.tirelire).toBe(false)
+  })
+
+  it('sans messagerie, Tirelire seul n’ouvre pas l’app ; avec une autre section, son adresse est gardée', async () => {
+    await boot(tirelireMe(true), true, refus)
+    expect(s.phase).not.toBe('sections')
+    sillonMock.on = true
+    sillonMock.me = { sub: 'kc-me', name: 'moi', email: '', permissions: { access: true, add: false, admin: false }, sections: ['library'] }
+    await boot(tirelireMe(true), true, refus, '#/tirelire/operations')
+    expect(s.phase).toBe('sections')
+    expect(s.tirelire).toBe(true)
+    expect(location.hash).toBe('#/tirelire/operations')
   })
 })
 

@@ -21,3 +21,14 @@ describe('route de la section Stats', () => {
     expect(sectionDe(parseHash('#/stats/recaps').name)).toBe('sablier')
   })
 })
+
+describe('route de la section Tirelire', () => {
+  it('lit et écrit les adresses de Tirelire', () => {
+    expect(parseHash('#/tirelire')).toEqual({ name: 'tirelire', section: undefined, id: undefined })
+    expect(parseHash('#/tirelire/operations/42')).toEqual({ name: 'tirelire', section: 'operations', id: '42' })
+    expect(hrefs.tirelire()).toBe('#/tirelire')
+    expect(hrefs.tirelire('import')).toBe('#/tirelire/import')
+    expect(hrefs.tirelire('operations', 42)).toBe('#/tirelire/operations/42')
+    expect(sectionDe(parseHash('#/tirelire').name)).toBe('autre')
+  })
+})
