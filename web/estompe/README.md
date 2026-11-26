@@ -18,7 +18,7 @@ npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe se
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
-npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, accueil, vue du mois et détail d'une catégorie, évolution, habitudes et abonnements, écran de téléphone, Tirelire arrêté : API simulées
+npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, accueil, vue du mois et détail d'une catégorie, évolution, habitudes et abonnements, aide à la décision, écran de téléphone, Tirelire arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -176,6 +176,18 @@ système de Chromium doivent être présentes).
     (« Rétablir »), méthode. Historique trop court : l'écran dit ce qu'il faudrait importer (`manque`). L'accueil porte la même carte d'accès, et le détail
     d'une opération l'étiquette « Inhabituelle » avec sa raison (`GET /operations/{id}/unusual`). `habitudes.ts` : types et calculs purs ;
     `essais-habitudes.ts` : jeux d'essai inventés, partagés avec le faux Tirelire des tests de bout en bout.
+  - `#/tirelire/decision[?periode=<période>&cible=<catégorie>:<centimes>&arret=<récurrent>]` : `TirelireDecision` (`GET /stats/summary`,
+    `POST /stats/simulate`, chargés par `tirelire.chargerResume` et `tirelire.chargerSimulation`). Résumé de la période (`TirelireBref` : phrase des
+    dépenses, hausses et baisses par rapport à la période précédente et à l'habitude, taux d'épargne, état dit tel quel, flèches vers les périodes
+    voisines), leviers classés (chacun mène au simulateur prérempli, aux abonnements, aux habitudes ou aux opérations du commerçant), simulateur :
+    un curseur par catégorie (`<input type="range">`, pas de 5 %, utilisable au doigt et au clavier), montant cible à saisir, catégories fixes
+    marquées « fixe » et ajoutées par la liste, catégories sans historique non proposées, case par abonnement avec son coût annuel, total par mois
+    et par an, deux barres « Habituel » et « Simulé » à la même échelle avec le trait du budget, effet sur le reste à vivre et le taux d'épargne.
+    Pendant le glissement, l'app recalcule avec `simuler` (`simulation.ts`, même formule que le service) ; au lâcher, elle affiche le résultat du
+    service. « Fixer comme plafond » : confirmation (`confirmer`), puis `PATCH /categories/{id}` pour chaque catégorie réglée
+    (`tirelire.fixerPlafonds`). Le service rend des éléments chiffrés ; `decision.ts` compose les phrases (singulier, pluriel, élision avec `de`,
+    tutoiement) et n'écrit rien quand il n'y a rien à dire. L'accueil et la vue du mois portent un extrait du résumé (`TirelireBref extrait`) avec un
+    lien vers l'écran, et l'accueil une carte « Simulateur ». `essais-decision.ts` : jeux d'essai inventés, partagés avec le faux Tirelire.
   - `#/tirelire/a-classer` : `TirelireClasser`. File `GET /unclassified`, un groupe par commerçant : le premier groupe en grand (libellés bruts,
     choix rapide d'une catégorie), « Passer », puis la liste « Ensuite ». Classer fixe la catégorie de tout le commerçant
     (`PUT /merchants/{id}/category`), ou de la seule opération la plus récente si la case de la règle est décochée ou si l'opération n'a pas de
