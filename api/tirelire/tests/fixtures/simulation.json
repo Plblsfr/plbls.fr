@@ -1,0 +1,43 @@
+{
+  "economie": [
+    { "nom": "baisse de 30 %", "base": 23680, "arretes": 0, "percent": 30, "target": null, "economie": 7104, "montant": 16576 },
+    { "nom": "demi-centime arrondi au centime supérieur", "base": 16490, "arretes": 0, "percent": 25, "target": null, "economie": 4123, "montant": 12367 },
+    { "nom": "baisse de 20 %", "base": 18735, "arretes": 0, "percent": 20, "target": null, "economie": 3747, "montant": 14988 },
+    { "nom": "baisse de 5 %", "base": 41260, "arretes": 0, "percent": 5, "target": null, "economie": 2063, "montant": 39197 },
+    { "nom": "49,95 centimes arrondis à 50", "base": 999, "arretes": 0, "percent": 5, "target": null, "economie": 50, "montant": 949 },
+    { "nom": "un centime à moitié", "base": 1, "arretes": 0, "percent": 50, "target": null, "economie": 1, "montant": 0 },
+    { "nom": "0,45 centime arrondi à zéro", "base": 3, "arretes": 0, "percent": 15, "target": null, "economie": 0, "montant": 3 },
+    { "nom": "borne 0 %", "base": 23680, "arretes": 0, "percent": 0, "target": null, "economie": 0, "montant": 23680 },
+    { "nom": "borne 100 %", "base": 23680, "arretes": 0, "percent": 100, "target": null, "economie": 23680, "montant": 0 },
+    { "nom": "catégorie sans historique", "base": 0, "arretes": 0, "percent": 50, "target": null, "economie": 0, "montant": 0 },
+    { "nom": "montant cible", "base": 23680, "arretes": 0, "percent": null, "target": 15000, "economie": 8680, "montant": 15000 },
+    { "nom": "cible égale à la base", "base": 23680, "arretes": 0, "percent": null, "target": 23680, "economie": 0, "montant": 23680 },
+    { "nom": "cible nulle", "base": 23680, "arretes": 0, "percent": null, "target": 0, "economie": 23680, "montant": 0 },
+    { "nom": "abonnement arrêté puis baisse de 10 % du reste", "base": 11847, "arretes": 1399, "percent": 10, "target": null, "economie": 1045, "montant": 9403 },
+    { "nom": "cible déjà atteinte par l'arrêt d'un abonnement", "base": 11847, "arretes": 1399, "percent": null, "target": 11000, "economie": 0, "montant": 10448 },
+    { "nom": "cible sous le reste après arrêt", "base": 11847, "arretes": 1399, "percent": null, "target": 9000, "economie": 1448, "montant": 9000 },
+    { "nom": "abonnements arrêtés au-delà de la base", "base": 1000, "arretes": 1399, "percent": 50, "target": null, "economie": 0, "montant": 0 },
+    { "nom": "aucun réglage", "base": 5000, "arretes": 0, "percent": null, "target": null, "economie": 0, "montant": 5000 },
+    { "nom": "abonnement arrêté sans réglage", "base": 5000, "arretes": 1399, "percent": null, "target": null, "economie": 0, "montant": 3601 }
+  ],
+  "effet": [
+    {
+      "nom": "catégories seules, sous le budget",
+      "reference": { "expenses": 204400, "income": 270000, "savings": 30000, "remaining": 35600, "savings_rate_bp": 1111, "budget": 205000 },
+      "categories": 17037, "abonnements_par_mois": 0, "abonnements_par_an": 0,
+      "attendu": { "monthly": 17037, "yearly": 204444, "categories": 17037, "subscriptions": 0, "expenses": 187363, "remaining": 52637, "savings": 47037, "savings_rate_bp": 1742, "budget_delta": -17637 }
+    },
+    {
+      "nom": "abonnements arrêtés, aucun revenu ni budget",
+      "reference": { "expenses": 100000, "income": 0, "savings": 0, "remaining": -100000, "savings_rate_bp": null, "budget": null },
+      "categories": 7104, "abonnements_par_mois": 7899, "abonnements_par_an": 94788,
+      "attendu": { "monthly": 15003, "yearly": 180036, "categories": 7104, "subscriptions": 7899, "expenses": 84997, "remaining": -84997, "savings": 15003, "savings_rate_bp": null, "budget_delta": null }
+    },
+    {
+      "nom": "aucun réglage",
+      "reference": { "expenses": 204400, "income": 270000, "savings": 30000, "remaining": 35600, "savings_rate_bp": 1111, "budget": 205000 },
+      "categories": 0, "abonnements_par_mois": 0, "abonnements_par_an": 0,
+      "attendu": { "monthly": 0, "yearly": 0, "categories": 0, "subscriptions": 0, "expenses": 204400, "remaining": 35600, "savings": 30000, "savings_rate_bp": 1111, "budget_delta": -600 }
+    }
+  ]
+}

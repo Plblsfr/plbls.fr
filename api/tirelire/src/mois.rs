@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     response::Response,
 };
@@ -10,13 +11,16 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 
 use crate::{
+    abonnements::etats,
     bilan::Nature,
     classement,
+    decision::{self, Reglage},
     etat::AppState,
     evolution::{self, Fenetre, Mouvement, ReleveSolde},
     garde::Personne,
     habitudes,
-    http::{bd, identifiant, introuvable, invalide, ok},
+    http::{bd, corps, identifiant, introuvable, invalide, ok},
+    recurrents::recurrents,
     releves::{OPERATION, OPERATIONS},
     stats::{Calcul, Categorie, Donnees, Mode, Operation, Releve},
 };
@@ -311,4 +315,66 @@ pub async fn inhabituelle(
     Ok(ok(
         &json!({ "unusual": habitudes::inhabituelles(&calcul).remove(&id) }),
     ))
+}
+
+pub async fn resume(
+    State(state): State<AppState>,
+    p: Personne,
+    Query(d): Query<Demande>,
+) -> Result<Response, Response> {
+    let mode = mode(&d)?;
+    let cle = cle(&d, mode)?;
+    classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    let etats = etats(state.pool(), p.sub()).await.map_err(bd)?;
+    let calcul = Calcul::nouveau(&donnees, mode);
+    let i = calcul.index(cle).ok_or_else(introuvable)?;
+    Ok(ok(&decision::resumer(
+        &calcul,
+        i,
+        &recurrents(&donnees, &etats),
+    )))
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Hypothese {
+    mode: Option<String>,
+    period: Option<String>,
+    #[serde(default)]
+    categories: Vec<Reglage>,
+    #[serde(default)]
+    subscriptions: Vec<String>,
+}
+
+pub async fn simuler(
+    State(state): State<AppState>,
+    p: Personne,
+    octets: Bytes,
+) -> Result<Response, Response> {
+    let h: Hypothese = corps(
+        &octets,
+        "corps attendu : {mode?, period?, categories?: [{id, percent} ou {id, target}], subscriptions?: [id]}",
+    )?;
+    let d = Demande {
+        mode: h.mode,
+        period: h.period,
+        window: None,
+    };
+    let mode = mode(&d)?;
+    let cle = cle(&d, mode)?;
+    classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    let etats = etats(state.pool(), p.sub()).await.map_err(bd)?;
+    let calcul = Calcul::nouveau(&donnees, mode);
+    let i = calcul.index(cle).ok_or_else(introuvable)?;
+    decision::simuler(
+        &calcul,
+        i,
+        &recurrents(&donnees, &etats),
+        &h.categories,
+        &h.subscriptions,
+    )
+    .map(|s| ok(&s))
+    .map_err(invalide)
 }
