@@ -66,6 +66,7 @@ export const fauxClient = (o: Partial<ClientTirelire> = {}): ClientTirelire => (
   importer: async () => [],
   supprimer: async () => {},
   operations: async () => page([]),
+  exporter: async () => ({ blob: new Blob(['']), nom: 'tirelire-operations.csv' }),
   operation: async () => operation(),
   classerOperation: async () => ({ operation: operation(), reclassified: 1 }),
   aClasser: async () => file([]),

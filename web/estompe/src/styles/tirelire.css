@@ -102,6 +102,18 @@ a.tir-li:focus-visible { outline: none; box-shadow: var(--anneau-in); border-rad
 .tir-champ select { appearance: none; cursor: pointer; text-overflow: ellipsis; }
 .tir-champ select option { background: var(--surface); color: var(--encre); }
 .tir-champ > .icon { flex: none; color: var(--gris); }
+.tir-champ input[type='search']::-webkit-search-cancel-button { display: none; }
+.tir-ib--champ { margin-right: -12px; color: var(--gris); }
+.tir-puces { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; margin: -6px 0; padding: 0; list-style: none; }
+.tir-puces > li { min-width: 0; max-width: 100%; }
+.tir-puce { display: inline-flex; align-items: center; min-width: 44px; max-width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: var(--encre); font: inherit; cursor: pointer; }
+.tir-puce > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 32px; padding: 0 9px 0 12px; border-radius: var(--r-p); background: var(--rose); font-size: 13px; font-weight: 500; }
+.tir-puce > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tir-puce:hover > span { background: color-mix(in srgb, var(--rose) 88%, var(--encre)); }
+.tir-puce:focus-visible { outline: none; }
+.tir-puce:focus-visible > span { box-shadow: var(--anneau); }
+.tir-puce--texte > span { padding: 0 6px; background: none; color: var(--encre-2); text-decoration: underline; }
+.tir-puce--texte:hover > span { background: var(--papier-2); }
 .tir-fl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tir-fl > span:first-child { font-size: 12px; color: var(--gris); }
 

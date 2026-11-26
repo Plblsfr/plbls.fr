@@ -172,13 +172,25 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
       const libres = ops.filter((o) => o.category_id === null)
       return { operations: libres.length, merchants: new Set(libres.map((o) => o.merchant_id)).size, debits: somme(libres, 'debit'), credits: somme(libres, 'credit') }
     }
-    if (url.pathname === '/operations') {
+    if (url.pathname === '/operations' || url.pathname === '/operations/export.csv') {
       const q = url.searchParams
+      const plat = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      const mots = plat(q.get('q') ?? '').split(/\s+/).filter(Boolean)
+      const filtrees = ops.filter((o) => (!q.get('statement') || o.statement_id === Number(q.get('statement'))) && (!q.get('from') || String(o.date) >= q.get('from')!) && (!q.get('to') || String(o.date) <= q.get('to')!)
+        && (!q.get('category') || o.category_id === Number(q.get('category'))) && (!q.get('merchant') || o.merchant_id === Number(q.get('merchant'))) && (q.get('unclassified') !== 'true' || o.category_id === null)
+        && mots.every((m) => plat([o.label, ...(o.details as string[]), o.merchant ?? '', o.merchant_name ?? ''].join('\n')).includes(m))
+        && (!q.get('min') || o.amount >= Number(q.get('min'))) && (!q.get('max') || o.amount <= Number(q.get('max'))) && (!q.get('direction') || o.direction === q.get('direction')) && (!q.get('type') || o.type === q.get('type')))
+      if (url.pathname === '/operations/export.csv') {
+        const fr = (j: unknown) => String(j ?? '').split('-').reverse().join('/')
+        const euros = (c: number) => `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)},${String(Math.abs(c) % 100).padStart(2, '0')}`
+        const lignes = filtrees.map((o) => [fr(o.date), fr(o.value_date), fr(o.purchase_date), o.label, (o.details as string[]).join(' | '), o.merchant_name ?? '', srv.categories.find((c) => c.id === o.category_id)?.name ?? '', '', o.type, o.section, o.direction === 'debit' ? euros(o.amount) : '', o.direction === 'credit' ? euros(o.amount) : '', euros(o.direction === 'debit' ? -o.amount : o.amount), `Relevé n° ${Number(o.statement_id) - 100} de 2026`].join(';'))
+        const dates = filtrees.map((o) => String(o.date)).sort()
+        const nom = `tirelire-operations-${q.get('from') ?? dates[0] ?? ''}_${q.get('to') ?? dates.at(-1) ?? ''}.csv`
+        return route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: `\ufeff${['Date;Date de valeur;Date d\'achat;Libellé;Détails;Commerçant;Catégorie;Nature;Type;Section;Débit;Crédit;Montant;Relevé', ...lignes].join('\r\n')}\r\n`, headers: { ...cors, 'access-control-expose-headers': 'Content-Disposition', 'content-disposition': `attachment; filename="${nom}"` } })
+      }
       const limit = Number(q.get('limit') ?? 50)
       const offset = Number(q.get('offset') ?? 0)
-      const filtrees = ops.filter((o) => (!q.get('statement') || o.statement_id === Number(q.get('statement'))) && (!q.get('from') || String(o.date) >= q.get('from')!) && (!q.get('to') || String(o.date) <= q.get('to')!)
-        && (!q.get('category') || o.category_id === Number(q.get('category'))) && (!q.get('merchant') || o.merchant_id === Number(q.get('merchant'))) && (q.get('unclassified') !== 'true' || o.category_id === null))
-      return json(route, { operations: filtrees.slice(offset, offset + limit), total: filtrees.length, limit, offset })
+      return json(route, { operations: filtrees.slice(offset, offset + limit), total: filtrees.length, total_debits: somme(filtrees, 'debit'), total_credits: somme(filtrees, 'credit'), limit, offset })
     }
     const uneOperation = /^\/operations\/(\d+)(\/category)?$/.exec(url.pathname)
     if (uneOperation) {
