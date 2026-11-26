@@ -4,14 +4,15 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, delete, get, post},
+    routing::{MethodRouter, delete, get, patch, post, put},
 };
 
 use crate::{
+    categories, commercants,
     droits::Droit,
     etat::AppState,
     garde::{self, Garde},
-    import, interne, releves,
+    import, interne, regles, releves,
 };
 
 pub struct Route {
@@ -89,6 +90,114 @@ pub fn table() -> Vec<Entree> {
             "/operations",
             Garde::Droit(Droit::Acces),
             get(releves::operations),
+        ),
+        entree(
+            Method::GET,
+            "/operations/{id}",
+            Garde::Droit(Droit::Acces),
+            get(releves::operation),
+        ),
+        entree(
+            Method::PUT,
+            "/operations/{id}/category",
+            Garde::Droit(Droit::Acces),
+            put(releves::classer),
+        ),
+        entree(
+            Method::GET,
+            "/unclassified",
+            Garde::Droit(Droit::Acces),
+            get(commercants::a_classer),
+        ),
+        entree(
+            Method::GET,
+            "/unclassified/count",
+            Garde::Droit(Droit::Acces),
+            get(commercants::compter),
+        ),
+        entree(
+            Method::GET,
+            "/categories",
+            Garde::Droit(Droit::Acces),
+            get(categories::lister),
+        ),
+        entree(
+            Method::POST,
+            "/categories",
+            Garde::Droit(Droit::Acces),
+            post(categories::creer),
+        ),
+        entree(
+            Method::PATCH,
+            "/categories/{id}",
+            Garde::Droit(Droit::Acces),
+            patch(categories::modifier),
+        ),
+        entree(
+            Method::GET,
+            "/rules",
+            Garde::Droit(Droit::Acces),
+            get(regles::lister),
+        ),
+        entree(
+            Method::POST,
+            "/rules",
+            Garde::Droit(Droit::Acces),
+            post(regles::creer),
+        ),
+        entree(
+            Method::PUT,
+            "/rules/order",
+            Garde::Droit(Droit::Acces),
+            put(regles::ordonner),
+        ),
+        entree(
+            Method::PATCH,
+            "/rules/{id}",
+            Garde::Droit(Droit::Acces),
+            patch(regles::modifier),
+        ),
+        entree(
+            Method::DELETE,
+            "/rules/{id}",
+            Garde::Droit(Droit::Acces),
+            delete(regles::supprimer),
+        ),
+        entree(
+            Method::GET,
+            "/merchants",
+            Garde::Droit(Droit::Acces),
+            get(commercants::lister),
+        ),
+        entree(
+            Method::GET,
+            "/merchants/{id}",
+            Garde::Droit(Droit::Acces),
+            get(commercants::lire),
+        ),
+        entree(
+            Method::PATCH,
+            "/merchants/{id}",
+            Garde::Droit(Droit::Acces),
+            patch(commercants::renommer),
+        ),
+        entree(
+            Method::PUT,
+            "/merchants/{id}/category",
+            Garde::Droit(Droit::Acces),
+            put(commercants::classer),
+        ),
+        entree(
+            Method::POST,
+            "/merchants/{id}/merge",
+            Garde::Droit(Droit::Acces),
+            post(commercants::fusionner),
+        ),
+        entree(
+            Method::POST,
+            "/merchants/{id}/split",
+            Garde::Droit(Droit::Acces),
+            post(commercants::separer),
         ),
     ]
 }
