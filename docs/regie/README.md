@@ -129,5 +129,5 @@ titre et affiche sa fiche à copier.
 
 ## Version
 
-Composant `regie` : version du `Cargo.toml` d'`api/regie`, tag `regie-vX.Y.Z` (image `ghcr.io/plblsfr/regie`, `:edge` sur `main`).
-Pas d'entrée dans `.version`, propre à Estompe. La section de l'app suit les versions de l'app (`estompe-app-v*`).
+Composant `regie` : version calculée à chaque fusion (`regie` dans `.version`, recopiée dans le `Cargo.toml` d'`api/regie` par la PR de version, voir `docs/estompe/AGENTS.md`), tag `regie-vX.Y.Z` (image `ghcr.io/plblsfr/regie`, `:edge` sur `main`).
+La section de l'app suit les versions de l'app (`estompe-app-v*`).

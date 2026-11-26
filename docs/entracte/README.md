@@ -223,5 +223,5 @@ sous-titres à lui) ; seule la position est synchronisée, et sa progression est
 
 ## Version
 
-Composant `entracte` : version du `Cargo.toml` d'`api/entracte`, tag `entracte-vX.Y.Z` (image `ghcr.io/plblsfr/entracte`, `:edge` sur `main`).
-Pas d'entrée dans `.version`, propre à Estompe. La section de l'app suit les versions de l'app (`estompe-app-v*`).
+Composant `entracte` : version calculée à chaque fusion (`entracte` dans `.version`, recopiée dans le `Cargo.toml` d'`api/entracte` par la PR de version, voir `docs/estompe/AGENTS.md`), tag `entracte-vX.Y.Z` (image `ghcr.io/plblsfr/entracte`, `:edge` sur `main`).
+La section de l'app suit les versions de l'app (`estompe-app-v*`).

@@ -110,7 +110,7 @@ construisent `dist/`, publient l'image `ghcr.io/plblsfr/plbls-ui` (`X.Y.Z` et `l
 (nom = tag, notes = section correspondante du `CHANGELOG.md`).
 
 ```bash
-# 1. monter la version dans package.json + ajouter « ## x.y.z » au CHANGELOG.md, fusionner dans main
+# 1. fusionner la PR de version (ci/version, qui monte package.json) + ajouter « ## x.y.z » au CHANGELOG.md
 git tag ui-vX.Y.Z
 git push origin ui-vX.Y.Z
 ```
@@ -166,7 +166,7 @@ Le dépôt publie aussi une image nginx qui sert `dist/` :
 
 En production, préférer une version exacte ou la majeure (`/ui/2/`) à `latest`. CORS est ouvert (`*`).
 
-**Publier** : changer la version dans `package.json` (et `CHANGELOG.md`), fusionner dans `main`, puis pousser un tag
+**Publier** : fusionner la PR de version (`ci/version`, qui calcule la version de `package.json` d'après les fusions), ajouter la section du `CHANGELOG.md`, puis pousser un tag
 `ui-vX.Y.Z`. La CI (`.github/workflows/livraison.yml`) construit et publie `ghcr.io/plblsfr/plbls-ui` (`X.Y.Z`, `latest`
 et le SHA ; un push sur `main` ne publie que `edge`). Au
 démarrage, l'image copie `dist/` dans le volume `/srv` : une version déjà publiée n'est **jamais écrasée**
