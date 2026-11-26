@@ -224,6 +224,24 @@ pub fn table() -> Vec<Entree> {
             Garde::Droit(Droit::Acces),
             get(mois::categorie),
         ),
+        entree(
+            Method::GET,
+            "/stats/history",
+            Garde::Droit(Droit::Acces),
+            get(mois::historique),
+        ),
+        entree(
+            Method::GET,
+            "/stats/balance",
+            Garde::Droit(Droit::Acces),
+            get(mois::soldes),
+        ),
+        entree(
+            Method::GET,
+            "/stats/years",
+            Garde::Droit(Droit::Acces),
+            get(mois::annees),
+        ),
     ]
 }
 

@@ -26,7 +26,8 @@ routes dans [`openapi.yaml`](../../docs/tirelire/openapi.yaml).
 | `commercants.rs` | `GET /merchants`, `GET` et `PATCH /merchants/{id}`, catégorie, fusion et séparation, file `GET /unclassified` et son compteur |
 | `bilan.rs` | totaux d'une liste d'opérations par catégorie : remboursements déduits, épargne, revenus et transferts hors dépenses |
 | `stats.rs` | statistiques par période, sans accès à la base (`Calcul`) : périodes calendaires ou par relevé et leur couverture, rattachement des opérations, totaux, lignes par catégorie, écarts et moyennes, dépassements classés, cumul jour par jour, projection, détail d'une catégorie |
-| `mois.rs` | `GET /stats/months`, `GET /stats/month`, `GET /stats/month/categories/{id}` : lecture des opérations, des catégories et des relevés de la personne, puis `stats.rs` |
+| `evolution.rs` | suivi dans le temps, sans accès à la base : fenêtre (`Fenetre`), historique par catégorie et totaux (`historique`), tendance de Theil-Sen (`tendance`), solde jour par jour et trous entre relevés (`soldes`), comparaison d'une année sur l'autre (`annees`) |
+| `mois.rs` | `GET /stats/months`, `GET /stats/month`, `GET /stats/month/categories/{id}`, `GET /stats/history`, `GET /stats/balance`, `GET /stats/years` : lecture des opérations, des catégories et des relevés de la personne, puis `stats.rs` et `evolution.rs` |
 
 ## Développement
 
@@ -40,6 +41,8 @@ tête de chaque fichier), et les tests d'API fabriquent leurs PDF à partir d'el
 `TIRELIRE_RELEVES_REELS=<dossier hors du dépôt> cargo test -p tirelire releves_reels -- --nocapture` lit chaque PDF du dossier et échoue
 si un relevé est refusé ; `releves_reels_categorises` les importe dans une base jetable et compte ce que donnent la normalisation et les
 règles par défaut ; `releves_reels_statistiques` vérifie sur eux les invariants des statistiques dans les deux modes (somme des catégories et de
-« à classer » égale aux dépenses, reste à vivre, fin du cumul, nombre d'opérations, solde). Ils n'affichent que des nombres (opérations, pages,
+« à classer » égale aux dépenses, reste à vivre, fin du cumul, nombre d'opérations, solde) ; `releves_reels_evolution` vérifie ceux de l'évolution
+(historique égal aux dépenses de chaque période pour chaque fenêtre, solde jour par jour égal au nouveau solde de chaque relevé, jours couverts et
+trous qui remplissent la fenêtre, cumul annuel égal à la somme des catégories). Ils n'affichent que des nombres (opérations, pages,
 écarts, opérations classées et à classer, commerçants distincts, périodes), jamais un libellé ni un montant.
 Sans la variable, ces tests ne font rien.

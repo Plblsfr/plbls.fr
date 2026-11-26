@@ -318,7 +318,7 @@ pub fn bp(part: i64, total: i64) -> Option<i64> {
     (total > 0).then(|| division(i128::from(part) * 10_000, i128::from(total)))
 }
 
-fn ecart(actuel: i64, reference: i64) -> Ecart {
+pub fn ecart(actuel: i64, reference: i64) -> Ecart {
     Ecart {
         amount: reference,
         delta: actuel - reference,
@@ -326,7 +326,7 @@ fn ecart(actuel: i64, reference: i64) -> Ecart {
     }
 }
 
-fn nature_cle(n: Nature) -> &'static str {
+pub fn nature_cle(n: Nature) -> &'static str {
     match n {
         Nature::Fixe => "fixe",
         Nature::Variable => "variable",
@@ -590,6 +590,38 @@ impl<'a> Calcul<'a> {
 
     pub fn periodes(&self) -> &[Periode] {
         &self.periodes
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    pub fn depenses(&self, i: usize) -> i64 {
+        self.agregats[i].depenses()
+    }
+
+    pub fn a_classer(&self, i: usize) -> i64 {
+        self.agregats[i].bilan.a_classer_debits
+    }
+
+    pub fn montant(&self, i: usize, categorie: i64) -> i64 {
+        self.agregats[i].montant(categorie)
+    }
+
+    pub fn categories_de_depense(&self) -> impl Iterator<Item = &'a Categorie> {
+        self.d
+            .categories
+            .iter()
+            .filter(|c| matches!(c.nature, Nature::Fixe | Nature::Variable))
+    }
+
+    pub fn plafonds(&self) -> Option<i64> {
+        let mut plafonds = self
+            .categories_de_depense()
+            .filter(|c| !c.archivee)
+            .filter_map(|c| c.plafond)
+            .peekable();
+        plafonds.peek().is_some().then(|| plafonds.sum())
     }
 
     pub fn index(&self, cle: Option<&str>) -> Option<usize> {

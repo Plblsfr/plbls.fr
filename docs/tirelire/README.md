@@ -3,13 +3,14 @@
 Suivi des comptes bancaires de plbls.fr. Ce document décrit ce qui existe aujourd'hui : l'import des relevés de compte PDF du Crédit
 Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations, la suppression d'un relevé, les catégories, les
 règles de classement, les commerçants, la file « à classer », la recherche, les filtres et l'export CSV des opérations, et les
-statistiques par période (accueil, vue du mois, détail d'une catégorie). L'évolution sur l'année et les habitudes n'existent pas encore.
+statistiques par période (accueil, vue du mois, détail d'une catégorie) et le suivi dans le temps (historique par catégorie,
+tendances, solde du compte, comparaison d'une année sur l'autre). Les habitudes n'existent pas encore.
 
 | Où | Quoi |
 |---|---|
 | [`api/tirelire`](../../api/tirelire/README.md) | API Rust (axum, sqlx), membre du workspace Cargo, base `tirelire` de PostgreSQL |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
-| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, import, opérations (recherche, filtres, export), à classer, catégories et règles |
+| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, évolution, import, opérations (recherche, filtres, export), à classer, catégories et règles |
 | [`deploy/tirelire/.env.example`](../../deploy/tirelire/.env.example) | secrets, service `tirelire-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 
 ## Permission et cloisonnement
@@ -229,6 +230,54 @@ par relevé : un relevé est toujours complet. Méthode :
 - charges fixes : chaque catégorie fixe est portée à son montant habituel (moyenne des 3 dernières périodes complètes) si elle
   ne l'a pas encore atteint, sinon gardée à son montant ; elles ne sont pas mises au prorata, un loyer ne se répète pas ;
 - `fixed_pending` : charges fixes habituelles pas encore passées ; `budget_delta` : projection moins budget.
+
+## Évolution
+
+`GET /stats/history`, `GET /stats/balance` et `GET /stats/years` (`evolution.rs`, sans accès à la base), avec les définitions
+ci-dessus : mêmes périodes, même rattachement, mêmes dépenses. `window` choisit la fenêtre : les `6`, `12` (défaut) ou `24`
+dernières périodes, ou `all`.
+
+### Historique par catégorie
+
+Un montant par catégorie de dépense et par période de la fenêtre, « à classer » sur sa ligne, et le total. Invariant vérifié par
+les tests, relevés réels compris : pour chaque période, catégories + « à classer » = total = dépenses de `/stats/month`.
+
+- **Moyenne** : sur les périodes complètes de la fenêtre seulement (un mois partiel ou en cours la fausserait) ; aucune : `null`.
+- **Plafond** : `over_cap` compte les périodes de la fenêtre, complètes ou non, strictement au-dessus du plafond actuel de la
+  catégorie ; `total.over_budget` fait de même avec le budget (somme des plafonds).
+- **Graphique** : les 5 catégories au plus fort total sur la fenêtre (`CATEGORIES_DU_GRAPHIQUE`), les autres regroupées dans
+  `chart.others`, « à classer » à part.
+
+### Tendance
+
+Calculée par catégorie et pour le total sur les 6 dernières périodes complètes (`TENDANCE_PERIODES`), quelle que soit la
+fenêtre affichée, pour que le verdict ne change pas avec elle :
+
+1. pente de Theil-Sen : la médiane des pentes de toutes les paires de périodes. Un mois isolé très haut ou très bas (un gros
+   achat, un remboursement) ne la déplace pas, contrairement à une régression par moindres carrés ;
+2. `delta` = pente × (nombre de périodes − 1) : la variation entre la première et la dernière période, en centimes ;
+3. `delta_bp` = `delta` ÷ moyenne de ces périodes ;
+4. `up` ou `down` si `delta` atteint 10 € (`SEUIL_TENDANCE`) et 10 % de la moyenne (`SEUIL_TENDANCE_BP`), `stable` sinon ;
+   `insufficient` sous 3 périodes complètes (`TENDANCE_MIN`).
+
+Conséquence assumée : une marche d'escalier au dernier mois (un loyer qui vient d'augmenter) reste « stable » tant qu'elle
+n'est pas confirmée ; l'écart du mois se lit dans la vue du mois.
+
+### Solde du compte
+
+Par compte, à partir des soldes imprimés sur les relevés : l'ancien solde à sa date, puis jour par jour le solde de la veille
+plus les crédits moins les débits du jour, à la date d'opération (c'est elle qui fait le solde, pas la date d'achat). Le dernier
+jour d'un relevé retombe sur son nouveau solde ; `reconciled` le vérifie pour tous les relevés du compte. Les jours qu'aucun
+relevé ne couvre ne sont jamais interpolés : la courbe est coupée en `segments` et les trous sont listés dans `gaps`. `min` et
+`max` portent sur les jours couverts de la fenêtre, du premier jour de la première période affichée au dernier jour connu.
+
+### Année sur l'autre
+
+`GET /stats/years` compare le mois de la période demandée (la plus récente à défaut) au même mois de l'année précédente, et le
+cumul depuis janvier, pour le total, chaque catégorie de dépense et « à classer ». En mode par relevé, un relevé appartient au
+mois de sa date d'arrêté. Le cumul comparé (`ytd_compared`) ne porte que sur les mois présents dans les deux années
+(`compared_months`), pour ne pas comparer onze mois à trois ; `partial` signale qu'un de ces mois n'est couvert qu'en partie.
+Sans aucune période l'année précédente, `has_previous` est faux et les comparaisons valent `null`.
 
 ## Recherche, filtres et export
 

@@ -8,6 +8,7 @@ pub mod commercants;
 pub mod config;
 pub mod droits;
 pub mod etat;
+pub mod evolution;
 pub mod export;
 pub mod extraction;
 pub mod garde;
@@ -29,6 +30,8 @@ pub mod stats;
 mod tests_api;
 #[cfg(test)]
 mod tests_categories;
+#[cfg(test)]
+mod tests_evolution;
 #[cfg(test)]
 mod tests_recherche;
 #[cfg(test)]

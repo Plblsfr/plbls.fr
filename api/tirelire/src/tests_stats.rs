@@ -11,19 +11,19 @@ use crate::{
     testutil::{Env, env},
 };
 
-const LOGEMENT: i64 = 1;
-const COURSES: i64 = 2;
-const RESTAURANTS: i64 = 3;
-const EPARGNE: i64 = 4;
-const REVENUS: i64 = 5;
+pub(crate) const LOGEMENT: i64 = 1;
+pub(crate) const COURSES: i64 = 2;
+pub(crate) const RESTAURANTS: i64 = 3;
+pub(crate) const EPARGNE: i64 = 4;
+pub(crate) const REVENUS: i64 = 5;
 const TRANSFERTS: i64 = 6;
-const ENERGIE: i64 = 7;
+pub(crate) const ENERGIE: i64 = 7;
 
-fn jour(texte: &str) -> NaiveDate {
+pub(crate) fn jour(texte: &str) -> NaiveDate {
     NaiveDate::parse_from_str(texte, "%Y-%m-%d").unwrap()
 }
 
-fn categorie(id: i64, nom: &str, nature: Nature, plafond: Option<i64>) -> Categorie {
+pub(crate) fn categorie(id: i64, nom: &str, nature: Nature, plafond: Option<i64>) -> Categorie {
     Categorie {
         id,
         nom: nom.to_string(),
@@ -34,7 +34,7 @@ fn categorie(id: i64, nom: &str, nature: Nature, plafond: Option<i64>) -> Catego
     }
 }
 
-fn categories() -> Vec<Categorie> {
+pub(crate) fn categories() -> Vec<Categorie> {
     vec![
         categorie(LOGEMENT, "Logement", Nature::Fixe, Some(80_000)),
         categorie(COURSES, "Courses", Nature::Variable, Some(30_000)),
@@ -47,12 +47,12 @@ fn categories() -> Vec<Categorie> {
 }
 
 #[derive(Default)]
-struct Jeu {
-    d: Donnees,
+pub(crate) struct Jeu {
+    pub(crate) d: Donnees,
 }
 
 impl Jeu {
-    fn nouveau() -> Self {
+    pub(crate) fn nouveau() -> Self {
         Self {
             d: Donnees {
                 categories: categories(),
@@ -61,7 +61,7 @@ impl Jeu {
         }
     }
 
-    fn releve(&mut self, debut: &str, fin: &str) -> i64 {
+    pub(crate) fn releve(&mut self, debut: &str, fin: &str) -> i64 {
         let id = i64::try_from(self.d.releves.len()).unwrap() + 1;
         self.d.releves.push(Releve {
             id,
@@ -71,7 +71,13 @@ impl Jeu {
         id
     }
 
-    fn op(&mut self, releve: i64, date: &str, categorie: Option<i64>, montant: i64) -> i64 {
+    pub(crate) fn op(
+        &mut self,
+        releve: i64,
+        date: &str,
+        categorie: Option<i64>,
+        montant: i64,
+    ) -> i64 {
         let id = i64::try_from(self.d.operations.len()).unwrap() + 1;
         self.d.operations.push(Operation {
             id,
@@ -86,12 +92,19 @@ impl Jeu {
         id
     }
 
-    fn credit(&mut self, releve: i64, date: &str, categorie: Option<i64>, montant: i64) {
+    pub(crate) fn credit(&mut self, releve: i64, date: &str, categorie: Option<i64>, montant: i64) {
         self.op(releve, date, categorie, montant);
         self.d.operations.last_mut().unwrap().credit = true;
     }
 
-    fn carte(&mut self, releve: i64, date: &str, achat: &str, categorie: i64, montant: i64) -> i64 {
+    pub(crate) fn carte(
+        &mut self,
+        releve: i64,
+        date: &str,
+        achat: &str,
+        categorie: i64,
+        montant: i64,
+    ) -> i64 {
         let id = self.op(releve, date, Some(categorie), montant);
         self.d.operations.last_mut().unwrap().achat = Some(jour(achat));
         id
@@ -814,13 +827,13 @@ fn detail_d_une_categorie() {
     assert_eq!(par_releve.dernieres, [21, 20, 16]);
 }
 
-struct Semis {
-    courses: i64,
-    logement: i64,
-    revenus: i64,
+pub(crate) struct Semis {
+    pub(crate) courses: i64,
+    pub(crate) logement: i64,
+    pub(crate) revenus: i64,
 }
 
-async fn categorie_de(e: &Env, qui: &str, cle: &str) -> i64 {
+pub(crate) async fn categorie_de(e: &Env, qui: &str, cle: &str) -> i64 {
     e.get(qui, "/categories").await.json()["categories"]
         .as_array()
         .unwrap()
@@ -830,7 +843,13 @@ async fn categorie_de(e: &Env, qui: &str, cle: &str) -> i64 {
         .unwrap()
 }
 
-async fn releve_de(e: &Env, sub: &str, numero: i32, debut: &str, fin: &str) -> (i64, i64) {
+pub(crate) async fn releve_de(
+    e: &Env,
+    sub: &str,
+    numero: i32,
+    debut: &str,
+    fin: &str,
+) -> (i64, i64) {
     let compte: i64 = sqlx::query_scalar(
         "INSERT INTO comptes (sub, banque, iban) VALUES ($1, 'cmb', 'FR00 0000 0000 0000 0000 0000 000')
          ON CONFLICT (sub, banque, iban) DO UPDATE SET iban = EXCLUDED.iban RETURNING id",
@@ -856,15 +875,20 @@ async fn releve_de(e: &Env, sub: &str, numero: i32, debut: &str, fin: &str) -> (
     (compte, releve)
 }
 
-struct Ligne<'a> {
-    date: &'a str,
-    achat: Option<&'a str>,
-    categorie: Option<i64>,
-    montant: i64,
-    sens: &'a str,
+pub(crate) struct Ligne<'a> {
+    pub(crate) date: &'a str,
+    pub(crate) achat: Option<&'a str>,
+    pub(crate) categorie: Option<i64>,
+    pub(crate) montant: i64,
+    pub(crate) sens: &'a str,
 }
 
-async fn operations_de(e: &Env, sub: &str, (compte, releve): (i64, i64), lignes: &[Ligne<'_>]) {
+pub(crate) async fn operations_de(
+    e: &Env,
+    sub: &str,
+    (compte, releve): (i64, i64),
+    lignes: &[Ligne<'_>],
+) {
     for (rang, l) in lignes.iter().enumerate() {
         sqlx::query(
             "INSERT INTO operations (releve_id, compte_id, sub, rang, page, date_operation, date_valeur, date_achat,
@@ -889,7 +913,7 @@ async fn operations_de(e: &Env, sub: &str, (compte, releve): (i64, i64), lignes:
     }
 }
 
-fn debit(date: &str, categorie: Option<i64>, montant: i64) -> Ligne<'_> {
+pub(crate) fn debit(date: &str, categorie: Option<i64>, montant: i64) -> Ligne<'_> {
     Ligne {
         date,
         achat: None,
@@ -899,7 +923,7 @@ fn debit(date: &str, categorie: Option<i64>, montant: i64) -> Ligne<'_> {
     }
 }
 
-async fn semer(e: &Env) -> Semis {
+pub(crate) async fn semer(e: &Env) -> Semis {
     let s = Semis {
         courses: categorie_de(e, "alice", "courses").await,
         logement: categorie_de(e, "alice", "logement").await,
@@ -954,7 +978,7 @@ async fn semer(e: &Env) -> Semis {
     s
 }
 
-async fn lire(e: &Env, qui: &str, chemin: &str) -> Value {
+pub(crate) async fn lire(e: &Env, qui: &str, chemin: &str) -> Value {
     let r = e.get(qui, chemin).await;
     assert_eq!(r.statut, StatusCode::OK, "{chemin} : {}", r.texte());
     r.json()
@@ -1121,7 +1145,7 @@ async fn statistiques_cloisonnees_par_personne() {
     );
 }
 
-fn entier(v: &Value) -> i64 {
+pub(crate) fn entier(v: &Value) -> i64 {
     v.as_i64().expect("entier")
 }
 
