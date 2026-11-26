@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setUnauthorizedHandler } from '../../lib/api'
-import { AUJOURDHUI, fauxClient, recaps, statsPleines, statsVides, trophees } from './essais'
+import { AUJOURDHUI, fauxClient, recaps, statsPleines, statsVides, trophees, usage } from './essais'
 import { adminApi, lecturesDe, sablierApi, type Periode } from './sablier'
 import { EtatSablier } from './sablier.svelte'
 
@@ -140,7 +140,7 @@ describe('état de la section', () => {
     const { lus, client } = appels()
     const etat = new EtatSablier(client, () => AUJOURDHUI)
     await etat.ouvrir()
-    expect(lus).toEqual(['usage month 2026-11-18', 'entracte month 2026-11-18', 'sillon month 2026-11-18', 'messaging month 2026-11-18'])
+    expect(lus).toEqual(['usage year 2026-11-18', 'usage month 2026-11-18', 'entracte month 2026-11-18', 'sillon month 2026-11-18', 'messaging month 2026-11-18'])
     lus.length = 0
     etat.choisir('week')
     await vi.waitFor(() => expect(lus).toHaveLength(4))
@@ -148,6 +148,33 @@ describe('état de la section', () => {
     lus.length = 0
     etat.choisir('week')
     expect(lus).toEqual([])
+  })
+
+  it('activité des douze derniers mois : l’année en cours, et la précédente si le premier jour la précède', async () => {
+    const lus: string[] = []
+    const client = (premier: string) => fauxClient({ usage: async (p, d) => { lus.push(`${p} ${d}`); return usage({ seconds: 60, first_day: premier, by_day: [{ day: `${d.slice(0, 4)}-03-01`, seconds: 60 }] }) } })
+    const recent = new EtatSablier(client('2026-09-03'), () => AUJOURDHUI)
+    await recent.ouvrir()
+    expect(lus.filter((l) => l.startsWith('year'))).toEqual(['year 2026-11-18'])
+    expect(recent.activite).toEqual([{ day: '2026-03-01', seconds: 60 }])
+    lus.length = 0
+    const ancien = new EtatSablier(client('2024-03-03'), () => AUJOURDHUI)
+    await ancien.ouvrir()
+    expect(lus.filter((l) => l.startsWith('year'))).toEqual(['year 2026-11-18', 'year 2025-12-31'])
+    expect(ancien.activite?.map((j) => j.day)).toEqual(['2025-03-01', '2026-03-01'])
+    const consultation = new EtatSablier(client('2024-03-03'), () => AUJOURDHUI, true)
+    lus.length = 0
+    await consultation.ouvrir()
+    expect(lus.filter((l) => l.startsWith('year'))).toEqual([])
+    expect(consultation.activite).toBeNull()
+  })
+
+  it('activité illisible : la section s’ouvre sans elle', async () => {
+    const etat = new EtatSablier(fauxClient({ usage: async (p) => { if (p === 'year') throw new TypeError('Failed to fetch'); return usage() } }), () => AUJOURDHUI)
+    await etat.ouvrir()
+    expect(etat.activite).toBeNull()
+    expect(etat.charge).toBe(true)
+    expect(etat.erreur).toBe('')
   })
 
   it('C3 : reculer et avancer rechargent, sans dépasser le premier jour ni la période en cours', async () => {

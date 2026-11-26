@@ -80,8 +80,12 @@ système de Chromium doivent être présentes).
   **Section Stats** (`#/stats[/<sous-section>[/<id>[/<détail>]]]`, route `stats`) : affichée selon `GET /me` de Sablier (`permissions.access`, lu au démarrage
   par `app.loadSablier` : `app.sablierMe`, `app.stats`) ; `/me` en échec ou Sablier absent : pas de section, rien d'autre ne change. Entrée dans le
   rail (`ServerRail`) et dans `SectionsShell`, navigation `SablierNav`, coque `SablierSpace` :
-  - `#/stats` : `SablierJeu`, jeu et trophées. `SablierPeriode` (semaine, mois, année, tout, périodes précédentes), `SablierSeries`,
-    `SablierTrophees`, une `SablierCarte` par domaine, `SablierAnnonce` (trophée débloqué ou récap disponible à l'ouverture, dans `Modal`).
+  - `#/stats` : `SablierJeu`, jeu et trophées, de haut en bas : `SablierSerieJours` (série en cours, record, calendrier des quatre
+    dernières semaines), `SablierActivite` (grille des douze derniers mois, une case par jour, teinte selon le temps actif),
+    `SablierVitrine` (« Presque là » : les trois trophées les plus proches ; « Collection » : une carte par trophée, médaille à la matière
+    du palier atteint, bronze, argent, or ou exploit, anneau d'avancement vers le palier suivant), puis les stats par domaine :
+    `SablierPeriode` (semaine, mois, année, tout, périodes précédentes) et une `SablierCarte` par domaine. `SablierAnnonce` (trophée
+    débloqué ou récap disponible à l'ouverture, dans `Modal`). `SablierSeries` et `SablierTrophees` ne servent plus qu'à `SablierPersonne`.
   - `#/stats/recaps` : `SablierRecaps`, liste des récaps ; `#/stats/recaps/<id>` : `SablierRecap`, le récap en histoire, plein écran
     (flèches, Début, Fin, Échap ; moitiés gauche et droite ; balayage).
   - `#/stats/partage` : `SablierPartage`, réglage de partage stat par stat et trophée par trophée (`PUT /sharing` à chaque bascule), puis
@@ -102,7 +106,8 @@ système de Chromium doivent être présentes).
   - Logique pure, testée à part : `formats.ts` (durées, nombres, jours), `periodes.ts` (bornes et navigation : ni avant `first_day`, ni après
     la période en cours), `stats.ts` (ce qu'une carte affiche : une stat nulle n'a pas de ligne, `{access: false}` donne la carte courte au
     cadenas, un domaine vide une carte qui renvoie vers une période plus large qui a des données ; noms des salons lus dans `app.details`,
-    « salon supprimé » sinon ; séries ; trophées), `recap.ts` (écrans du récap rédigés depuis les totaux et `highlights`, écran sans rien à
+    « salon supprimé » sinon ; séries ; trophées ; `collection` et `matiereDe` pour la vitrine ; `grilleActivite` et `quatreSemaines` pour
+    les deux calendriers), `recap.ts` (écrans du récap rédigés depuis les totaux et `highlights`, écran sans rien à
     dire sauté ; rangement de la liste), `admin.ts` (noms et filtres des listes, lignes du tableau des trophées, formulaire d'un trophée :
     `versRequete` valide comme le serveur et rend le corps du `POST`, ou les seuls champs changés pour le `PATCH` ; durées saisies en
     heures et envoyées en secondes). `essais.ts` : jeux d'essai des tests.
@@ -110,8 +115,9 @@ système de Chromium doivent être présentes).
     personne par les routes d'administration, de même forme que celles de `sablierApi`).
   - `sablier.svelte.ts` : `NavigationPeriode` (période, date, bornes ; sert aussi aux totaux) et l'état (`sablier`, classe `EtatSablier`,
     client et horloge injectables ; troisième argument `consultation` pour la vue d'administration : ni annonce, ni `/unseen`, ni
-    `POST /seen`). `admin.svelte.ts` : liste des personnes de l'administration (`admin`). `ouvrir` charge trophées, séries, stats
-    et non vus ; `choisir`, `reculer`, `avancer`, `aller` rechargent les quatre domaines ; `tropheeVu` et `lireRecap` envoient `POST /seen`
+    `POST /seen`). `admin.svelte.ts` : liste des personnes de l'administration (`admin`). `ouvrir` charge trophées, séries, activité par jour
+    (`GET /usage?period=year` de l'année en cours, et de la précédente si le premier jour d'activité la précède ; pas en consultation ;
+    un échec masque les calendriers sans bloquer la section), stats et non vus ; `choisir`, `reculer`, `avancer`, `aller` rechargent les quatre domaines ; `tropheeVu` et `lireRecap` envoient `POST /seen`
     puis relisent `/unseen` (pastille du rail et de la navigation : `sablier.pastille`, `sablier.nonVus`) ; `chargerRecaps`,
     `chargerPartage`, `partager`. Sablier injoignable : `erreur` et l'écran `SablierErreur` avec « Réessayer », le reste de l'app continue.
   - Styles : `src/styles/sablier.css` (classes `sab-*`, jetons de l'app, requêtes de conteneur). Icônes des trophées : noms d'`Icon.svelte`,
