@@ -1,6 +1,7 @@
 import { enregistrer, filtreActif, lots, messageErreur, SANS_FILTRE, tirelireApi, totauxDe, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle, type Totaux } from './tirelire'
 import type { Releve } from './tirelire'
 import { CLE_FENETRE, lireFenetre, type Evolution, type Fenetre } from './evolution'
+import { CLE_FENETRE_HABITUDES, lireFenetreHabitudes, type FenetreHabitudes, type Habitudes, type Raison, type Recurrents } from './habitudes'
 import { CLE_MODE, lireMode, type DetailCategorie, type Mode, type Mois, type ResumePeriode } from './stats'
 
 function modeMemorise(): Mode {
@@ -9,6 +10,10 @@ function modeMemorise(): Mode {
 
 function fenetreMemorisee(): Fenetre {
   try { return lireFenetre(localStorage.getItem(CLE_FENETRE)) } catch { return '12' }
+}
+
+function fenetreHabitudesMemorisee(): FenetreHabitudes {
+  try { return lireFenetreHabitudes(localStorage.getItem(CLE_FENETRE_HABITUDES)) } catch { return '3' }
 }
 
 export interface Annulable { titre: string; detail: string; commercant: number | null; operation: number | null }
@@ -51,7 +56,17 @@ export class EtatTirelire {
   fenetre = $state<Fenetre>(fenetreMemorisee())
   evolution = $state.raw<Evolution | null>(null)
   erreurEvolution = $state('')
+  fenetreHabitudes = $state<FenetreHabitudes>(fenetreHabitudesMemorisee())
+  habitudes = $state.raw<Habitudes | null>(null)
+  erreurHabitudes = $state('')
+  recurrents = $state.raw<Recurrents | null>(null)
+  erreurRecurrents = $state('')
+  recurrentOccupe = $state('')
+  inhabituelle = $state.raw<{ id: number; raison: Raison | null } | null>(null)
   version = $state(0)
+  private tourHabitudes = 0
+  private tourRecurrents = 0
+  private tourInhabituelle = 0
   private tourEvolution = 0
   private tourMois = 0
   private tourCategorie = 0
@@ -119,6 +134,79 @@ export class EtatTirelire {
     this.tourEvolution++
     this.evolution = null
     this.erreurEvolution = ''
+    this.tourHabitudes++
+    this.habitudes = null
+    this.erreurHabitudes = ''
+    this.oublierRecurrents()
+  }
+
+  private oublierRecurrents() {
+    this.tourRecurrents++
+    this.tourInhabituelle++
+    this.recurrents = null
+    this.erreurRecurrents = ''
+    this.recurrentOccupe = ''
+    this.inhabituelle = null
+  }
+
+  changerFenetreHabitudes(fenetre: FenetreHabitudes) {
+    if (fenetre === this.fenetreHabitudes) return
+    this.fenetreHabitudes = fenetre
+    try { localStorage.setItem(CLE_FENETRE_HABITUDES, fenetre) } catch { this.fenetreHabitudes = fenetre }
+  }
+
+  async chargerHabitudes() {
+    const tour = ++this.tourHabitudes
+    this.erreurHabitudes = ''
+    try {
+      const habitudes = await this.api.habitudes(this.mode, this.fenetreHabitudes)
+      if (tour === this.tourHabitudes) this.habitudes = habitudes
+    } catch (e) {
+      if (tour !== this.tourHabitudes) return
+      this.habitudes = null
+      this.erreurHabitudes = messageErreur(e)
+    }
+  }
+
+  async chargerRecurrents() {
+    const tour = ++this.tourRecurrents
+    this.erreurRecurrents = ''
+    try {
+      const recurrents = await this.api.recurrents()
+      if (tour === this.tourRecurrents) this.recurrents = recurrents
+    } catch (e) {
+      if (tour !== this.tourRecurrents) return
+      this.recurrents = null
+      this.erreurRecurrents = messageErreur(e)
+    }
+  }
+
+  async modifierRecurrent(id: string, corps: { dismissed?: boolean; seen?: true }): Promise<boolean> {
+    if (this.recurrentOccupe) return false
+    const tour = ++this.tourRecurrents
+    this.recurrentOccupe = id
+    this.erreurRecurrents = ''
+    try {
+      const recurrents = await this.api.modifierRecurrent(id, corps)
+      if (tour === this.tourRecurrents) this.recurrents = recurrents
+      return true
+    } catch (e) {
+      if (tour === this.tourRecurrents) this.erreurRecurrents = messageErreur(e)
+      return false
+    } finally {
+      this.recurrentOccupe = ''
+    }
+  }
+
+  async chargerInhabituelle(id: number) {
+    const tour = ++this.tourInhabituelle
+    if (this.inhabituelle?.id !== id) this.inhabituelle = null
+    try {
+      const raison = await this.api.inhabituelle(id)
+      if (tour === this.tourInhabituelle) this.inhabituelle = { id, raison }
+    } catch {
+      if (tour === this.tourInhabituelle) this.inhabituelle = null
+    }
   }
 
   changerFenetre(fenetre: Fenetre) {
@@ -145,7 +233,11 @@ export class EtatTirelire {
     }
   }
 
-  private perimer() { this.version++ }
+  private perimer() {
+    this.version++
+    this.tourInhabituelle++
+    this.inhabituelle = null
+  }
 
   changerMode(mode: Mode) {
     if (mode === this.mode) return

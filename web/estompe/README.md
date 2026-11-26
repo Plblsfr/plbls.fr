@@ -18,7 +18,7 @@ npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe se
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
-npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, accueil, vue du mois et détail d'une catégorie, évolution, écran de téléphone, Tirelire arrêté : API simulées
+npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, accueil, vue du mois et détail d'une catégorie, évolution, habitudes et abonnements, écran de téléphone, Tirelire arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -165,7 +165,17 @@ système de Chromium doivent être présentes).
     au clavier) qui défile ; à 1280 px le tableau de 12 périodes tient en entier. Un montant au-dessus du plafond porte un ▲ et un fond, jamais la couleur
     seule. États dits tels quels : une seule période, pas assez de périodes complètes pour une tendance, aucun plafond, année précédente absente ou
     partielle, jours sans relevé, solde non rapproché. Calculs purs dans `evolution.ts`.
-  - `#/tirelire/habitudes` : `TirelireAttente`, « Bientôt disponible », sans aucun chiffre, avec les liens vers ce qui existe.
+  - `#/tirelire/habitudes` : `TirelireHabitudes` (`GET /stats/habits`, chargé par `tirelire.chargerHabitudes`). Fenêtre « ce mois », 3, 6, 12 périodes ou tout
+    (mémorisée, `localStorage`, clé `tirelire.habitudes`) et bascule « Par relevé » / « Mois calendaire ». Blocs : carte d'accès aux abonnements (coût mensuel,
+    nombre d'alertes non vues), top commerçants triés par montant ou par nombre (`classes` suit les rangs du service, barre à la teinte de la catégorie, lien vers
+    les opérations filtrées : `lienOperations`), petits achats répétés avec l'estimation annuelle ou la raison de son absence, barres par jour de la semaine
+    (paiements par carte seulement, c'est dit sous le graphique) et par semaine du mois, chacune avec sa phrase et son tableau de données, opérations
+    inhabituelles avec leur raison (`raisonDe`). `#/tirelire/habitudes/abonnements` : `TirelireAbonnements` (`GET /stats/recurring`, `tirelire.chargerRecurrents`).
+    Coût par mois et par an, part des abonnements et des charges fixes, alertes « montant changé » et « nouvel abonnement » (« C'est noté » :
+    `PATCH {seen}` ; « Pas un abonnement » et la croix d'une ligne : `PATCH {dismissed}`), liste filtrable Tous / Abonnements / Charges, arrêtés, écartés
+    (« Rétablir »), méthode. Historique trop court : l'écran dit ce qu'il faudrait importer (`manque`). L'accueil porte la même carte d'accès, et le détail
+    d'une opération l'étiquette « Inhabituelle » avec sa raison (`GET /operations/{id}/unusual`). `habitudes.ts` : types et calculs purs ;
+    `essais-habitudes.ts` : jeux d'essai inventés, partagés avec le faux Tirelire des tests de bout en bout.
   - `#/tirelire/a-classer` : `TirelireClasser`. File `GET /unclassified`, un groupe par commerçant : le premier groupe en grand (libellés bruts,
     choix rapide d'une catégorie), « Passer », puis la liste « Ensuite ». Classer fixe la catégorie de tout le commerçant
     (`PUT /merchants/{id}/category`), ou de la seule opération la plus récente si la case de la règle est décochée ou si l'opération n'a pas de
@@ -226,6 +236,7 @@ commerçants, filtres et reclassement depuis le détail, recherche, filtres dans
 accueil, vue du mois, détail d'une catégorie (plafond modifié sur place, bascule par relevé, états limites ; `TIRELIRE_CAPTURES_MOIS=<dossier>` en enregistre les captures),
 évolution (graphique, tableau figé qui défile dans sa boîte à 390 px et tient en entier à 1280 px, tendances, solde et ses trous, année sur l'autre, fenêtre et
 mode mémorisés, états limites ; `TIRELIRE_CAPTURES_EVOLUTION=<dossier>` en enregistre les captures),
+habitudes et abonnements (tri des commerçants, fenêtre mémorisée, alerte vue, faux abonnement écarté puis rétabli, états limites ; `TIRELIRE_CAPTURES_HABITUDES=<dossier>` en enregistre les captures),
 écran de 390 px sans débordement, Tirelire arrêté, axe ; `TIRELIRE_CAPTURES=<dossier>` y enregistre
 les captures des écrans de catégorisation, `TIRELIRE_CAPTURES_RECHERCHE=<dossier>` celles de la recherche et des filtres. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. `npm run e2e:cinema` (`playwright.cinema.config.ts`, `e2e/cinema.spec.ts`) vérifie le mode cinéma du salon cinéma

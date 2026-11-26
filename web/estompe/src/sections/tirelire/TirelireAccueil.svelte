@@ -2,6 +2,7 @@
   import Icon from '../../components/Icon.svelte'
   import { hrefs } from '../../lib/route.svelte'
   import { euros, eurosSignes, pluriel } from './formats'
+  import type { Recurrents } from './habitudes'
   import TirelireCourbe from './TirelireCourbe.svelte'
   import TirelireEcart from './TirelireEcart.svelte'
   import TirelireEtincelle from './TirelireEtincelle.svelte'
@@ -10,7 +11,7 @@
   import { teinte } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
-  let { mois }: { mois: Mois } = $props()
+  let { mois, recurrents = null }: { mois: Mois; recurrents?: Recurrents | null } = $props()
 
   let en = $state<'euros' | 'pourcent'>('euros')
 
@@ -177,4 +178,16 @@
     {/if}
     <a class="tir-btn tir-btn--large" href={hrefs.tirelire('mois', mois.period.id)}>Voir {calendaire ? 'le mois' : 'le relevé'} en détail<Icon name="droite" size={16} /></a>
   </section>
+
+  {#if recurrents}
+    <a class="tir-bandeau tir-tb-abonnements" class:tir-bandeau--calme={!recurrents.alerts_unseen} href={hrefs.tirelire('habitudes', 'abonnements')} aria-label="Abonnements et prélèvements{recurrents.alerts_unseen ? ` : ${pluriel(recurrents.alerts_unseen, 'alerte non vue', 'alertes non vues')}` : ''}">
+      <span class="tir-pas" class:tir-pas--rose={!recurrents.alerts_unseen}><Icon name="actualise" size={18} /></span>
+      <span class="tir-col tir-col--colle tir-grandit">
+        <span class="tir-h3">Abonnements et prélèvements</span>
+        <span class="tir-note">{#if recurrents.total.count}{euros(recurrents.total.monthly)} par mois · {pluriel(recurrents.total.count, 'récurrent', 'récurrents')}{:else}aucun récurrent détecté pour l’instant{/if}</span>
+      </span>
+      {#if recurrents.alerts_unseen}<span class="tir-etq tir-etq--fort">{pluriel(recurrents.alerts_unseen, 'alerte', 'alertes')}</span>{/if}
+      <Icon name="droite" size={18} />
+    </a>
+  {/if}
 </div>

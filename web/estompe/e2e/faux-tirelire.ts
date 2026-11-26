@@ -1,5 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 import { simuler, type Profil } from './faux-sablier'
+import { habitudesStats, RECURRENTS_ESSAI, recurrentsCourts, totaliser } from '../src/sections/tirelire/essais-habitudes'
+import type { Habitudes } from '../src/sections/tirelire/habitudes'
 
 export const TIRELIRE = 'http://tirelire.test'
 export const PORT = 4179
@@ -72,6 +74,8 @@ export function serveurTirelire(avecReleves = false) {
     },
     acces: true,
     arrete: false,
+    court: false,
+    recurrents: structuredClone(RECURRENTS_ESSAI),
     releves: [] as Record<string, unknown>[],
     operations: [] as Record<string, unknown>[],
     fichiers: new Map<string, number>(),
@@ -326,6 +330,21 @@ function importer(srv: Tirelire, fichier: string) {
   return { file: fichier, status: 'imported', statement: srv.ajouter(fichier, mois, annee, mois, 30 + mois) }
 }
 
+function inhabituelles(srv: Tirelire): Habitudes['unusual'] {
+  const cartes = (srv.operations as Op[]).filter((o) => o.type === 'carte').slice(0, 2)
+  const modele = habitudesStats().unusual.operations
+  const operations = cartes.map((o, i) => ({ ...modele[i], id: o.id, date: reference(o), amount: o.amount, merchant_id: o.merchant_id, merchant_name: String(o.merchant_name ?? ''), reason: { ...modele[i].reason, median: Math.round((o.amount * 10) / (modele[i].reason.ratio_x10 ?? 10)), excess: o.amount - Math.round((o.amount * 10) / (modele[i].reason.ratio_x10 ?? 10)), name: modele[i].reason.basis === 'merchant' ? String(o.merchant_name ?? '') : modele[i].reason.name } }))
+  return { total: operations.length, operations }
+}
+
+function habitudesFausses(srv: Tirelire, mode: Mode, fenetre: string | null): Habitudes {
+  const base = habitudesStats({ mode, window: (fenetre ?? '3') as Habitudes['window'], unusual: inhabituelles(srv) })
+  const noms = new Map(srv.commercants.map((m) => [m.name, m.id]))
+  if (!srv.court) return { ...base, merchants: base.merchants.map((m) => ({ ...m, merchant_id: noms.get(m.name ?? '') ?? m.merchant_id })) }
+  const vide = { amount: 0, count: 0 }
+  return { ...base, previous: null, covered_days: 26, variable: 0, merchants: [], merchants_total: 0, small: { ...base.small, count: 0, amount: 0, yearly: null, merchants: [], merchants_total: 0 }, weekdays: { ...vide, buckets: base.weekdays.buckets.map((t) => ({ ...t, ...vide, per_day: 0 })) }, weeks: { ...vide, buckets: base.weeks.buckets.map((t) => ({ ...t, ...vide, per_day: t.days ? 0 : null })) }, unusual: { total: 0, operations: [] } }
+}
+
 export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boolean } = {}, srv: Tirelire = serveurTirelire()) {
   await simuler(page, { acces: false, ...p }, undefined, PORT)
   const origine = new URL(page.url() === 'about:blank' ? `http://localhost:${PORT}` : page.url()).origin
@@ -392,6 +411,11 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
       const offset = Number(q.get('offset') ?? 0)
       return json(route, { operations: filtrees.slice(offset, offset + limit), total: filtrees.length, total_debits: somme(filtrees, 'debit'), total_credits: somme(filtrees, 'credit'), limit, offset })
     }
+    const rare = /^\/operations\/(\d+)\/unusual$/.exec(url.pathname)
+    if (rare) {
+      if (!ops.some((x) => x.id === Number(rare[1]))) return inconnu()
+      return json(route, { unusual: srv.court ? null : (inhabituelles(srv).operations.find((x) => x.id === Number(rare[1]))?.reason ?? null) })
+    }
     const uneOperation = /^\/operations\/(\d+)(\/category)?$/.exec(url.pathname)
     if (uneOperation) {
       const o = ops.find((x) => x.id === Number(uneOperation[1]))
@@ -413,6 +437,18 @@ export async function simulerTirelire(page: Page, p: Profil & { tirelire?: boole
     }
     if (url.pathname.startsWith('/stats/')) {
       const mode: Mode = url.searchParams.get('mode') === 'statement' ? 'statement' : 'calendar'
+      const recurrents = () => (srv.court ? recurrentsCourts() : totaliser(srv.recurrents))
+      if (url.pathname === '/stats/habits') return json(route, habitudesFausses(srv, mode, url.searchParams.get('window')))
+      if (url.pathname === '/stats/recurring') return json(route, recurrents())
+      const recurrent = /^\/stats\/recurring\/(.+)$/.exec(url.pathname)
+      if (recurrent && methode === 'PATCH') {
+        const x = srv.recurrents.find((r) => r.id === decodeURIComponent(recurrent[1]))
+        if (!x) return inconnu()
+        const m = corps() as { dismissed?: boolean; seen?: boolean }
+        if (typeof m.dismissed === 'boolean') x.dismissed = m.dismissed
+        if (m.seen) x.alerts = x.alerts.map((a) => ({ ...a, seen: true }))
+        return json(route, recurrents())
+      }
       const st = statistiques(srv, mode)
       if (url.pathname === '/stats/months') return json(route, { mode, periods: st.periodes.map((p, i) => ({ ...p, operations: st.agregats[i].ops.length, expenses: st.agregats[i].depenses, income: st.agregats[i].revenus, savings: st.agregats[i].epargne, remaining: st.agregats[i].reste })) })
       if (url.pathname === '/stats/history') return json(route, st.historique(url.searchParams.get('window')))

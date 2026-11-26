@@ -486,3 +486,54 @@ a.tir-gr-nom:focus-visible { outline: none; box-shadow: var(--anneau-in); border
   .tir-ev > .tir-ev-tendance { grid-column: 1 / span 5; }
   .tir-ev > .tir-ev-solde { grid-column: 6 / -1; }
 }
+
+.tir-seg--dense > * { padding: 0 4px; font-size: 13px; }
+.tir-etq--fort { background: var(--rose-fonce); color: var(--tir-sur-rose); font-weight: 600; }
+.tir-pas--attente { background: var(--attention-fond); color: var(--attention); }
+.tir-bandeau--calme { background: var(--surface); box-shadow: var(--o1); }
+a.tir-bandeau--calme:hover { background: var(--papier-2); }
+.tir-bandeau--calme .tir-note { color: var(--encre-2); opacity: 1; }
+.tir-bandeau:not(.tir-bandeau--calme) .tir-pas { background: var(--papier); }
+.tir-carte--rose { background: var(--rose); box-shadow: none; }
+.tir-carte--rose :is(.tir-pas, .tir-etq) { background: var(--papier); }
+.tir-carte--rose .tir-note { color: var(--encre); }
+.tir-hb { display: flex; height: 8px; border-radius: var(--r-p); background: var(--papier-3); }
+.tir-hb-plein { min-width: 2px; border-radius: var(--r-p); }
+:where(.tir-hb-plein) { background: color-mix(in srgb, var(--tir-c5) 45%, var(--papier-3)); }
+.tir-hb-plein.tir-pt--0 { background: var(--gris); }
+.tir-hb-plein--fort { background: var(--tir-c5); }
+.tir-hab-ligne { align-items: flex-start; padding: 12px 0; }
+.tir-hab-tri { flex: 1 1 220px; max-width: 300px; }
+.tir-hab-tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tir-hab-tuiles .tir-val { font-size: 19px; }
+.tir-hab-an { grid-column: 1 / -1; background: var(--rose); }
+.tir-hab-an .tir-note { color: var(--encre); }
+.tir-hab-histo { height: 140px; }
+.tir-hab-histo .tir-histo-barre { max-width: 40px; }
+.tir-hab-semaine { display: grid; grid-template-columns: 74px minmax(0, 1fr) 64px; align-items: center; gap: 10px; }
+.tir-hab-semaine > :last-child { text-align: right; }
+.tir-hab-semaine > .tir-fort { color: var(--encre); }
+.tir-inhabituelle { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; margin: 0; padding: 12px; border-radius: var(--r); background: var(--attention-fond); font-size: 13.5px; }
+.tir-inhabituelle .tir-etq { background: var(--papier); }
+.tir-inhabituelle .tir-note { color: var(--encre-2); }
+.tir-abo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tir-abo-actions .tir-btn { flex: 1 1 130px; padding: 0 12px; }
+.tir-carte--rose .tir-btn--contour { box-shadow: inset 0 0 0 1px var(--encre); }
+.tir-abo-tuiles .tir-val { font-size: 20px; overflow-wrap: anywhere; }
+.tir-abo-ligne { display: flex; align-items: center; gap: 4px; }
+.tir-abo-ligne + .tir-abo-ligne { border-top: 1px solid var(--trait); }
+.tir-abo-ligne > .tir-li { align-items: flex-start; min-width: 0; }
+.tir-abo-dont p { margin: 0; }
+
+@media (min-width: 900px) {
+  .tir-ev > .tir-hab-top { grid-column: 1 / span 7; grid-row: span 2; }
+  .tir-ev > .tir-hab-petits { grid-column: 8 / -1; }
+  .tir-ev > .tir-hab-jours { grid-column: 8 / -1; }
+  .tir-ev > .tir-hab-semaines { grid-column: 1 / span 5; }
+  .tir-ev > .tir-hab-rares { grid-column: 6 / -1; }
+  .tir-ev > :is(.tir-abo-tuiles, .tir-abo-dont, .tir-abo-alertes, .tir-abo-finis) { grid-column: 1 / span 6; }
+  .tir-ev > .tir-abo-ecartes { grid-column: 1 / span 6; }
+  .tir-ev > .tir-abo-liste { grid-column: 7 / -1; grid-row: 1 / span 6; }
+  .tir-tb > .tir-tb-abonnements { grid-column: 1 / -1; }
+}
+:is(.tir-hab, .tir-abo) .tir-note--texte > .icon { display: inline-block; margin-right: 4px; vertical-align: -3px; }
