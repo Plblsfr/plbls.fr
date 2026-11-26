@@ -1,13 +1,20 @@
-// Versions de chaque élément (api, web, windows, android), stockées dans .version à la racine et mises à jour par la CI à chaque fusion dans main :
-//  - les éléments concernés sont ceux dont un dossier a changé dans la fusion (ELEMENTS) ;
+// Versions de chaque élément, stockées dans .version à la racine et mises à jour par la CI à chaque fusion dans main :
+//  - éléments d'Estompe (api, web, windows, android) et services (security, aegis, entracte, sillon, sablier, regie, ui) ;
+//  - les éléments concernés sont ceux dont un dossier a changé dans la fusion (ELEMENTS) ; pour un service, un fichier .md ne compte pas ;
 //  - fusion d'une branche feat/… = minor +1 (patch remis à 0), tout autre = patch +1, sauf release/… (notes de version) qui ne change rien.
 // Le nom de la branche est lu dans le sujet du commit de fusion de GitHub (« Merge pull request #1 from <compte>/feat/x »).
 // Les fusions en attente (depuis le dernier commit de main qui a modifié .version) sont recalculées ensemble à chaque fusion.
 // Pour une version majeure (ou pour repartir d'un autre numéro), il suffit de modifier la valeur dans .version à la main.
 // Un élément absent de .version part de 0.0.0 : sa première fusion feat/ lui donne 0.1.0.
 
-/** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/core dans les apps Tauri ; l'app native (abandonnée) ne monte aucune version. */
+export const SERVICES_RUST = ['security', 'aegis', 'entracte', 'sillon', 'sablier', 'regie']
+export const SERVICES = [...SERVICES_RUST, 'ui']
+
+/** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/core dans les apps Tauri, api/commun dans chaque service Rust ; l'app native (abandonnée) ne monte aucune version. */
 const ELEMENTS = [
+  ['api/commun/', SERVICES_RUST],
+  ...SERVICES_RUST.map((s) => [`api/${s}/`, [s]]),
+  ['packages/ui/', ['ui']],
   ['api/estompe/', ['api']],
   ['web/estompe/plateforme/', ['web']],
   ['web/estompe/', ['web', 'windows', 'android']],
@@ -22,7 +29,10 @@ const ELEMENTS = [
 /** @param {string[]} files chemins modifiés par la fusion @returns {string[]} */
 export function concerned(files) {
   const out = new Set()
-  for (const f of files) ELEMENTS.find(([dir]) => f.startsWith(dir))?.[1].forEach((e) => out.add(e))
+  for (const f of files) {
+    const elements = ELEMENTS.find(([dir]) => f.startsWith(dir))?.[1] ?? []
+    elements.filter((e) => !(f.endsWith('.md') && SERVICES.includes(e))).forEach((e) => out.add(e))
+  }
   return [...out]
 }
 

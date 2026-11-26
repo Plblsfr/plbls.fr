@@ -24,7 +24,7 @@ jobs:
     if: github.head_ref != 'ci/version'
     uses: ./.github/workflows/_changements.yml
 
-  # PR de version (ci/version, ouverte par livraison.yml) : seul .version change, aucun autre job ne tourne.
+  # PR de version (ci/version, ouverte par livraison.yml) : seuls .version et les manifestes des services changent, aucun autre job ne tourne.
   version-seule:
     if: github.head_ref == 'ci/version'
     runs-on: ubuntu-latest
@@ -33,13 +33,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Seul .version change, au format attendu
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Seuls .version et les manifestes des services changent, au format attendu
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          autres="$(git diff --name-only "origin/$BASE_REF...HEAD" | grep -vx '.version' || true)"
-          [ -z "$autres" ] || { echo "::error::la PR de version ne doit modifier que .version, pas : $autres"; exit 1; }
-          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).filter((e) => e !== "natif").sort().join(); if (k !== "android,api,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
+          autres="$(git diff --name-only "origin/$BASE_REF...HEAD" | grep -vxF -f <(node scripts/estompe/bump-version.mjs --fichiers) || true)"
+          [ -z "$autres" ] || { echo "::error::la PR de version ne doit modifier que .version et les manifestes des services, pas : $autres"; exit 1; }
+          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).filter((e) => e !== "natif").sort().join(); if (k !== "aegis,android,api,entracte,regie,sablier,security,sillon,ui,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
+          node scripts/estompe/bump-version.mjs --manifestes
+          git diff --exit-code || { echo "::error::les manifestes des services ne reprennent pas les versions de .version"; exit 1; }
 
   changelog:
     needs: changements

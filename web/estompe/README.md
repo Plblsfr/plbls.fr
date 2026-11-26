@@ -122,7 +122,7 @@ système de Chromium doivent être présentes).
     `chargerPartage`, `partager`. Sablier injoignable : `erreur` et l'écran `SablierErreur` avec « Réessayer », le reste de l'app continue.
   - Styles : `src/styles/sablier.css` (classes `sab-*`, jetons de l'app, requêtes de conteneur). Icônes des trophées : noms d'`Icon.svelte`,
     `trophee` en repli pour un nom inconnu (`SablierMedaille`).
-- `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
+- `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément d’Estompe et des services : api, web, windows, android, security, aegis…).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
   (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie, `SABLIER_PUBLIC_URL` pour Sablier) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
   `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, Régie, Sablier, gateway) : un fichier vidéo ou un flux HLS
