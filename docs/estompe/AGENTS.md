@@ -57,7 +57,8 @@ Règles du cycle :
 
 ## Nom de la branche = numéro de version
 
-Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android`), stockée dans `.version` et mise à jour
+Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android` pour Estompe ; `security`, `aegis`, `entracte`,
+`sillon`, `sablier`, `regie`, `ui` pour les services), stockée dans `.version` et mise à jour
 par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version` de `livraison.yml`) :
 
 | Branche | Effet à la fusion dans `main` |
@@ -71,11 +72,14 @@ Détails :
 - Éléments concernés = dossiers modifiés par la fusion : `api/estompe/` → api ; `web/estompe/plateforme/` → web ; `apps/estompe/windows/` → windows ;
   `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android,
   sauf `crates/client` et `crates/plateforme` qui, comme `apps/estompe/natif/` (app native abandonnée), ne montent aucune version. Un élément absent de `.version`
-  part de 0.0.0. Le calcul retire de `.version` une ancienne clé `natif`, que `version-seule` accepte encore.
+  part de 0.0.0 (un service, de la version de son manifeste). Le calcul retire de `.version` une ancienne clé `natif`, que `version-seule` accepte encore.
+- Services : `api/<service>/` → ce service ; `api/commun/` → tous les services Rust ; `packages/ui/` → ui. Les fichiers `.md` de ces dossiers ne comptent pas.
+  La CI recopie leur version dans `api/<service>/Cargo.toml`, `Cargo.lock`, `packages/ui/package.json` et `package-lock.json` : ne plus y modifier
+  la version à la main (pour une majeure, modifier `.version`). Le tag `<service>-vX.Y.Z` doit reprendre la version fusionnée par la PR de version.
   Une fusion qui ne touche que `docs/`, `scripts/`, la CI… ne change rien.
 - À chaque fusion, la CI recalcule `.version` (toutes les fusions depuis la dernière modification de `.version` sur `main`) et met à jour une PR
-  unique `ci/version` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Cette PR ne modifie que `.version` : dans `ci.yml`, seul le job
-  `version-seule` tourne et vérifie qu'aucun autre fichier ne change. Fusionner cette PR (« merge ») avant de poser un tag de livraison.
+  unique `ci/version` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Cette PR ne modifie que `.version` et les manifestes des services :
+  dans `ci.yml`, seul le job `version-seule` tourne et vérifie qu'aucun autre fichier ne change. Fusionner cette PR (« merge ») avant de poser un tag de livraison.
   Ne pas modifier `.version` dans une autre PR, sauf pour une version majeure (les fusions pas encore comptées repartent alors de cette valeur).
   Au build, `bump-version.mjs --apply` recopie les versions de `windows` et `android` dans `tauri.conf.json`, `Cargo.toml` et `Cargo.lock`
   (l'espace de travail seulement) ; l'app ne propose la mise à jour que si la version publiée a augmenté.

@@ -47,7 +47,9 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 ## `ci.yml` (PR)
 
 - `version-seule` : seul job de la PR de version (branche `ci/version`, `changements` et donc tous les autres jobs sont ignorés) ; échoue si un
-  autre fichier que `.version` change ou si `.version` n'a pas les quatre éléments `api`, `web`, `windows`, `android` (plus `natif`, facultatif : ancienne clé de l'app native, que `bump-version.mjs` ne calcule plus et retire) au format `x.y.z`.
+  autre fichier que `.version` et les manifestes des services (`bump-version.mjs --fichiers`) change, si `.version` n'a pas les éléments `api`, `web`, `windows`, `android`,
+  `security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `ui` (plus `natif`, facultatif : ancienne clé de l'app native, que `bump-version.mjs` ne calcule plus et retire) au format `x.y.z`,
+  ou si un manifeste ne reprend pas la version de `.version` (`bump-version.mjs --manifestes` ne doit rien changer).
 - `changelog` : exige un nouveau `changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
   tests des scripts communs, liens Markdown internes (`scripts/check-links.mjs`), `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque
@@ -85,11 +87,12 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 - `ui-dist` : tag `ui-v*` : archives de `packages/ui/dist` jointes à la release.
 - `estompe-api-image` (+ `estompe-api-release` sur tag) : image `ghcr.io/plblsfr/estompe` (`edge` sur `main`, `X.Y.Z`, `latest`, `sha-…` sur le
   tag `estompe-api-vX.Y.Z`), cache d'image `:buildcache` alimenté ici.
-- `estompe-version` : à chaque fusion dans `main`, recalcule `.version` d'après toutes les fusions depuis le dernier commit de `main` qui a
-  modifié `.version` (nom de branche lu dans le message du commit de fusion, voir `docs/estompe/AGENTS.md`), le pousse sur la branche unique
+- `estompe-version` : à chaque fusion dans `main`, recalcule `.version` (éléments d'Estompe et services) d'après toutes les fusions depuis le dernier commit de `main` qui a
+  modifié `.version` (nom de branche lu dans le message du commit de fusion, voir `docs/estompe/AGENTS.md`), recopie la version des services
+  dans leurs manifestes (`api/<service>/Cargo.toml`, `Cargo.lock`, `packages/ui/package.json`, `package-lock.json`), pousse le tout sur la branche unique
   `ci/version` et ouvre ou met à jour la PR « chore(version) » (secret `CI_PAT` : avec `GITHUB_TOKEN`, la PR ne déclencherait aucune CI).
   Une seule PR de version à la fois : des fusions rapprochées, ou un run annulé par la file d'attente, ne perdent aucune montée.
-  Fusionner cette PR avant de poser un tag `estompe-api-v*` / `estompe-app-v*`. Relancé, il ne fait rien de plus. Ignoré si le message du commit contient `[skip ci]`.
+  Fusionner cette PR avant de poser un tag de livraison (`estompe-api-v*`, `estompe-app-v*`, `<service>-v*`). Relancé, il ne fait rien de plus. Ignoré si le message du commit contient `[skip ci]`.
 - `estompe-ci-image` : image de job `ghcr.io/plblsfr/estompe-ci` ; incrémenter `:4` dans `livraison.yml`, `deploy/estompe/ci/Dockerfile` et `estompe-livraison-app.yml`.
 - `cache-rust`, `cache-npm` : écrivent sur `main` les caches lus par les PR (voir plus bas).
 

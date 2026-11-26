@@ -125,7 +125,7 @@ jobs:
     secrets: inherit
 
   # Joint dist/ (archives + fichiers seuls) à la release GitHub du tag `ui-v*`.
-  # Publier : mettre à jour la version (package.json, CHANGELOG.md), puis  git tag ui-v0.3.0 && git push origin ui-v0.3.0
+  # Publier : fusionner la PR de version (ci/version, qui monte package.json), ajouter la section du CHANGELOG.md, puis  git tag ui-v0.3.0 && git push origin ui-v0.3.0
   ui-dist:
     if: startsWith(github.ref, 'refs/tags/ui-v')
     runs-on: ubuntu-latest
@@ -237,22 +237,25 @@ jobs:
         run: |
           b=ci/version
           sha="$(git rev-parse HEAD)"
-          git diff --quiet .version && { echo "aucune version à monter depuis la dernière PR de version"; exit 0; }
-          title="chore(version): $(node -p 'Object.entries(JSON.parse(require("fs").readFileSync(".version","utf8"))).map(([k,x])=>k+" "+x).join(", ")')"
+          mapfile -t fichiers < <(node scripts/estompe/bump-version.mjs --fichiers)
+          git diff --quiet -- "${fichiers[@]}" && { echo "aucune version à monter depuis la dernière PR de version"; exit 0; }
+          title="chore(version): $(git show HEAD:.version | node -e 'const a=JSON.parse(require("fs").readFileSync(0,"utf8")),b=JSON.parse(require("fs").readFileSync(".version","utf8"));console.log(Object.entries(b).filter(([k,x])=>a[k]!==x).map(([k,x])=>k+" "+x).join(", ")||"manifestes des services")')"
           git config user.name "estompe-ci" && git config user.email "ci@plbls.fr"
           if git ls-remote --exit-code --heads origin "$b" >/dev/null && git fetch origin "+refs/heads/$b:refs/remotes/origin/$b" && ! git merge-base --is-ancestor "origin/$b" "$sha"; then
             git show "origin/$b:.version" | cmp -s - .version && { echo "$b est déjà à jour"; exit 0; }
-            cp .version "$RUNNER_TEMP/version" && git checkout -- .version
+            cp .version "$RUNNER_TEMP/version" && git checkout -- "${fichiers[@]}"
             git switch -c "$b" "origin/$b"
             git merge --no-ff --no-commit "$sha" || true
+            git checkout "$sha" -- "${fichiers[@]}"
             cp "$RUNNER_TEMP/version" .version
+            node scripts/estompe/bump-version.mjs --manifestes
           else
             git switch -c "$b"
           fi
-          git add .version
+          git add -- "${fichiers[@]}"
           git commit -m "$title"
           git push origin "$b"
-          body="Versions calculées par livraison.yml (job estompe-version) d'après toutes les fusions dans main depuis la dernière PR de version, jusqu'à $sha. Chaque nouvelle fusion met à jour cette PR au lieu d'en ouvrir une autre. La fusion de cette PR ne change aucune version (seul .version est modifié)."
+          body="Versions calculées par livraison.yml (job estompe-version) d'après toutes les fusions dans main depuis la dernière PR de version, jusqu'à $sha : éléments d'Estompe et services (security, aegis, entracte, sillon, sablier, regie, ui). Chaque nouvelle fusion met à jour cette PR au lieu d'en ouvrir une autre. La fusion de cette PR ne change aucune version : elle ne modifie que .version et les manifestes des services ($(echo "${fichiers[@]:1}" | sed 's/ /, /g'))."
           pr="$(gh pr list --head "$b" --base main --state open --json number --jq '.[0].number // empty')"
           if [ -n "$pr" ]; then gh pr edit "$pr" --title "$title" --body "$body"; else gh pr create --base main --head "$b" --title "$title" --body "$body"; fi
       - run: |

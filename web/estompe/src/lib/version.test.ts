@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 // @ts-expect-error pas de @types/node dans le projet : le test tourne sous Node via vitest
 import { readFileSync } from 'node:fs'
-import { bump, concerned, nextVersions, pendingVersions } from '../../../../scripts/estompe/version.mjs'
+import { bump, concerned, nextVersions, pendingVersions, SERVICES } from '../../../../scripts/estompe/version.mjs'
 import { policy } from '../../../../scripts/estompe/update-policy.mjs'
 
 const merge = (b: string) => `Merge pull request #1 from Plblsfr/${b}`
@@ -22,7 +22,13 @@ describe('éléments concernés', () => {
     expect(concerned(['apps/estompe/crates/plateforme/src/lib.rs'])).toEqual([])
     expect(concerned(['apps/estompe/natif/installeur/estompe-natif.nsi', 'apps/estompe/crates/core/src/lib.rs']).sort()).toEqual(['android', 'windows'])
   })
-  it('docs, CI, autres projets et .version : aucun', () => expect(concerned(['docs/estompe/a.md', '.github/workflows/x.yml', '.version', 'web/autre/src/a.ts', 'api/autre/src/main.rs'])).toEqual([]))
+  it('docs, CI, autres projets et .version : aucun', () => expect(concerned(['docs/estompe/a.md', '.github/workflows/x.yml', '.version', 'web/autre/src/a.ts', 'api/autre/src/main.rs', 'Cargo.lock', 'docs/sillon/openapi.yaml'])).toEqual([]))
+  it('services : leur dossier, api/commun/ pour chaque service Rust', () => {
+    expect(concerned(['api/sillon/src/main.rs', 'packages/ui/src/a.css']).sort()).toEqual(['sillon', 'ui'])
+    expect(concerned(['api/security/Cargo.toml'])).toEqual(['security'])
+    expect(concerned(['api/commun/src/lib.rs']).sort()).toEqual(['aegis', 'entracte', 'regie', 'sablier', 'security', 'sillon'])
+  })
+  it('services : un fichier .md ne compte pas', () => expect(concerned(['api/entracte/README.md', 'packages/ui/CHANGELOG.md', 'api/commun/NOTES.md'])).toEqual([]))
 })
 
 describe('version', () => {
@@ -46,6 +52,12 @@ describe('version', () => {
     expect(nextVersions({ ...v, natif: '0.1.0' }, merge('fix/natif'), ['apps/estompe/crates/client/src/lib.rs'])).toEqual(v)
     expect(nextVersions({ ...v, natif: '0.1.0' }, merge('fix/a'), ['docs/estompe/a.md'])).toEqual(v)
   })
+  it('services : même règle que les éléments d\'Estompe', () => {
+    const v = { api: '0.1.0', sillon: '0.3.0', ui: '2.0.2' }
+    expect(nextVersions(v, merge('feat/a'), ['api/sillon/src/x.rs'])).toEqual({ ...v, sillon: '0.4.0' })
+    expect(nextVersions(v, merge('fix/a'), ['packages/ui/src/a.css'])).toEqual({ ...v, ui: '2.0.3' })
+    expect(nextVersions(v, merge('release/x'), ['api/sillon/src/x.rs'])).toEqual(v)
+  })
   it('les fusions en attente se cumulent dans l\'ordre', () => {
     const v = { api: '0.1.0', web: '0.2.0', windows: '0.3.0', android: '0.4.0' }
     const api = ['api/estompe/core/src/x.rs']
@@ -57,7 +69,8 @@ describe('version', () => {
 
 describe('fichier .version', () => {
   const versions = JSON.parse(readFileSync('../../.version', 'utf8'))
-  it('liste la version de chaque élément', () => expect(Object.keys(versions).filter((k) => k !== 'natif').sort()).toEqual(['android', 'api', 'web', 'windows']))
+  it('liste la version de chaque élément d\'Estompe', () => expect(['android', 'api', 'web', 'windows'].every((k) => k in versions)).toBe(true))
+  it('ne liste que des éléments connus', () => { for (const k of Object.keys(versions)) expect(['android', 'api', 'web', 'windows', 'natif', ...SERVICES]).toContain(k) })
   it('au format x.y.z', () => { for (const v of Object.values(versions)) expect(v).toMatch(/^\d+\.\d+\.\d+$/) })
 })
 

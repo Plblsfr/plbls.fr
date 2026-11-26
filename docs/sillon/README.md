@@ -455,5 +455,4 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
 
 ## Version
 
-Composant `sillon` : version du `Cargo.toml` d'`api/sillon`, tag `sillon-vX.Y.Z` (image `ghcr.io/plblsfr/sillon`, `:edge` sur `main`).
-Pas d'entrée dans `.version`, propre à Estompe.
+Composant `sillon` : version calculée à chaque fusion (`sillon` dans `.version`, recopiée dans le `Cargo.toml` d'`api/sillon` par la PR de version, voir `docs/estompe/AGENTS.md`), tag `sillon-vX.Y.Z` (image `ghcr.io/plblsfr/sillon`, `:edge` sur `main`).
