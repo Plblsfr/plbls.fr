@@ -1,41 +1,101 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
-  import { hrefs } from '../../lib/route.svelte'
-  import { anneeDe, dateCourte, eurosSignes, jourLong, montant, nombre, periode } from './formats'
+  import { hrefs, router } from '../../lib/route.svelte'
+  import { anneeDe, dateCourte, euros, eurosSignes, jourLong, montant, nombre, periode, pluriel, saisieEuros, type Sens } from './formats'
   import TirelirePastille from './TirelirePastille.svelte'
-  import { actives, filtres, nomReleve, parJour, titreDe, totauxConnus, typeDe } from './tirelire'
+  import { actives, DELAI_RECHERCHE, filtresDe, memesFiltres, montantSaisi, nomReleve, parJour, pastilles, recherche, RECHERCHE_MAX, requeteDe, SANS_FILTRE, titreDe, totauxConnus, typeDe, TYPES, type Filtres, type TypeOperation } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
-  let { annee = new Date().getFullYear() }: { annee?: number } = $props()
+  let { annee = new Date().getFullYear(), requete = '' }: { annee?: number; requete?: string } = $props()
+
+  const SENS: [Sens | null, string][] = [[null, 'Tout'], ['debit', 'Débits'], ['credit', 'Crédits']]
 
   let ouverts = $state(false)
+  let saisie = $state('')
   let du = $state('')
   let au = $state('')
+  let min = $state('')
+  let max = $state('')
+  let minuterie: ReturnType<typeof setTimeout> | undefined
+  let pret = false
   const inverse = $derived(!!du && !!au && du > au)
+  const bornes = $derived.by(() => {
+    const a = montantSaisi(min)
+    const b = montantSaisi(max)
+    if (!a.ok || !b.ok) return { erreur: 'Écris un montant en euros, par exemple 12,50.' }
+    if (a.valeur !== null && b.valeur !== null && a.valeur > b.valeur) return { erreur: 'Le montant minimum dépasse le montant maximum.' }
+    return { erreur: '', min: a.valeur, max: b.valeur }
+  })
   const jours = $derived(parJour(tirelire.operations ?? []))
-  const connus = $derived(tirelire.operations ? totauxConnus(tirelire.filtres, tirelire.releves ?? [], tirelire.operations, tirelire.total) : null)
+  const connus = $derived(tirelire.operations ? (tirelire.totaux ?? totauxConnus(tirelire.filtres, tirelire.releves ?? [], tirelire.operations, tirelire.total)) : null)
   const sansReleve = $derived(tirelire.releves?.length === 0)
+  const puces = $derived(pastilles(tirelire.filtres, { releves: tirelire.releves ?? [], categories: tirelire.categories ?? [], commercants: tirelire.commercants ?? [] }))
 
-  onMount(() => {
-    du = tirelire.filtres.du
-    au = tirelire.filtres.au
-    ouverts = !!du || !!au || tirelire.filtres.categorie !== null || tirelire.filtres.commercant !== null || tirelire.filtres.aClasser
-    if (!tirelire.operations) void tirelire.chargerOperations()
-    if (!tirelire.commercants) void tirelire.chargerCommercants()
+  function refleter() {
+    const f = tirelire.filtres
+    saisie = f.q
+    du = f.du
+    au = f.au
+    min = saisieEuros(f.min)
+    max = saisieEuros(f.max)
+  }
+
+  function appliquer(change: Partial<Filtres>) {
+    clearTimeout(minuterie)
+    const voulu = { ...tirelire.filtres, ...change }
+    if (memesFiltres(voulu, tirelire.filtres)) return
+    void tirelire.filtrer(voulu)
+    router.remplacer(hrefs.tirelire('operations', undefined, requeteDe(voulu)))
+  }
+
+  $effect(() => {
+    const voulu = filtresDe(requete)
+    const vide = !requete
+    untrack(() => {
+      if (!pret) {
+        pret = true
+        if (vide && tirelire.filtre) router.remplacer(hrefs.tirelire('operations', undefined, requeteDe(tirelire.filtres)))
+        if (!memesFiltres(voulu, tirelire.filtres) && !(vide && tirelire.filtre)) void tirelire.filtrer(voulu)
+        else if (!tirelire.operations) void tirelire.chargerOperations()
+        if (!tirelire.commercants) void tirelire.chargerCommercants()
+        ouverts = !memesFiltres(tirelire.filtres, { ...SANS_FILTRE, q: tirelire.filtres.q })
+        refleter()
+      } else if (!memesFiltres(voulu, tirelire.filtres)) {
+        clearTimeout(minuterie)
+        void tirelire.filtrer(voulu)
+        refleter()
+      }
+    })
   })
 
-  function dates() {
-    if (inverse) return
-    void tirelire.filtrer({ du, au })
+  onDestroy(() => clearTimeout(minuterie))
+
+  function chercher() {
+    clearTimeout(minuterie)
+    minuterie = setTimeout(() => appliquer({ q: recherche(saisie) }), DELAI_RECHERCHE)
   }
 
-  function effacer() {
-    du = ''
-    au = ''
-    void tirelire.filtrer(filtres())
+  function viderRecherche() {
+    saisie = ''
+    appliquer({ q: '' })
   }
+
+  function dates() {
+    if (!inverse) appliquer({ du, au })
+  }
+
+  function montants() {
+    if (!bornes.erreur) appliquer({ min: bornes.min, max: bornes.max })
+  }
+
+  function retirer(sans: Partial<Filtres>) {
+    appliquer(sans)
+    refleter()
+  }
+
+  const effacer = () => retirer(SANS_FILTRE)
 </script>
 
 {#if sansReleve}
@@ -47,16 +107,22 @@
   </section>
 {:else}
   <div class="tir-ligne" style:gap="8px">
-    <label class="tir-champ tir-grandit">
-      <Icon name="file" size={18} />
-      <select aria-label="Relevé" value={tirelire.filtres.releve === null ? '' : String(tirelire.filtres.releve)} onchange={(e) => void tirelire.filtrer({ releve: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-        <option value="">Tous les relevés</option>
-        {#each tirelire.releves ?? [] as r (r.id)}<option value={String(r.id)}>{nomReleve(r)} · {dateCourte(r.to)}</option>{/each}
-      </select>
-      <Icon name="bas" size={16} />
-    </label>
+    <div class="tir-champ tir-grandit" role="search">
+      <Icon name="cherche" size={18} />
+      <input type="search" aria-label="Rechercher une opération" placeholder="Libellé, détails, commerçant" maxlength={RECHERCHE_MAX} autocomplete="off" enterkeyhint="search" bind:value={saisie} oninput={chercher} onkeydown={(e) => { if (e.key === 'Enter') appliquer({ q: recherche(saisie) }) }} />
+      {#if saisie}<button class="tir-ib tir-ib--champ" aria-label="Effacer la recherche" onclick={viderRecherche}><Icon name="x" size={18} /></button>{/if}
+    </div>
     <button class="tir-ib tir-ib--fond" aria-expanded={ouverts} aria-controls="tir-filtres" aria-label={ouverts ? 'Masquer les filtres' : 'Afficher les filtres'} onclick={() => (ouverts = !ouverts)}><Icon name="filtre" size={20} /></button>
   </div>
+
+  {#if puces.length}
+    <ul class="tir-puces" aria-label="Filtres actifs">
+      {#each puces as p (p.cle)}
+        <li><button class="tir-puce" aria-label={p.label} title={p.label} onclick={() => retirer(p.sans)}><span><span>{p.texte}</span><Icon name="x" size={14} /></span></button></li>
+      {/each}
+      {#if puces.length > 1}<li><button class="tir-puce tir-puce--texte" onclick={effacer}><span><span>Tout effacer</span></span></button></li>{/if}
+    </ul>
+  {/if}
 
   {#if ouverts}
     <section class="tir-carte" id="tir-filtres" aria-label="Filtres" style:gap="10px">
@@ -67,18 +133,39 @@
       {#if inverse}<p class="tir-alerte" role="alert"><Icon name="alerte" size={18} />La date de début est après la date de fin.</p>{/if}
       <div class="tir-g2">
         <label class="tir-fl"><span>Catégorie</span><span class="tir-champ">
-          <select value={tirelire.filtres.aClasser ? 'a-classer' : tirelire.filtres.categorie === null ? '' : String(tirelire.filtres.categorie)} onchange={(e) => { const v = e.currentTarget.value; void tirelire.filtrer({ aClasser: v === 'a-classer', categorie: v && v !== 'a-classer' ? Number(v) : null }) }}>
+          <select value={tirelire.filtres.aClasser ? 'a-classer' : tirelire.filtres.categorie === null ? '' : String(tirelire.filtres.categorie)} onchange={(e) => { const v = e.currentTarget.value; appliquer({ aClasser: v === 'a-classer', categorie: v && v !== 'a-classer' ? Number(v) : null }) }}>
             <option value="">Toutes</option>
             <option value="a-classer">À classer</option>
             {#each actives(tirelire.categories ?? []) as c (c.id)}<option value={String(c.id)}>{c.name}</option>{/each}
           </select><Icon name="bas" size={16} /></span></label>
         <label class="tir-fl"><span>Commerçant</span><span class="tir-champ">
-          <select value={tirelire.filtres.commercant === null ? '' : String(tirelire.filtres.commercant)} onchange={(e) => void tirelire.filtrer({ commercant: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+          <select value={tirelire.filtres.commercant === null ? '' : String(tirelire.filtres.commercant)} onchange={(e) => appliquer({ commercant: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
             <option value="">Tous</option>
             {#each tirelire.commercants ?? [] as c (c.id)}<option value={String(c.id)}>{c.name}</option>{/each}
           </select><Icon name="bas" size={16} /></span></label>
+        <label class="tir-fl"><span>Montant minimum</span><span class="tir-champ"><input type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" bind:value={min} onchange={montants} /><span class="tir-note" aria-hidden="true">€</span></span></label>
+        <label class="tir-fl"><span>Montant maximum</span><span class="tir-champ"><input type="text" inputmode="decimal" autocomplete="off" placeholder="sans limite" bind:value={max} onchange={montants} /><span class="tir-note" aria-hidden="true">€</span></span></label>
+        <label class="tir-fl"><span>Type</span><span class="tir-champ">
+          <select value={tirelire.filtres.type ?? ''} onchange={(e) => appliquer({ type: (e.currentTarget.value || null) as TypeOperation | null })}>
+            <option value="">Tous</option>
+            {#each Object.entries(TYPES) as [cle, nom] (cle)}<option value={cle}>{nom}</option>{/each}
+          </select><Icon name="bas" size={16} /></span></label>
+        <label class="tir-fl"><span>Relevé</span><span class="tir-champ">
+          <select value={tirelire.filtres.releve === null ? '' : String(tirelire.filtres.releve)} onchange={(e) => appliquer({ releve: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+            <option value="">Tous les relevés</option>
+            {#each tirelire.releves ?? [] as r (r.id)}<option value={String(r.id)}>{nomReleve(r)} · {dateCourte(r.to)}</option>{/each}
+          </select><Icon name="bas" size={16} /></span></label>
       </div>
-      <div class="tir-ligne"><button class="tir-btn tir-btn--contour" disabled={!tirelire.filtre && !du && !au} onclick={effacer}>Réinitialiser</button></div>
+      {#if bornes.erreur}<p class="tir-alerte" role="alert"><Icon name="alerte" size={18} />{bornes.erreur}</p>{/if}
+      <div class="tir-seg" role="group" aria-label="Sens de l’opération">
+        {#each SENS as [sens, nom] (nom)}<button aria-pressed={tirelire.filtres.sens === sens} onclick={() => appliquer({ sens })}>{nom}</button>{/each}
+      </div>
+      <div class="tir-ligne tir-ligne--plis">
+        <button class="tir-btn tir-btn--contour" disabled={!tirelire.filtre && !saisie && !du && !au && !min && !max} onclick={effacer}>Réinitialiser</button>
+        <button class="tir-btn tir-btn--plein tir-btn--grandit" disabled={tirelire.exportEnCours || !tirelire.operations || !tirelire.total} onclick={() => void tirelire.exporter()}><Icon name="telecharge" size={16} />{tirelire.exportEnCours ? 'Export en cours…' : 'Exporter en CSV'}</button>
+      </div>
+      {#if tirelire.erreurExport}<p class="tir-alerte" role="alert"><Icon name="alerte" size={18} />L’export a échoué. {tirelire.erreurExport}</p>{/if}
+      {#if tirelire.exporte}<p class="tir-note tir-note--texte" role="status">{pluriel(tirelire.total, 'opération exportée', 'opérations exportées')} dans {tirelire.exporte}.</p>{/if}
     </section>
   {/if}
 
@@ -92,18 +179,18 @@
   {:else if !tirelire.operations}
     <div class="tir-etat" role="status"><Loader text="Chargement des opérations…" /></div>
   {:else}
-    <div class="tir-g3" role="group" aria-label="Résumé">
+    <div class="tir-g3" role="group" aria-label={tirelire.filtre ? 'Total de la sélection' : 'Résumé'}>
       <div class="tir-carte tir-carte--serre tir-carte--creux"><span class="tir-note">Opérations</span><span class="tir-h3">{nombre(tirelire.total)}</span></div>
       {#if connus}
-        <div class="tir-carte tir-carte--serre tir-carte--creux"><span class="tir-note">Débits</span><span class="tir-h3 tir-fixe">{eurosSignes(-connus.debits)}</span></div>
-        <div class="tir-carte tir-carte--serre tir-carte--creux"><span class="tir-note">Crédits</span><span class="tir-h3 tir-fixe tir-credit">{eurosSignes(connus.credits)}</span></div>
+        <div class="tir-carte tir-carte--serre tir-carte--creux"><span class="tir-note">Débits</span><span class="tir-h3 tir-fixe">{connus.debits ? eurosSignes(-connus.debits) : euros(0)}</span></div>
+        <div class="tir-carte tir-carte--serre tir-carte--creux"><span class="tir-note">Crédits</span><span class="tir-h3 tir-fixe" class:tir-credit={connus.credits > 0}>{connus.credits ? eurosSignes(connus.credits) : euros(0)}</span></div>
       {/if}
     </div>
 
     {#if !jours.length}
       <section class="tir-carte tir-etat" aria-label="Aucune opération">
         <h2 class="tir-h2">Aucune opération</h2>
-        <p class="tir-note tir-note--texte">{tirelire.filtre ? 'Rien ne correspond à ces filtres.' : 'Les relevés importés ne contiennent aucune opération.'}</p>
+        <p class="tir-note tir-note--texte">{tirelire.filtres.q ? `Rien ne correspond à « ${tirelire.filtres.q} »${puces.length > 1 ? ' avec ces filtres' : ''}.` : tirelire.filtre ? 'Rien ne correspond à ces filtres.' : 'Les relevés importés ne contiennent aucune opération.'}</p>
         {#if tirelire.filtre}<button class="tir-btn tir-btn--contour" onclick={effacer}>Réinitialiser les filtres</button>{/if}
       </section>
     {:else}

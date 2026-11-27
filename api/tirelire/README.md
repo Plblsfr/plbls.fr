@@ -16,7 +16,9 @@ routes dans [`openapi.yaml`](../../docs/tirelire/openapi.yaml).
 | `metriques.rs` | caractères et largeurs des polices standard (Helvetica, Times, Courier) que les relevés n'embarquent pas : nom de glyphe, largeur par police (métriques AFM d'Adobe), table WinAnsi |
 | `cmb.rs` | parseur des relevés du Crédit Mutuel de Bretagne (`analyser`), sur les mots positionnés seulement : en-tête, sections, opérations et détails, soldes, totaux, contrôles |
 | `import.rs` | `POST /statements/import` : empreinte, lecture hors du fil asynchrone, enregistrement en une transaction, réponse par fichier |
-| `releves.rs` | `GET /accounts`, `GET /statements`, `DELETE /statements/{id}`, `GET /operations` (filtres), `GET /operations/{id}`, `PUT /operations/{id}/category` |
+| `releves.rs` | `GET /accounts`, `GET /statements`, `DELETE /statements/{id}`, `GET /operations` (page et totaux de la sélection), `GET /operations/{id}`, `PUT /operations/{id}/category` |
+| `selection.rs` | filtres des opérations (`Filtre`, `Selection::lire`) : recherche sans casse ni accents, période, relevé, catégorie, commerçant, montant, sens, type ; condition SQL commune (`OU`, `lier!`) et résumé de la sélection (`resumer` : nombre, débits, crédits, première et dernière date) |
+| `export.rs` | `GET /operations/export.csv` : lecture et envoi en flux, cellules CSV (`cellule` : guillemets, protection contre les formules), montants et dates au format français, nom du fichier |
 | `normalisation.rs` | texte normalisé d'un libellé (`texte`, `contient` en mots entiers) et clé de commerçant ou de tiers d'une opération (`tiers`, `nom`) |
 | `classement.rs` | moteur de règles (`choisir`), rejeu idempotent sur toutes les opérations d'une personne (`rejouer`), premier accès et verrou par personne (`verrouiller`, `pret`), version de la normalisation |
 | `categories.rs` | catégories et règles par défaut (`CATEGORIES`, `REGLES`), `GET` et `POST /categories`, `PATCH /categories/{id}` |

@@ -1,4 +1,4 @@
-import { lots, messageErreur, SANS_FILTRE, tirelireApi, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle } from './tirelire'
+import { enregistrer, filtreActif, lots, messageErreur, SANS_FILTRE, tirelireApi, totauxDe, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle, type Totaux } from './tirelire'
 import type { Releve } from './tirelire'
 
 export interface Annulable { titre: string; detail: string; commercant: number | null; operation: number | null }
@@ -9,6 +9,10 @@ export class EtatTirelire {
   filtres = $state.raw<Filtres>(SANS_FILTRE)
   operations = $state.raw<Operation[] | null>(null)
   total = $state(0)
+  totaux = $state.raw<Totaux | null>(null)
+  exportEnCours = $state(false)
+  erreurExport = $state('')
+  exporte = $state('')
   suiteEnCours = $state(false)
   erreurOperations = $state('')
   envoi = $state(false)
@@ -36,7 +40,7 @@ export class EtatTirelire {
 
   constructor(private api: ClientTirelire = tirelireApi) {}
 
-  get filtre() { const f = this.filtres; return f.releve !== null || !!f.du || !!f.au || f.categorie !== null || f.commercant !== null || f.aClasser }
+  get filtre() { return filtreActif(this.filtres) }
   get aClasser() { return this.compteur?.operations ?? 0 }
   get reste() { return Math.max(0, this.total - (this.operations?.length ?? 0)) }
 
@@ -48,6 +52,10 @@ export class EtatTirelire {
     this.filtres = SANS_FILTRE
     this.operations = null
     this.total = 0
+    this.totaux = null
+    this.exportEnCours = false
+    this.erreurExport = ''
+    this.exporte = ''
     this.suiteEnCours = false
     this.erreurOperations = ''
     this.envoi = false
@@ -274,16 +282,37 @@ export class EtatTirelire {
 
   effacerFiltres() { return this.filtrer(SANS_FILTRE) }
 
+  async exporter(): Promise<boolean> {
+    if (this.exportEnCours) return false
+    this.exportEnCours = true
+    this.erreurExport = ''
+    this.exporte = ''
+    try {
+      const f = await this.api.exporter(this.filtres)
+      enregistrer(f.blob, f.nom)
+      this.exporte = f.nom
+      return true
+    } catch (e) {
+      this.erreurExport = messageErreur(e)
+      return false
+    } finally {
+      this.exportEnCours = false
+    }
+  }
+
   async chargerOperations() {
     const tour = ++this.tourOperations
     this.erreurOperations = ''
     this.suiteEnCours = false
     this.operations = null
+    this.erreurExport = ''
+    this.exporte = ''
     try {
       const page = await this.api.operations(this.filtres, 0)
       if (tour !== this.tourOperations) return
       this.operations = page.operations
       this.total = page.total
+      this.totaux = totauxDe(page)
     } catch (e) {
       if (tour === this.tourOperations) this.erreurOperations = messageErreur(e)
     }
@@ -300,6 +329,7 @@ export class EtatTirelire {
       const connues = new Set(this.operations.map((o) => o.id))
       this.operations = [...this.operations, ...page.operations.filter((o) => !connues.has(o.id))]
       this.total = page.operations.length ? page.total : this.operations.length
+      if (page.operations.length) this.totaux = totauxDe(page)
     } catch (e) {
       if (tour === this.tourOperations) this.erreurOperations = messageErreur(e)
     } finally {

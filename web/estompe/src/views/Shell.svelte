@@ -166,7 +166,7 @@
     {:else if route.name === 'stats' && app.stats}
       <SablierSpace section={route.section} id={route.id} detail={route.detail} onmenu={() => (nav = true)} />
     {:else if route.name === 'tirelire' && app.tirelire}
-      <TirelireSpace section={route.section} id={route.id} onmenu={() => (nav = true)} />
+      <TirelireSpace section={route.section} id={route.id} requete={route.requete} onmenu={() => (nav = true)} />
     {:else if route.name === 'space' && space?.visible()}
       <space.page section={route.section} onmenu={() => (nav = true)} />
     {:else if route.name === 'join'}

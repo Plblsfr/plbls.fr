@@ -18,7 +18,7 @@ npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe se
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
-npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations, détail, à classer, catégories et règles, écran de téléphone, Tirelire arrêté : API simulées
+npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, écran de téléphone, Tirelire arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -123,7 +123,7 @@ système de Chromium doivent être présentes).
     `chargerPartage`, `partager`. Sablier injoignable : `erreur` et l'écran `SablierErreur` avec « Réessayer », le reste de l'app continue.
   - Styles : `src/styles/sablier.css` (classes `sab-*`, jetons de l'app, requêtes de conteneur). Icônes des trophées : noms d'`Icon.svelte`,
     `trophee` en repli pour un nom inconnu (`SablierMedaille`).
-- `src/sections/tirelire` : section Tirelire (relevés de compte, API à part : service `tirelire`, permission `tirelire:access`), `#/tirelire[/<onglet>[/<id>]]`,
+- `src/sections/tirelire` : section Tirelire (relevés de compte, API à part : service `tirelire`, permission `tirelire:access`), `#/tirelire[/<onglet>[/<id>]][?<filtres>]`,
   route `tirelire`. Affichée selon `GET /me` de Tirelire (`permissions.access`, lu au démarrage par `app.loadTirelire` : `app.tirelireMe`, `app.tirelire`) ;
   `/me` en échec ou Tirelire absent : pas de section, rien d'autre ne change. `tirelireUrl` : `TIRELIRE_PUBLIC_URL` de l'image, `VITE_TIRELIRE_URL` au build
   des apps ; sans elle, pas de section. Entrée dans le rail (`ServerRail`) et dans `SectionsShell` ; comme Stats, elle ne suffit pas à ouvrir la phase `sections`.
@@ -151,10 +151,15 @@ système de Chromium doivent être présentes).
     éléments introuvables, lignes non reconnues avec leur page), ou « non envoyé » quand l'envoi lui-même échoue (401, 403, 413, réseau : `messageErreur`),
     avec « Réessayer ». Liste des relevés importés (période, nombre d'opérations, date d'import) et suppression après la confirmation partagée `ConfirmModal`.
   - `#/tirelire/operations` : `TirelireOperations`. Opérations groupées par jour (`parJour`, total du jour seulement quand le jour est entièrement chargé),
-    pages de 50 (« Afficher la suite »), filtre par relevé, par période, par catégorie ou « à classer » et par commerçant (`statement`, `from`, `to`,
-    `category`, `unclassified`, `merchant` de `GET /operations`). Chaque ligne porte le nom du commerçant et la pastille de sa catégorie, ou
-    « à classer ». Débits et crédits ne sont affichés que s'ils sont exacts (`totauxConnus` : tout est chargé, ou un relevé entier est choisi sans
-    autre filtre). `#/tirelire/operations/<id>` : `TirelireOperation`, détail d'une opération, prise dans la liste chargée ou lue par
+    pages de 50 (« Afficher la suite »). En tête, champ de recherche (libellé, détails, commerçant ; envoyée 300 ms après la dernière frappe,
+    tout de suite avec Entrée) et bouton des filtres : période, catégorie ou « à classer », commerçant, montant minimum et maximum (saisis en euros),
+    type, relevé, sens (tout, débits, crédits) ; ce sont les paramètres de `GET /operations` (`parametres`). Chaque filtre actif a sa pastille, qui le
+    retire seule (`pastilles`), et « Tout effacer » les retire tous. Les filtres sont dans l'adresse (`#/tirelire/operations?q=…&min=…`, mêmes noms que
+    l'API ; `filtresDe` écarte une valeur illisible) : `router.remplacer` la met à jour sans ajouter d'entrée à l'historique, un lien ou un rechargement
+    les rétablit, et le retour depuis le détail d'une opération les retrouve. Opérations, débits et crédits affichés sont ceux de toute la sélection
+    (`total`, `total_debits`, `total_credits` ; à défaut `totauxConnus`). « Exporter en CSV » télécharge `GET /operations/export.csv` avec la
+    session (`fichierAt`, puis `enregistrer` : blob et lien de téléchargement, nom repris de `Content-Disposition`), pour les filtres en cours.
+    Chaque ligne porte le nom du commerçant et la pastille de sa catégorie, ou « à classer ». `#/tirelire/operations/<id>` : `TirelireOperation`, détail d'une opération, prise dans la liste chargée ou lue par
     `GET /operations/{id}` (libellé brut, détails, dates d'achat, d'opération et de valeur, section, type, relevé), et carte Catégorie : origine du
     classement, choix d'une catégorie, appliqué à cette opération seulement ou à tout le commerçant.
   - `formats.ts` : montants à partir de centimes entiers, sans flottant (`euros` : « 1 234,56 € », espace fine insécable des milliers, espace insécable
@@ -185,8 +190,9 @@ fixée) vérifie la section Stats : permissions, périodes, récap au clavier et
 téléchargé comparé à celui du serveur), effacement, parcours d'administration, Sablier arrêté, axe. `npm run e2e:tirelire`
 (`playwright.tirelire.config.ts`, `e2e/tirelire.spec.ts`, faux Tirelire dans `e2e/faux-tirelire.ts`) vérifie la section Tirelire : permission, premier lancement, import
 (les trois issues, refus au contrôle), suppression, opérations et détail, file à classer (règle, annulation), catégories, règles, fusion et séparation de
-commerçants, filtres et reclassement depuis le détail, écran de 390 px sans débordement, Tirelire arrêté, axe ; `TIRELIRE_CAPTURES=<dossier>` y enregistre
-les captures des écrans de catégorisation. `CHROMIUM_PATH` désigne un Chromium déjà installé
+commerçants, filtres et reclassement depuis le détail, recherche, filtres dans l'adresse, pastilles, total de la sélection et fichier CSV téléchargé,
+écran de 390 px sans débordement, Tirelire arrêté, axe ; `TIRELIRE_CAPTURES=<dossier>` y enregistre
+les captures des écrans de catégorisation, `TIRELIRE_CAPTURES_RECHERCHE=<dossier>` celles de la recherche et des filtres. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. `npm run e2e:cinema` (`playwright.cinema.config.ts`, `e2e/cinema.spec.ts`) vérifie le mode cinéma du salon cinéma
 sur un écran de téléphone, en portrait et en paysage : il tourne sur le serveur de dev de Vite, parce que le vocal (LiveKit) n'est pas simulé et que le test
 marque le salon comme rejoint en important le module `voice.svelte.ts` dans la page. La CI les lance dans le job `front`.

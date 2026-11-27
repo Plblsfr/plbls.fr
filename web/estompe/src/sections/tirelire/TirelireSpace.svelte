@@ -18,7 +18,7 @@
   import { natureDe, nomReleve } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
-  let { section, id, onmenu }: { section?: string; id?: string; onmenu: () => void } = $props()
+  let { section, id, requete, onmenu }: { section?: string; id?: string; requete?: string; onmenu: () => void } = $props()
 
   const vue = $derived(vueDe(section, id))
   const actif = $derived(ongletActif(vue))
@@ -67,7 +67,7 @@
       {:else if vue === 'operation'}
         {#key id}<TirelireOperation id={Number(id)} />{/key}
       {:else if vue === 'operations'}
-        <TirelireOperations />
+        <TirelireOperations {requete} />
       {:else if tirelire.releves}
         {#if vide && vue === 'accueil'}<TirelireVide />{:else}<TirelireAttente {vue} releves={tirelire.releves} />{/if}
       {:else if tirelire.erreur}

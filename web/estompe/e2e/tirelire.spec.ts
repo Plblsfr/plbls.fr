@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { serveurTirelire, simulerTirelire } from './faux-tirelire'
 
@@ -5,6 +6,7 @@ const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buff
 const entree = (page: Page) => page.getByRole('link', { name: 'Tirelire, comptes' })
 const onglets = (page: Page) => page.getByRole('navigation', { name: 'Sections de Tirelire' })
 const liste = (page: Page) => page.getByRole('region', { name: 'Liste des opérations' })
+const resume = (page: Page) => page.getByRole('group', { name: /^(Résumé|Total de la sélection)$/ })
 const requetes = (srv: ReturnType<typeof serveurTirelire>) => srv.appels.filter((a) => a.chemin === '/operations').map((a) => a.requete)
 
 test('sans tirelire:access, pas de section ; un lien direct ramène à l’accueil', async ({ page }) => {
@@ -55,7 +57,7 @@ test('premier lancement : aucun relevé, puis import de plusieurs PDF avec les t
 
   await page.getByRole('link', { name: 'Voir les 39 nouvelles opérations' }).click()
   await expect(page).toHaveURL(/#\/tirelire\/operations$/)
-  await expect(page.getByRole('group', { name: 'Résumé' })).toContainText('120')
+  await expect(resume(page)).toContainText('120')
 })
 
 test('suppression d’un relevé après confirmation', async ({ page }) => {
@@ -81,24 +83,24 @@ test('opérations : groupes par jour, suite, filtres par relevé et par période
   await page.goto('/#/tirelire/operations')
   await expect(liste(page).getByRole('heading', { level: 3 }).first()).toHaveText(/Jeudi 26 novembre\s*−33,63\s€/)
   await expect(liste(page).getByRole('link')).toHaveCount(50)
-  await expect(page.getByRole('group', { name: 'Résumé' })).toHaveText(/^\s*Opérations\s*104\s*$/)
+  await expect(resume(page)).toHaveText(/^\s*Opérations\s*104\s*Débits\s*−[\d\s]+,\d\d\s€\s*Crédits\s*\+[\d\s]+,\d\d\s€\s*$/)
   await page.getByRole('button', { name: 'Afficher la suite (54)' }).click()
   await expect(liste(page).getByRole('link')).toHaveCount(100)
   await page.getByRole('button', { name: 'Afficher la suite (4)' }).click()
   await expect(liste(page).getByRole('link')).toHaveCount(104)
   await expect(page.getByText('Toutes les opérations sont affichées')).toBeVisible()
-  await expect(page.getByRole('group', { name: 'Résumé' })).toContainText('Crédits')
+  await expect(resume(page)).toContainText('Crédits')
 
-  await page.getByRole('combobox', { name: 'Relevé' }).selectOption({ label: 'Relevé n° 10 de 2026 · 26 oct. 2026' })
-  await expect(page.getByRole('group', { name: 'Résumé' })).toContainText('40')
-  await expect(liste(page).getByRole('heading', { level: 3 }).first()).toContainText('Lundi 26 octobre')
   await page.getByRole('button', { name: 'Afficher les filtres' }).click()
+  await page.getByRole('combobox', { name: 'Relevé' }).selectOption({ label: 'Relevé n° 10 de 2026 · 26 oct. 2026' })
+  await expect(resume(page)).toContainText('40')
+  await expect(liste(page).getByRole('heading', { level: 3 }).first()).toContainText('Lundi 26 octobre')
   await page.getByLabel('Du', { exact: true }).fill('2026-10-20')
   await page.getByLabel('Au', { exact: true }).fill('2026-10-22')
-  await expect(page.getByRole('group', { name: 'Résumé' })).toHaveText(/Opérations\s*9\s*Débits/)
+  await expect(resume(page)).toHaveText(/Opérations\s*9\s*Débits/)
   expect(requetes(srv).at(-1)).toBe('?statement=110&from=2026-10-20&to=2026-10-22&limit=50&offset=0')
   await page.getByRole('button', { name: 'Réinitialiser' }).click()
-  await expect(page.getByRole('group', { name: 'Résumé' })).toContainText('104')
+  await expect(resume(page)).toContainText('104')
 
   await liste(page).getByRole('link', { name: /Streamo Abonnement/ }).first().click()
   await expect(page).toHaveURL(/#\/tirelire\/operations\/\d+$/)
@@ -132,7 +134,7 @@ test('onglets sans données : état honnête, sans chiffre', async ({ page }) =>
 test('téléphone (390 px) : barre d’onglets, cibles de 44 px, rien ne déborde ; bureau : menu latéral', async ({ page }) => {
   await simulerTirelire(page, {}, serveurTirelire(true))
   await page.setViewportSize({ width: 390, height: 844 })
-  for (const chemin of ['/#/tirelire', '/#/tirelire/operations', '/#/tirelire/import', '/#/tirelire/a-classer', '/#/tirelire/categories', '/#/tirelire/categories/regles', '/#/tirelire/categories/commercants', '/#/tirelire/operations/104']) {
+  for (const chemin of ['/#/tirelire', '/#/tirelire/operations', '/#/tirelire/operations?statement=110&from=2026-10-01&to=2026-10-26&category=2&q=boulangerie+du+pont&min=500&max=6000&direction=debit&type=carte', '/#/tirelire/import', '/#/tirelire/a-classer', '/#/tirelire/categories', '/#/tirelire/categories/regles', '/#/tirelire/categories/commercants', '/#/tirelire/operations/104']) {
     await page.goto(chemin)
     await expect(page.locator('.tir-corps > *').first()).toBeVisible()
     await expect(page.locator('.tir-fait')).toHaveCount(0)
@@ -184,6 +186,9 @@ test('accessibilité : aucune violation axe sur les écrans de la section', asyn
   }
   await page.getByRole('button', { name: 'Afficher les filtres' }).click()
   await verifier('filtres')
+  await page.goto('/#/tirelire/operations?from=2026-11-01&q=marche&min=500&direction=debit&type=carte')
+  await expect(page.getByRole('list', { name: 'Filtres actifs' }).getByRole('listitem')).toHaveCount(6)
+  await verifier('pastilles')
   for (const [chemin, attente] of [['/#/tirelire/a-classer', 'À classer maintenant'], ['/#/tirelire/categories', 'Catégories'], ['/#/tirelire/categories/regles', 'Règles par mots-clés'], ['/#/tirelire/categories/commercants', 'Commerçants']]) {
     await page.goto(chemin)
     await expect(page.getByRole('region', { name: attente, exact: true })).toBeVisible()
@@ -303,11 +308,11 @@ test('opérations : pastilles, filtres par catégorie et à classer, lien direct
   await page.getByRole('button', { name: 'Afficher les filtres' }).click()
   await page.getByLabel('Catégorie').selectOption({ label: 'Loisirs et sorties' })
   const loisirs = srv.operations.filter((o) => o.category_id === 5).length
-  await expect(page.getByRole('group', { name: 'Résumé' })).toContainText(String(loisirs))
+  await expect(resume(page)).toContainText(String(loisirs))
   await expect.poll(() => requetes(srv).at(-1)).toBe('?category=5&limit=50&offset=0')
   await expect(liste(page).getByRole('link').first()).toContainText('Loisirs et sorties')
   await page.getByLabel('Catégorie').selectOption({ label: 'À classer' })
-  await expect(page.getByRole('group', { name: 'Résumé' })).toContainText(String(libres(srv)))
+  await expect(resume(page)).toContainText(String(libres(srv)))
   await expect.poll(() => requetes(srv).at(-1)).toBe('?unclassified=true&limit=50&offset=0')
   await page.getByLabel('Commerçant').selectOption({ label: 'Cafe Tamis Villeneuve' })
   await expect.poll(() => requetes(srv).at(-1)).toMatch(/^\?merchant=\d+&unclassified=true&limit=50&offset=0$/)
@@ -330,6 +335,127 @@ test('opérations : pastilles, filtres par catégorie et à classer, lien direct
   await expect(page.getByRole('region', { name: 'Résumé de l’opération' })).toContainText('Shopping')
   await page.goto('/#/tirelire/operations/999999')
   await expect(page.getByRole('heading', { name: 'Opération introuvable' })).toBeVisible()
+})
+
+test('opérations : recherche, filtres complets, pastilles, total de la sélection, adresse et export CSV', async ({ page }) => {
+  const srv = await simulerTirelire(page, {}, serveurTirelire(true))
+  const ops = srv.operations as { label: string; amount: number; direction: string; type: string; date: string }[]
+  const euros = (c: number) => `${Math.trunc(c / 100).toString().replace(/\B(?=(\d{3})+$)/g, '\\s')},${String(c % 100).padStart(2, '0')}\\s€`
+  await page.goto('/#/tirelire/operations')
+  await expect(liste(page).getByRole('link')).toHaveCount(50)
+
+  const champ = page.getByRole('searchbox', { name: 'Rechercher une opération' })
+  const avant = requetes(srv).length
+  await champ.pressSequentially('Marché  Colline', { delay: 20 })
+  const colline = ops.filter((o) => o.label.includes('MARCHE COLLINE'))
+  await expect(page.getByRole('group', { name: 'Total de la sélection' })).toHaveText(new RegExp(`Opérations\\s*${colline.length}\\s*Débits\\s*−${euros(colline.reduce((n, o) => n + o.amount, 0))}\\s*Crédits\\s*0,00\\s€`))
+  expect(requetes(srv).slice(avant)).toEqual(['?q=March%C3%A9+Colline&limit=50&offset=0'])
+  await expect(page).toHaveURL(/#\/tirelire\/operations\?q=March%C3%A9\+Colline$/)
+  const actifs = page.getByRole('list', { name: 'Filtres actifs' })
+  await expect(actifs.getByRole('listitem')).toHaveText(['« Marché Colline »'])
+  await expect(liste(page).getByRole('link').first()).toContainText('Marche Colline')
+
+  await page.getByRole('button', { name: 'Afficher les filtres' }).click()
+  await page.getByRole('textbox', { name: 'Montant minimum' }).fill('20')
+  await page.getByRole('textbox', { name: 'Montant minimum' }).blur()
+  await page.getByRole('textbox', { name: 'Montant maximum' }).fill('45,5')
+  await page.getByRole('textbox', { name: 'Montant maximum' }).blur()
+  await page.getByRole('group', { name: 'Sens de l’opération' }).getByRole('button', { name: 'Débits' }).click()
+  await page.getByRole('combobox', { name: 'Type' }).selectOption({ label: 'Carte' })
+  await page.getByLabel('Du', { exact: true }).fill('2026-11-01')
+  const choisies = colline.filter((o) => o.amount >= 2000 && o.amount <= 4550 && o.date >= '2026-11-01')
+  expect(choisies.length).toBeGreaterThan(0)
+  await expect.poll(() => requetes(srv).at(-1)).toBe('?from=2026-11-01&q=March%C3%A9+Colline&min=2000&max=4550&direction=debit&type=carte&limit=50&offset=0')
+  await expect(page).toHaveURL(/#\/tirelire\/operations\?from=2026-11-01&q=March%C3%A9\+Colline&min=2000&max=4550&direction=debit&type=carte$/)
+  await expect(page.getByRole('group', { name: 'Total de la sélection' })).toHaveText(new RegExp(`Opérations\\s*${choisies.length}\\s*Débits\\s*−${euros(choisies.reduce((n, o) => n + o.amount, 0))}`))
+  await expect(liste(page).getByRole('link')).toHaveCount(choisies.length)
+  await expect(actifs.getByRole('listitem')).toHaveText(['« Marché Colline »', 'Depuis le 1er nov. 2026', /^Au moins 20,00\s€$/, /^Au plus 45,50\s€$/, 'Débits', 'Carte', 'Tout effacer'])
+
+  const [fichier] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exporter en CSV' }).click()])
+  expect(fichier.suggestedFilename()).toMatch(/^tirelire-operations-2026-11-01_2026-11-\d\d\.csv$/)
+  const csv = readFileSync(await fichier.path())
+  expect([...csv.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+  const lignes = csv.toString('utf8').split('\r\n')
+  expect(lignes[0]).toBe('﻿Date;Date de valeur;Date d\'achat;Libellé;Détails;Commerçant;Catégorie;Nature;Type;Section;Débit;Crédit;Montant;Relevé')
+  expect(lignes).toHaveLength(choisies.length + 2)
+  expect(lignes[1]).toMatch(/^\d\d\/11\/2026;.*MARCHE COLLINE.*;\d+,\d\d;;-\d+,\d\d;Relevé n° 11 de 2026$/)
+  expect(srv.appels.filter((a) => a.chemin === '/operations/export.csv').map((a) => a.requete)).toEqual(['?from=2026-11-01&q=March%C3%A9+Colline&min=2000&max=4550&direction=debit&type=carte'])
+  await expect(page.getByRole('status').filter({ hasText: 'tirelire-operations' })).toContainText(`${choisies.length} opération`)
+
+  await page.reload()
+  await expect(champ).toHaveValue('Marché Colline')
+  await expect(actifs.getByRole('listitem')).toHaveCount(7)
+  await expect(page.getByRole('textbox', { name: 'Montant maximum' })).toHaveValue('45,50')
+  await expect(page.getByRole('group', { name: 'Sens de l’opération' }).getByRole('button', { name: 'Débits' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(liste(page).getByRole('link')).toHaveCount(choisies.length)
+
+  await liste(page).getByRole('link').first().click()
+  await expect(page).toHaveURL(/#\/tirelire\/operations\/\d+$/)
+  await page.getByRole('link', { name: 'Retour aux opérations' }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/operations\?from=2026-11-01&q=March%C3%A9\+Colline&min=2000&max=4550&direction=debit&type=carte$/)
+  await expect(liste(page).getByRole('link')).toHaveCount(choisies.length)
+
+  await actifs.getByRole('button', { name: /Retirer le filtre Au plus/ }).click()
+  await expect.poll(() => requetes(srv).at(-1)).toBe('?from=2026-11-01&q=March%C3%A9+Colline&min=2000&direction=debit&type=carte&limit=50&offset=0')
+  await expect(page.getByRole('textbox', { name: 'Montant maximum' })).toHaveValue('')
+  await actifs.getByRole('button', { name: 'Retirer le filtre « Marché Colline »' }).click()
+  await expect(champ).toHaveValue('')
+  await expect(page).toHaveURL(/#\/tirelire\/operations\?from=2026-11-01&min=2000&direction=debit&type=carte$/)
+  await actifs.getByRole('button', { name: 'Tout effacer' }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/operations$/)
+  await expect(actifs).toHaveCount(0)
+  await expect(resume(page)).toContainText('104')
+
+  await champ.fill('introuvable 100%')
+  await expect(page.getByText('Rien ne correspond à « introuvable 100% ».')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Exporter en CSV' })).toBeDisabled()
+  await champ.press('Escape')
+
+  await page.goto('/#/tirelire/operations?direction=credit&type=cheque&min=abc')
+  const credits = ops.filter((o) => o.direction === 'credit')
+  await expect(page.getByRole('group', { name: 'Total de la sélection' })).toHaveText(new RegExp(`Opérations\\s*${credits.length}\\s*Débits\\s*0,00\\s€\\s*Crédits\\s*\\+${euros(credits.reduce((n, o) => n + o.amount, 0))}`))
+  await expect(actifs.getByRole('listitem')).toHaveText(['Crédits'])
+  await page.getByRole('navigation', { name: 'Tirelire', exact: true }).getByRole('link', { name: 'Opérations' }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/operations$/)
+  await expect(resume(page)).toContainText('104')
+})
+
+test('captures de la recherche et des filtres', async ({ page }) => {
+  const dossier = process.env.TIRELIRE_CAPTURES_RECHERCHE
+  test.skip(!dossier, 'TIRELIRE_CAPTURES_RECHERCHE=<dossier> pour enregistrer les captures')
+  const srv = await simulerTirelire(page, {}, serveurTirelire(true))
+  srv.commercants.find((c) => c.name === 'Bistrot Lune Saint Eloi')!.category_id = 3
+  srv.rejouer()
+  for (const largeur of [390, 1280]) {
+    const hauteur = largeur === 390 ? 844 : 900
+    await page.setViewportSize({ width: largeur, height: hauteur })
+    const prendre = async (nom: string) => {
+      const avis = page.locator('.plbls-toast button')
+      if (await avis.count()) await avis.first().click()
+      await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
+      const reste = await page.locator('.tir-defile').evaluate((e) => e.scrollHeight - e.clientHeight)
+      await page.setViewportSize({ width: largeur, height: hauteur + Math.max(0, reste) })
+      await page.screenshot({ path: `${dossier}/${nom}-${largeur}.png` })
+      await page.setViewportSize({ width: largeur, height: hauteur })
+    }
+    await page.goto('/#/tirelire/operations')
+    await expect(liste(page)).toBeVisible()
+    await page.getByRole('searchbox', { name: 'Rechercher une opération' }).fill('colline')
+    await expect(page.getByRole('list', { name: 'Filtres actifs' })).toBeVisible()
+    await prendre('recherche')
+    await page.goto('/#/tirelire/operations?from=2026-11-01&to=2026-11-26&category=2&min=500&max=6000&direction=debit&type=carte')
+    await expect(page.getByRole('list', { name: 'Filtres actifs' }).getByRole('listitem')).toHaveCount(8)
+    await expect(liste(page)).toBeVisible()
+    await page.getByRole('button', { name: 'Afficher les filtres' }).click()
+    await prendre('filtres-ouverts')
+    await page.getByRole('button', { name: 'Masquer les filtres' }).click()
+    await page.getByRole('searchbox', { name: 'Rechercher une opération' }).fill('boulangerie du pont villeneuve')
+    await expect(page.getByRole('list', { name: 'Filtres actifs' }).getByRole('listitem')).toHaveCount(9)
+    await prendre('pastilles')
+    await page.goto('/#/tirelire/operations?q=introuvable&direction=credit')
+    await expect(page.getByText(/Rien ne correspond/)).toBeVisible()
+    await prendre('aucun-resultat')
+  }
 })
 
 test('captures des écrans de catégorisation', async ({ page }) => {

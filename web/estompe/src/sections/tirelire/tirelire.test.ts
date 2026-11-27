@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, setUnauthorizedHandler } from '../../lib/api'
-import { categorie, CATEGORIES, dejaImporte, fauxClient, file, groupe, importe, operation, OPERATIONS, page, pdf, refuse, regle, releve } from './essais'
-import { actives, bilan, budget, conditionDe, deplacer, ENVOI_MAX, FICHIER_MAX, filtres, lots, motCle, teinte, messageErreur, messageRefus, natureDe, parGravite, parJour, raisonControle, requeteOperations, tirelireApi, titreDe, totaux, totauxConnus, type Filtres, type Issue } from './tirelire'
+import { categorie, CATEGORIES, commercant, dejaImporte, fauxClient, file, groupe, importe, operation, OPERATIONS, page, pdf, refuse, regle, releve } from './essais'
+import { actives, bilan, budget, conditionDe, deplacer, ENVOI_MAX, FICHIER_MAX, filtreActif, filtres, filtresDe, lots, memesFiltres, montantSaisi, motCle, nomExport, pastilles, recherche, requeteDe, requeteExport, teinte, messageErreur, messageRefus, natureDe, parGravite, parJour, raisonControle, requeteOperations, tirelireApi, titreDe, totaux, totauxConnus, totauxDe, type Filtres, type Issue } from './tirelire'
 import { EtatTirelire } from './tirelire.svelte'
 
 const json = (status: number, body?: unknown) =>
@@ -63,6 +63,45 @@ describe('client de Tirelire', () => {
 
   it('passe les filtres de catégorie, de commerçant et « à classer »', () => {
     expect(requeteOperations(filtres({ categorie: 4, commercant: 9, aClasser: true }), 0, 10)).toBe('/operations?category=4&merchant=9&unclassified=true&limit=10&offset=0')
+  })
+
+  it('passe la recherche, les montants, le sens et le type, dans un ordre stable', () => {
+    const f = filtres({ releve: 11, du: '2026-11-01', q: '  café   100% a_b ', min: 500, max: 12_050, sens: 'debit', type: 'virement_instantane' })
+    expect(requeteOperations(f)).toBe('/operations?statement=11&from=2026-11-01&q=caf%C3%A9+100%25+a_b&min=500&max=12050&direction=debit&type=virement_instantane&limit=50&offset=0')
+    expect(requeteExport(f)).toBe('/operations/export.csv?statement=11&from=2026-11-01&q=caf%C3%A9+100%25+a_b&min=500&max=12050&direction=debit&type=virement_instantane')
+    expect(requeteExport(TOUT)).toBe('/operations/export.csv')
+    expect(requeteOperations(filtres({ q: '   ', min: 0 }))).toBe('/operations?min=0&limit=50&offset=0')
+    expect(recherche(' a  b\tc ')).toBe('a b c')
+    expect(recherche('a b c d e f g h i j')).toBe('a b c d e f g h')
+    expect(recherche('x'.repeat(150))).toHaveLength(100)
+  })
+
+  it('lit les filtres d’une adresse, écarte ce qui est illisible, et les réécrit à l’identique', () => {
+    const f = filtres({ releve: 11, du: '2026-11-01', au: '2026-11-26', categorie: 4, commercant: 9, q: 'café & co / 100%', min: 500, max: 12_050, sens: 'credit', type: 'carte' })
+    expect(filtresDe(requeteDe(f))).toEqual(f)
+    expect(filtresDe('')).toEqual(TOUT)
+    expect(filtresDe('unclassified=true&category=4')).toEqual(filtres({ aClasser: true }))
+    expect(filtresDe('statement=abc&from=2026-13-40&to=demain&category=-1&merchant=1.5&unclassified=oui&min=1e3&max=&direction=sortie&type=cheque&q=+')).toEqual(TOUT)
+    expect(filtresDe('from=2026-11-20&to=2026-11-01&min=500&max=100')).toEqual(filtres({ du: '2026-11-20', min: 500 }))
+    expect(filtresDe('q=__proto__&type=toString')).toEqual(filtres({ q: '__proto__' }))
+    expect(memesFiltres(filtres({ q: ' a ' }), filtres({ q: 'a' }))).toBe(true)
+    expect(memesFiltres(filtres({ min: 0 }), TOUT)).toBe(false)
+    expect(filtreActif(TOUT)).toBe(false)
+    expect(filtreActif(filtres({ sens: 'debit' }))).toBe(true)
+  })
+
+  it('exporte en CSV avec la session et reprend le nom de fichier du service', async () => {
+    fetchMock.mockResolvedValue(new Response('\ufeffDate;Montant\r\n', { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="tirelire-operations-2026-11-01_2026-11-26.csv"' } }))
+    const f = await tirelireApi.exporter(filtres({ q: 'café', sens: 'debit' }))
+    expect(fetchMock.mock.calls[0][0]).toBe('/operations/export.csv?q=caf%C3%A9&direction=debit')
+    expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
+    expect(f.nom).toBe('tirelire-operations-2026-11-01_2026-11-26.csv')
+    expect(f.blob.size).toBeGreaterThan(0)
+    fetchMock.mockResolvedValue(new Response('x', { status: 200 }))
+    expect((await tirelireApi.exporter(filtres({ du: '2026-11-01' }))).nom).toBe('tirelire-operations-depuis-2026-11-01.csv')
+    expect(nomExport(TOUT)).toBe('tirelire-operations.csv')
+    expect(nomExport(filtres({ du: '2026-11-01', au: '2026-11-26' }))).toBe('tirelire-operations-2026-11-01_2026-11-26.csv')
+    expect(nomExport(filtres({ au: '2026-11-26' }))).toBe('tirelire-operations-jusqu-au-2026-11-26.csv')
   })
 
   it('appelle les routes des catégories, des règles, des commerçants et du classement', async () => {
@@ -178,6 +217,36 @@ describe('calculs', () => {
     expect(totauxConnus(filtres({ releve: 99, du: '', au: '' }), releves, OPERATIONS, 84)).toBeNull()
   })
 
+  it('prend les totaux de la sélection quand le service les donne', () => {
+    expect(totauxDe({ ...page(), total_debits: 12_948, total_credits: 264_000 })).toEqual({ debits: 12_948, credits: 264_000 })
+    expect(totauxDe({ ...page(), total_debits: 0, total_credits: 0 })).toEqual({ debits: 0, credits: 0 })
+    expect(totauxDe(page())).toBeNull()
+    expect(totauxConnus(filtres({ releve: 11, sens: 'debit' }), [releve()], OPERATIONS, 84)).toBeNull()
+  })
+
+  it('nomme chaque filtre actif et ce que retire sa pastille', () => {
+    const noms = { releves: [releve()], categories: CATEGORIES, commercants: [commercant({ id: 7, name: 'Cafe Tamis Villeneuve' })] }
+    expect(pastilles(TOUT, noms)).toEqual([])
+    const f = filtres({ q: ' café ', releve: 11, du: '2026-11-01', au: '2026-11-26', categorie: 2, commercant: 7, min: 500, max: 12_050, sens: 'debit', type: 'carte' })
+    expect(pastilles(f, noms).map((p) => [p.cle, p.texte, p.sans])).toEqual([
+      ['q', '« café »', { q: '' }], ['releve', 'Relevé n° 11 de 2026', { releve: null }], ['du', 'Depuis le 1er nov. 2026', { du: '' }], ['au', 'Jusqu’au 26 nov. 2026', { au: '' }],
+      ['categorie', 'Courses', { categorie: null }], ['commercant', 'Cafe Tamis Villeneuve', { commercant: null }], ['min', 'Au moins 5,00\u00a0€', { min: null }], ['max', 'Au plus 120,50\u00a0€', { max: null }],
+      ['sens', 'Débits', { sens: null }], ['type', 'Carte', { type: null }],
+    ])
+    expect(pastilles(f, noms)[0].label).toBe('Retirer le filtre « café »')
+    expect(pastilles(filtres({ aClasser: true, sens: 'credit', releve: 99, categorie: null, commercant: 99 }), noms).map((p) => p.texte)).toEqual(['Un relevé', 'À classer', 'Un commerçant', 'Crédits'])
+    expect(pastilles(filtres({ categorie: 99 }), noms).map((p) => p.texte)).toEqual(['Une catégorie'])
+  })
+
+  it('lit un montant saisi en euros', () => {
+    expect(montantSaisi('')).toEqual({ ok: true, valeur: null })
+    expect(montantSaisi(' 12,5 ')).toEqual({ ok: true, valeur: 1250 })
+    expect(montantSaisi('1 200 €')).toEqual({ ok: true, valeur: 120_000 })
+    expect(montantSaisi('0')).toEqual({ ok: true, valeur: 0 })
+    expect(montantSaisi('-3')).toEqual({ ok: false })
+    expect(montantSaisi('douze')).toEqual({ ok: false })
+  })
+
   it('nomme une opération par son commerçant, sinon par son libellé', () => {
     expect(titreDe(OPERATIONS[0])).toBe('MARCHE COLLINE VILLENEUVE')
     expect(titreDe(OPERATIONS[3])).toBe('VIR VERS LIVRET')
@@ -258,6 +327,50 @@ describe('état de la section', () => {
     expect(etat.operations?.map((o) => o.id)).toEqual([7])
     expect(etat.filtre).toBe(true)
     expect(operations.mock.calls[1][0]).toEqual(filtres({ releve: 11, du: '', au: '' }))
+  })
+
+  it('garde les totaux de la sélection rendus par le service, y compris page par page', async () => {
+    const operations = vi.fn(async (_f: Filtres, offset = 0) => ({ ...page([operation({ id: offset + 1 })], 2, offset), total_debits: 6240, total_credits: 100 }))
+    const etat = new EtatTirelire(fauxClient({ operations }))
+    await etat.filtrer({ q: 'marche', min: 100 })
+    expect(operations.mock.calls[0][0]).toEqual(filtres({ q: 'marche', min: 100 }))
+    expect(etat.totaux).toEqual({ debits: 6240, credits: 100 })
+    await etat.suite()
+    expect(etat.operations).toHaveLength(2)
+    expect(etat.totaux).toEqual({ debits: 6240, credits: 100 })
+    etat.reinitialiser()
+    expect(etat.totaux).toBeNull()
+    expect(etat.filtres).toEqual(TOUT)
+  })
+
+  it('exporte la sélection courante ; un échec est dit, un second clic pendant l’export est ignoré', async () => {
+    const creer = vi.fn(() => 'blob:essai')
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: creer, revokeObjectURL: vi.fn() }))
+    const clic = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    let finir: (f: { blob: Blob; nom: string }) => void = () => {}
+    const exporter = vi.fn((_f: Filtres) => new Promise<{ blob: Blob; nom: string }>((ok) => { finir = ok }))
+    const etat = new EtatTirelire(fauxClient({ exporter }))
+    await etat.filtrer({ q: 'marche', sens: 'debit' })
+    const premier = etat.exporter()
+    expect(etat.exportEnCours).toBe(true)
+    expect(await etat.exporter()).toBe(false)
+    finir({ blob: new Blob(['a;b']), nom: 'tirelire-operations-2026-11-01_2026-11-26.csv' })
+    expect(await premier).toBe(true)
+    expect(exporter).toHaveBeenCalledTimes(1)
+    expect(exporter.mock.calls[0][0]).toEqual(filtres({ q: 'marche', sens: 'debit' }))
+    expect(creer).toHaveBeenCalledTimes(1)
+    expect(clic).toHaveBeenCalledTimes(1)
+    expect((clic.mock.contexts[0] as HTMLAnchorElement).download).toBe('tirelire-operations-2026-11-01_2026-11-26.csv')
+    expect(etat.exporte).toBe('tirelire-operations-2026-11-01_2026-11-26.csv')
+    expect(etat.exportEnCours).toBe(false)
+
+    const panne = new EtatTirelire(fauxClient({ exporter: async () => { throw new ApiError(503, 'unavailable', 'indisponible') } }))
+    expect(await panne.exporter()).toBe(false)
+    expect(panne.erreurExport).toBe('Tirelire est indisponible pour le moment.')
+    expect(panne.exporte).toBe('')
+    await panne.filtrer({ q: 'autre' })
+    expect(panne.erreurExport).toBe('')
+    clic.mockRestore()
   })
 
   it('une panne des opérations laisse un message et permet de relancer', async () => {
