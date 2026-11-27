@@ -49,3 +49,21 @@ describe('LinkCard Sillon', () => {
     expect((await r.findByText('Écouter')).closest('a')?.getAttribute('href')).toBe('#/musique/album/a2')
   })
 })
+
+describe('LinkCard badge d’Entracte', () => {
+  it('joue la carte animée du badge, avec la fiche pour qui a Entracte', async () => {
+    const url = 'https://estompe.plbls.fr/#/films/badge/season%3As1%3A2'
+    vi.spyOn(api, 'linkPreview').mockResolvedValue({
+      url, title: 'La Série', description: 'Saison 2 terminée', site_name: 'Entracte',
+      entracte_badge: { kind: 'season', title_id: 's1', season: 2, title: 'La Série', season_title: null, year: 2019, poster: false, season_poster: false, episodes: 8, duration: 21600, obtained_at: '2026-11-26T23:10:00.000Z' },
+    })
+    const { container } = render(LinkCard, { url, message: '43' })
+    await vi.waitFor(() => expect(container.querySelector('.lien-badge .film-badge-anim canvas')?.getAttribute('aria-label')).toBe('Saison 2 terminée : La Série'))
+    expect(container.querySelector('.lien-badge-fiche')).toBeNull()
+    const { app } = await import('../../lib/store.svelte')
+    app.entracteMe = { permissions: { access: true, request: false, admin: false } } as never
+    const vue = render(LinkCard, { url, message: '44' })
+    expect((await vue.findAllByText('Voir la fiche dans Entracte'))[0].closest('a')?.getAttribute('href')).toBe('#/films/item/s1')
+    app.entracteMe = null
+  })
+})

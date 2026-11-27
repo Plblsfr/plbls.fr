@@ -76,7 +76,13 @@ Un badge dit qu'un film, une saison ou une série a été **réellement regardé
 - **Historique** : la migration `0004_badges` reprend tous les titres déjà vus (`vus`) comme regardés, à leur date. L'attribution
   tourne au démarrage puis toutes les heures (épisodes retirés, saisons renseignées après coup) et après chaque titre regardé.
 - **Partage** : chaque nouveau badge part à Sablier (`entracte.badge`), qui le garde privé jusqu'à ce que la personne l'affiche sur son
-  profil. L'app en fait aussi une image à partager (feuille de partage du système, ou fichier PNG).
+  profil. Il n'y a pas de partage hors de l'app : dans Estompe, la personne envoie le lien de son badge (`#/films/badge/<clé>`) dans
+  une conversation, où il devient une carte animée. Estompe lit le badge de l'auteur du message par
+  `GET /internal/badges/{clé}?sub=` (jeton `ENTRACTE_SERVICE_TOKEN`), jamais celui du lecteur.
+- **Animation** : cinq styles dessinés en canevas dans l'app (ticket de cinéma, Polaroïd, pellicule, générique de fin, amorce
+  3-2-1), de 5 à 6,5 s, tirés du titre (un même film ou une même série a toujours le même), couleurs tirées de l'affiche. Elle se joue
+  quand la carte devient visible, se rejoue d'un clic, et montre directement la dernière image si le système demande moins
+  d'animations.
 
 ## Statistiques (Sablier)
 

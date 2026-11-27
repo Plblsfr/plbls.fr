@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { afficheBadge, cleBadge, couper, dessinerCarte, detailsBadge, etiquetteBadge, nomFichierBadge, sousTitreBadge, texteBadge, type FilmBadge } from './badges'
+import { afficheBadge, cleBadge, couper, detailsBadge, etiquetteBadge, lienBadge, lireCleBadge, sousTitreBadge, type FilmBadge } from './badges'
 
 const badge = (b: Partial<FilmBadge> = {}): FilmBadge => ({
   kind: 'movie', title_id: 'f1', season: null, title: 'Le Grand Film', season_title: null, year: 2021, poster: true, season_poster: false,
@@ -19,10 +19,13 @@ describe('badges', () => {
     expect(sousTitreBadge({ ...saison, season_title: 'Le retour' })).toBe('Le retour')
     expect(afficheBadge(saison)).toEqual({ id: 's1~2', image: true })
     expect(afficheBadge({ ...saison, season_poster: false, poster: false })).toEqual({ id: 's1', image: false })
-    expect(texteBadge(badge())).toBe('Film terminé : Le Grand Film (2021), le 2 mars 2026.')
-    expect(nomFichierBadge(badge({ title: 'Amélie & Cie !' }))).toBe('badge-amelie-cie.png')
-    expect(nomFichierBadge(saison)).toBe('badge-la-serie-saison-2.png')
-    expect(nomFichierBadge(badge({ kind: 'series', title: '???' }))).toBe('badge-titre-serie.png')
+  })
+
+  it('fabrique le lien d’un badge et relit sa clé', () => {
+    expect(lienBadge({ kind: 'season', title_id: 's1', season: 2 })).toBe(`${location.origin}${location.pathname}#/films/badge/season%3As1%3A2`)
+    expect(lireCleBadge('season:s1:2')).toEqual({ kind: 'season', title_id: 's1', season: 2 })
+    expect(lireCleBadge('movie:f1')).toEqual({ kind: 'movie', title_id: 'f1', season: null })
+    for (const faux of ['season:s1', 'season:s1:0', 'movie:f1:1', 'episode:e1', 'movie', '']) expect(lireCleBadge(faux), faux).toBeNull()
   })
 
   it('coupe un titre en lignes et abrège ce qui dépasse', () => {
@@ -31,28 +34,5 @@ describe('badges', () => {
     expect(couper('Un titre bien plus long que la ligne', 15, mesure)).toEqual(['Un titre bien', 'plus long que…'])
     expect(couper('Anticonstitutionnellement', 10, mesure)).toEqual(['Anticonstitutionnellement'])
     expect(couper('', 10, mesure)).toEqual([])
-  })
-
-  it('dessine la carte : étiquette, titre, détails, date et signature', () => {
-    const textes: string[] = []
-    const images: unknown[] = []
-    const ctx = new Proxy({} as Record<string, unknown>, {
-      get: (cible, nom) => {
-        if (nom === 'fillText') return (t: string) => textes.push(t)
-        if (nom === 'drawImage') return (i: unknown) => images.push(i)
-        if (nom === 'measureText') return (t: string) => ({ width: t.length * 30 })
-        if (nom === 'createRadialGradient') return () => ({ addColorStop() {} })
-        if (nom in cible) return cible[nom as string]
-        return () => {}
-      },
-      set: (cible, nom, v) => { cible[nom as string] = v; return true },
-    }) as unknown as CanvasRenderingContext2D
-    const affiche = {} as CanvasImageSource
-    dessinerCarte(ctx, badge(), affiche, 'serif')
-    expect(images).toEqual([affiche])
-    expect(textes).toEqual(['FILM TERMINÉ', 'Le Grand Film', '2021 · 2 h 13', 'Regardé jusqu’au bout · 2 mars 2026', 'Entracte · plbls.fr'])
-    textes.length = 0
-    dessinerCarte(ctx, badge({ poster: false }), null, 'serif')
-    expect(textes.slice(0, 1)).toEqual(['Le Grand Film'])
   })
 })

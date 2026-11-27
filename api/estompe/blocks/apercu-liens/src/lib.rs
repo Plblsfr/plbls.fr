@@ -1,3 +1,4 @@
+pub mod badge;
 mod fetcher;
 pub mod sillon;
 
@@ -91,6 +92,9 @@ async fn link_preview(
         )
         .await;
     }
+    if let Some(cle) = badge::lien(param("url"), &state.config().allowed_origins) {
+        return badge::carte(&state, &user, cle, param("message"), param("url")).await;
+    }
     if !param("refresh").is_empty() {
         fetcher.forget(param("url"));
     }
@@ -159,6 +163,10 @@ mod tests {
     }
 
     async fn env_avec(non_filtre: bool, origines: &str) -> Option<Env> {
+        env_config(non_filtre, origines, &[]).await
+    }
+
+    async fn env_config(non_filtre: bool, origines: &str, extra: &[(&str, &str)]) -> Option<Env> {
         let gateway = faux(|r| {
             let nom = r.entete("authorization").replace("Bearer ", "");
             if nom == "anonyme" {
@@ -185,11 +193,16 @@ mod tests {
                 .unwrap();
         }
         let state = AppState::new(
-            testutil::config_avec(&[
-                ("GATEWAY_URL", gateway.url.as_str()),
-                ("AEGIS_URL", permission.url.as_str()),
-                ("ALLOWED_ORIGINS", origines),
-            ]),
+            testutil::config_avec(
+                &[
+                    ("GATEWAY_URL", gateway.url.as_str()),
+                    ("AEGIS_URL", permission.url.as_str()),
+                    ("ALLOWED_ORIGINS", origines),
+                ]
+                .into_iter()
+                .chain(extra.iter().copied())
+                .collect::<Vec<_>>(),
+            ),
             vec![],
         );
         state.set_pool(pool.clone());
@@ -458,5 +471,85 @@ mod tests {
         let appels = faux.0.lock().unwrap().clone();
         assert!(appels.iter().all(|a| !a.contains("playlist")), "{appels:?}");
         assert!(appels.iter().all(|a| !a.contains(LISTE)), "{appels:?}");
+    }
+
+    #[tokio::test]
+    async fn lien_de_badge_donne_la_carte_du_badge_de_l_auteur() {
+        let origine = "https://estompe.test";
+        let entracte = faux(|r| {
+            let attendu = format!("/internal/badges/season:{ALBUM}:2");
+            if r.entete("authorization") != "Bearer jeton-entracte"
+                || r.chemin != attendu
+                || r.query != "sub=sub-alice"
+            {
+                return (404, vec![]);
+            }
+            (
+                200,
+                json!({"kind": "season", "title_id": ALBUM, "season": 2, "title": "La Série",
+                       "season_title": "Saison 2", "year": 2019, "poster": true, "season_poster": false,
+                       "episodes": 8, "duration": 21600.0, "obtained_at": "2026-11-26T23:10:00.000Z"})
+                .to_string()
+                .into_bytes(),
+            )
+        })
+        .await;
+        let Some(e) = env_config(
+            true,
+            &format!("{origine}/"),
+            &[
+                ("ENTRACTE_INTERNE_URL", entracte.url.as_str()),
+                ("ENTRACTE_SERVICE_TOKEN", "jeton-entracte"),
+            ],
+        )
+        .await
+        else {
+            return;
+        };
+        let (a, b) = (
+            utilisateur(&e.pool, "alice").await,
+            utilisateur(&e.pool, "bob").await,
+        );
+        let (ua, ub) = if a < b { (a, b) } else { (b, a) };
+        let dm: String = sqlx::query_scalar(
+            "INSERT INTO dm_conversations (user_a, user_b) VALUES ($1::uuid, $2::uuid) RETURNING id::text",
+        )
+        .bind(ua)
+        .bind(ub)
+        .fetch_one(&e.pool)
+        .await
+        .unwrap();
+        let lien = format!("{origine}/#/films/badge/season%3A{ALBUM}%3A2");
+        let de_alice = message(&e.pool, &dm, "alice", &lien).await;
+        let de_bob = message(&e.pool, &dm, "bob", &lien).await;
+        for qui in ["alice", "bob"] {
+            let (s, h, p) = appel(&e.app, Some(qui), &q(&lien, de_alice)).await;
+            assert_eq!(s, StatusCode::OK, "{qui}");
+            assert_eq!(h[header::CACHE_CONTROL], "private, max-age=600");
+            assert_eq!(p["site_name"], "Entracte");
+            assert_eq!(p["description"], "Saison 2 terminée");
+            assert_eq!(p["entracte_badge"]["title"], "La Série");
+            assert_eq!(p["entracte_badge"]["season"], 2);
+        }
+        for (qui, requete) in [
+            ("bob", q(&lien, de_bob)),
+            ("carole", q(&lien, de_alice)),
+            (
+                "alice",
+                format!("?url={}", utf8_percent_encode(&lien, NON_ALPHANUMERIC)),
+            ),
+        ] {
+            let (s, _, c) = appel(&e.app, Some(qui), &requete).await;
+            assert_eq!(
+                (s, c["error"].as_str()),
+                (StatusCode::NOT_FOUND, Some("no_preview")),
+                "{qui} {requete}"
+            );
+        }
+        let subs: Vec<String> = entracte.requetes().into_iter().map(|r| r.query).collect();
+        assert!(
+            subs.iter().all(|q| q != "sub=sub-carole"),
+            "le lecteur n'est jamais demandé : {subs:?}"
+        );
     }
 }

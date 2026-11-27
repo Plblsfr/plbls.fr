@@ -1,3 +1,4 @@
+import type { FilmBadge } from '../sections/entracte/badges'
 export interface Person { id: string; pseudo: string }
 export interface AdminLive {
   connections: number
@@ -113,7 +114,7 @@ export interface Mention {
   created_at: string
   group?: boolean
 }
-export interface LinkPreview { url: string; title: string; description?: string; image?: string; site_name?: string; sillon?: SillonCard }
+export interface LinkPreview { url: string; title: string; description?: string; image?: string; site_name?: string; sillon?: SillonCard; entracte_badge?: FilmBadge }
 /** Carte d'un lien Sillon (#212) : vue par l'auteur du message ; `listen` dit si le lecteur peut ouvrir la section. */
 export interface SillonCard { type: 'album' | 'track' | 'artist'; id: string; title: string; artist: string; album: string | null; cover: { kind: 'album' | 'artist'; id: string } | null; listen: boolean }
 export interface VoiceParticipant { user_id: string; pseudo: string; screen?: boolean; camera?: boolean; since?: string; mic_off?: boolean; sound_off?: boolean }

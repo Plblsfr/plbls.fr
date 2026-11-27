@@ -10,10 +10,12 @@
 
 <script lang="ts">
   import { api } from '../../lib/api'
+  import { app } from '../../lib/store.svelte'
   import Icon from '../../components/Icon.svelte'
   import Lightbox from '../../components/Lightbox.svelte'
   import { youtubeVideo } from '../regarder-ensemble/youtube'
   import SillonCover from '../../sections/sillon/SillonCover.svelte'
+  import FilmBadgeAnimee from '../../sections/entracte/FilmBadgeAnimee.svelte'
 
   let { url, message }: { url: string; message?: string } = $props()
 
@@ -58,7 +60,13 @@
   {/if}
 {:else}
 {#await preview then p}
-  {#if p?.sillon}
+  {#if p?.entracte_badge}
+    {@const b = p.entracte_badge}
+    <div class="lien-badge">
+      <FilmBadgeAnimee badge={b} />
+      {#if app.entracteMe}<a class="v-note lien-badge-fiche" href={hrefs.films('item', b.title_id)}>Voir la fiche dans Entracte</a>{/if}
+    </div>
+  {:else if p?.sillon}
     {@const s = p.sillon}
     <div class="lien-apercu sillon-carte">
       <span class="sillon-carte-pochette"><SillonCover id={s.cover?.id ?? s.id} title={s.title} image={!!s.cover} kind={s.cover?.kind === 'artist' ? 'artiste' : 'album'} size="small" /></span>
@@ -81,3 +89,7 @@
   {/if}
 {/await}
 {/if}
+
+<style>
+  .lien-badge { display: flex; flex-direction: column; gap: 6px; max-width: 280px; margin-top: 6px; }
+</style>

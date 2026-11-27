@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "entracte"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1074,6 +1074,7 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "base64 0.23.1",
+ "chrono",
  "estompe-block",
  "estompe-core",
  "html5gum",

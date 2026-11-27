@@ -1,7 +1,10 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::Response,
 };
 use chrono::{DateTime, Utc};
@@ -14,7 +17,7 @@ use crate::{
     bibliotheque::uuid,
     etat::AppState,
     garde::Personne,
-    http::{bd, horodatage, introuvable, ok, sans_contenu},
+    http::{bd, horodatage, introuvable, invalide, ok, sans_contenu},
     progression,
     sablier::Lectures,
 };
@@ -266,7 +269,27 @@ pub async fn fin_sautee(
     Ok(sans_contenu())
 }
 
-pub async fn liste(State(state): State<AppState>, p: Personne) -> Result<Response, Response> {
+pub fn lire_cle(cle: &str) -> Option<(GenreBadge, Uuid, Option<i32>)> {
+    let mut parts = cle.split(':');
+    let genre = match parts.next()? {
+        "movie" => GenreBadge::Film,
+        "season" => GenreBadge::Saison,
+        "series" => GenreBadge::Serie,
+        _ => return None,
+    };
+    let titre = Uuid::parse_str(parts.next()?).ok()?;
+    let saison = match genre {
+        GenreBadge::Saison => Some(parts.next()?.parse::<i32>().ok().filter(|s| *s > 0)?),
+        _ => None,
+    };
+    parts.next().is_none().then_some((genre, titre, saison))
+}
+
+pub async fn badges_de(
+    pool: &PgPool,
+    sub: &str,
+    cible: Option<(GenreBadge, Uuid, Option<i32>)>,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     let lignes = sqlx::query(
         "SELECT b.genre, b.titre_id, b.saison, b.obtenu_le, t.titre, t.annee, t.duree,
            (t.affiche IS NOT NULL) AS a_affiche, sa.titre AS saison_titre, (sa.affiche IS NOT NULL) AS saison_affiche,
@@ -276,13 +299,17 @@ pub async fn liste(State(state): State<AppState>, p: Personne) -> Result<Respons
          LEFT JOIN LATERAL (SELECT count(*) AS episodes, sum(x.duree) AS secondes FROM titres x
            WHERE b.genre <> 'film' AND x.serie_id = b.titre_id AND x.genre = 'episode'
              AND x.saison > 0 AND (b.saison IS NULL OR x.saison = b.saison)) e ON true
-         WHERE b.sub = $1 ORDER BY b.obtenu_le DESC, b.genre, b.saison DESC",
+         WHERE b.sub = $1 AND ($2::text IS NULL OR (b.genre = $2 AND b.titre_id = $3
+           AND coalesce(b.saison, -1) = coalesce($4, -1)))
+         ORDER BY b.obtenu_le DESC, b.genre, b.saison DESC",
     )
-    .bind(p.sub())
-    .fetch_all(state.pool())
-    .await
-    .map_err(bd)?;
-    let items: Vec<_> = lignes
+    .bind(sub)
+    .bind(cible.map(|c| c.0.nom()))
+    .bind(cible.map(|c| c.1))
+    .bind(cible.and_then(|c| c.2))
+    .fetch_all(pool)
+    .await?;
+    Ok(lignes
         .iter()
         .map(|l| {
             let genre: String = l.get("genre");
@@ -302,8 +329,32 @@ pub async fn liste(State(state): State<AppState>, p: Personne) -> Result<Respons
                 "obtained_at": horodatage(&obtenu),
             })
         })
-        .collect();
+        .collect())
+}
+
+pub async fn liste(State(state): State<AppState>, p: Personne) -> Result<Response, Response> {
+    let items = badges_de(state.pool(), p.sub(), None).await.map_err(bd)?;
     Ok(ok(&json!({ "items": items })))
+}
+
+pub async fn interne(
+    State(state): State<AppState>,
+    Path(cle): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, Response> {
+    let sub = q
+        .get("sub")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && s.len() <= 200)
+        .ok_or_else(|| invalide("sub requis"))?;
+    let cible = lire_cle(&cle).ok_or_else(introuvable)?;
+    badges_de(state.pool(), sub, Some(cible))
+        .await
+        .map_err(bd)?
+        .into_iter()
+        .next()
+        .map(|b| ok(&b))
+        .ok_or_else(introuvable)
 }
 
 #[cfg(test)]
@@ -629,6 +680,33 @@ mod tests {
             serie_complete.iter().map(|b| b.genre).collect::<Vec<_>>(),
             [GenreBadge::Serie]
         );
+    }
+
+    #[test]
+    fn cles_de_badge() {
+        let id = Uuid::nil();
+        assert_eq!(
+            lire_cle(&format!("movie:{id}")),
+            Some((GenreBadge::Film, id, None))
+        );
+        assert_eq!(
+            lire_cle(&format!("season:{id}:3")),
+            Some((GenreBadge::Saison, id, Some(3)))
+        );
+        assert_eq!(
+            lire_cle(&format!("series:{id}")),
+            Some((GenreBadge::Serie, id, None))
+        );
+        for faux in [
+            format!("movie:{id}:1"),
+            format!("season:{id}"),
+            format!("season:{id}:0"),
+            format!("episode:{id}"),
+            "movie:pas-un-uuid".to_string(),
+            String::new(),
+        ] {
+            assert_eq!(lire_cle(&faux), None, "{faux}");
+        }
     }
 
     #[test]

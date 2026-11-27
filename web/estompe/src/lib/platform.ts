@@ -149,7 +149,6 @@ export interface Platform {
   network?: NetworkDriver
   /** Application au premier plan (jeu en cours), si la plateforme sait la détecter. */
   foregroundApp?(): Promise<string | null>
-  shareImage?(image: Blob, name: string, text: string): Promise<boolean>
 }
 
 let current: Platform | null = null
