@@ -1,6 +1,10 @@
 #![allow(clippy::result_large_err)]
 
+pub mod bilan;
+pub mod categories;
+pub mod classement;
 pub mod cmb;
+pub mod commercants;
 pub mod config;
 pub mod droits;
 pub mod etat;
@@ -12,11 +16,15 @@ pub mod import;
 pub mod interne;
 pub mod metriques;
 pub mod mots;
+pub mod normalisation;
+pub mod regles;
 pub mod releves;
 pub mod routes;
 
 #[cfg(test)]
 mod tests_api;
+#[cfg(test)]
+mod tests_categories;
 #[cfg(test)]
 mod testutil;
 

@@ -4,8 +4,10 @@
   import Loader from '../../components/Loader.svelte'
   import { hrefs } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
-  import { dateCourte, periode, pluriel } from './formats'
-  import { ONGLETS, ongletActif, vueDe } from './onglets'
+  import { dateCourte, euros, periode, pluriel } from './formats'
+  import { estOutil, ONGLETS, ongletActif, voletDe, vueDe } from './onglets'
+  import TirelireCategories from './TirelireCategories.svelte'
+  import TirelireClasser from './TirelireClasser.svelte'
   import TirelireAttente from './TirelireAttente.svelte'
   import TirelireImport from './TirelireImport.svelte'
   import TirelireOnglets from './TirelireOnglets.svelte'
@@ -39,10 +41,17 @@
 <div class="tir" data-vue={vue}>
   {#if vue === 'import'}
     <TirelireTete titre="Import" sous="relevés de compte au format PDF" retour={hrefs.tirelire()} retourLabel="Retour à l’accueil" />
+  {:else if vue === 'classer'}
+    <TirelireTete titre="À classer" sous={tirelire.compteur ? (tirelire.aClasser ? `${pluriel(tirelire.aClasser, 'opération restante', 'opérations restantes')} · ${euros(tirelire.compteur.debits)} de débits` : 'rien à classer') : ''} retour={hrefs.tirelire()} retourLabel="Retour à l’accueil">
+      <a class="tir-ib" href={hrefs.tirelire('categories')} aria-label="Catégories et règles" title="Catégories et règles"><Icon name="curseurs" size={20} /></a>
+    </TirelireTete>
+  {:else if vue === 'categories'}
+    <TirelireTete titre="Catégories et règles" sous={tirelire.categories ? [pluriel(tirelire.categories.length, 'catégorie', 'catégories'), tirelire.regles ? pluriel(tirelire.regles.length, 'règle', 'règles') : '', tirelire.commercants ? pluriel(tirelire.commercants.length, 'commerçant', 'commerçants') : ''].filter(Boolean).join(' · ') : ''} retour={hrefs.tirelire()} retourLabel="Retour à l’accueil" />
   {:else if vue === 'operation'}
     <TirelireTete titre="Opération" sous={operation ? `${dateCourte(operation.date)} · ${natureDe(operation)}` : ''} retour={hrefs.tirelire('operations')} retourLabel="Retour aux opérations" />
   {:else}
     <TirelireTete {titre} sur={['Tirelire', vue === 'operations' ? portee : nom].filter(Boolean).join(' · ')} {onmenu}>
+      {#if tirelire.aClasser}<a class="tir-ib tir-ib--pip" href={hrefs.tirelire('a-classer')} aria-label="À classer : {pluriel(tirelire.aClasser, 'opération', 'opérations')}" title="À classer"><Icon name="boite" size={20} /><span class="tir-pip" aria-hidden="true">{tirelire.aClasser > 99 ? '99+' : tirelire.aClasser}</span></a>{/if}
       <a class="tir-ib" href={hrefs.tirelire('import')} aria-label="Importer des relevés" title="Importer des relevés"><Icon name="envoie" size={20} /></a>
     </TirelireTete>
   {/if}
@@ -51,8 +60,12 @@
     <div class="tir-corps">
       {#if vue === 'import'}
         <TirelireImport />
+      {:else if vue === 'classer'}
+        <TirelireClasser />
+      {:else if vue === 'categories'}
+        <TirelireCategories volet={voletDe(id)} />
       {:else if vue === 'operation'}
-        <TirelireOperation id={Number(id)} />
+        {#key id}<TirelireOperation id={Number(id)} />{/key}
       {:else if vue === 'operations'}
         <TirelireOperations />
       {:else if tirelire.releves}
@@ -70,5 +83,5 @@
     </div>
   </div>
 
-  {#if vue !== 'import'}<TirelireOnglets {actif} />{/if}
+  {#if !estOutil(vue)}<TirelireOnglets {actif} />{/if}
 </div>

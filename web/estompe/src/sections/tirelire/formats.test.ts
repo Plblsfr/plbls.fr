@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateCourte, dateLongue, ecart, euros, eurosSignes, instant, jourLong, moisLong, montant, nombre, periode, pluriel, signe } from './formats'
+import { centimes, saisieEuros, dateCourte, dateLongue, ecart, euros, eurosSignes, instant, jourLong, moisLong, montant, nombre, periode, pluriel, signe } from './formats'
 
 describe('montants en euros', () => {
   it('écrit des centimes entiers à la française', () => {
@@ -82,5 +82,11 @@ describe('dates', () => {
   it('date un import dans le fuseau de l’appareil', () => {
     expect(instant(new Date(2026, 9, 2, 14, 5).toISOString())).toBe('2 oct. 2026')
     expect(instant(new Date(2026, 10, 1, 8, 0).toISOString())).toBe('1er nov. 2026')
+  })
+
+  it('lit un plafond saisi en euros, en centimes entiers', () => {
+    expect([centimes('150'), centimes('150,5'), centimes('150.05'), centimes(' 1 250,00 € '), centimes('0')]).toEqual([15_000, 15_050, 15_005, 125_000, 0])
+    expect([centimes(''), centimes('-5'), centimes('12,345'), centimes('abc'), centimes('1e3')]).toEqual([null, null, null, null, null])
+    expect([saisieEuros(null), saisieEuros(15_000), saisieEuros(15_050), saisieEuros(5)]).toEqual(['', '150', '150,50', '0,05'])
   })
 })

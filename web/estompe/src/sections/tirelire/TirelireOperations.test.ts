@@ -1,17 +1,27 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../lib/api'
-import { operation, OPERATIONS, page, releve } from './essais'
+import { CATEGORIES, commercant, operation, OPERATIONS, page, releve } from './essais'
 import TirelireOperation from './TirelireOperation.svelte'
 import TirelireOperations from './TirelireOperations.svelte'
 import TirelireSpace from './TirelireSpace.svelte'
-import { tirelireApi, type Filtres, type Releve } from './tirelire'
+import { filtres, tirelireApi, type Filtres, type Releve } from './tirelire'
 import { tirelire } from './tirelire.svelte'
 
 const texte = (el: Element | null) => el?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
 const saisir = async (champ: HTMLElement, value: string) => { await fireEvent.input(champ, { target: { value } }); await fireEvent.change(champ) }
 
-beforeEach(() => tirelire.reinitialiser())
+beforeEach(() => {
+  tirelire.reinitialiser()
+  vi.spyOn(tirelireApi, 'categories').mockResolvedValue(CATEGORIES)
+  vi.spyOn(tirelireApi, 'compteur').mockResolvedValue({ operations: 0, merchants: 0, debits: 0, credits: 0 })
+  vi.spyOn(tirelireApi, 'commercants').mockResolvedValue([commercant({ id: 7, name: 'Cafe Tamis Villeneuve' })])
+  vi.spyOn(tirelireApi, 'operation').mockImplementation(async (id: number) => {
+    const o = OPERATIONS.find((x) => x.id === id)
+    if (!o) throw new ApiError(404, 'not_found', 'introuvable')
+    return o
+  })
+})
 afterEach(() => { vi.restoreAllMocks(); tirelire.reinitialiser() })
 
 async function preparer(releves: Releve[] = [releve()]) {
@@ -27,9 +37,9 @@ describe('TirelireOperations', () => {
     const liste = within(await vue.findByRole('region', { name: 'Liste des opérations' }))
     expect(liste.getAllByRole('heading', { level: 3 }).map(texte)).toEqual(['Jeudi 26 novembre−35,10 €', 'Mardi 24 novembre−291,80 €', 'Lundi 23 novembre+2 640,00 €'])
     const jeudi = within(liste.getByRole('list', { name: 'Jeudi 26 novembre' })).getAllByRole('link')
-    expect(jeudi.map(texte)).toEqual(['MARCHE COLLINE VILLENEUVECarte −31,20 €', 'CAFE TAMIS VILLENEUVECarte −3,90 €'])
+    expect(jeudi.map(texte)).toEqual(['MARCHE COLLINE VILLENEUVEà classerCarte −31,20 €', 'CAFE TAMIS VILLENEUVEà classerCarte −3,90 €'])
     expect(jeudi[0]).toHaveAttribute('href', '#/tirelire/operations/1')
-    expect(texte(within(liste.getByRole('list', { name: 'Lundi 23 novembre' })).getByRole('link'))).toBe('VIR ATELIER MERIDIEN SALAIREVirement +2 640,00 €')
+    expect(texte(within(liste.getByRole('list', { name: 'Lundi 23 novembre' })).getByRole('link'))).toBe('VIR ATELIER MERIDIEN SALAIREà classerVirement +2 640,00 €')
     expect(texte(vue.getByRole('group', { name: 'Résumé' }))).toBe('Opérations5 Débits−326,90 € Crédits+2 640,00 €')
     expect(vue.getByText('Toutes les opérations sont affichées')).toBeInTheDocument()
   })
@@ -57,28 +67,50 @@ describe('TirelireOperations', () => {
     const releves = vue.getByRole('combobox', { name: 'Relevé' })
     expect(within(releves).getAllByRole('option').map(texte)).toEqual(['Tous les relevés', 'Relevé n° 11 de 2026 · 26 nov. 2026', 'Relevé n° 10 de 2026 · 31 oct. 2026'])
     await fireEvent.change(releves, { target: { value: '10' } })
-    await waitFor(() => expect(lire).toHaveBeenLastCalledWith({ releve: 10, du: '', au: '' }, 0))
-    await fireEvent.click(vue.getByRole('button', { name: 'Afficher les filtres de période' }))
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ releve: 10, du: '', au: '' }), 0))
+    await fireEvent.click(vue.getByRole('button', { name: 'Afficher les filtres' }))
     await saisir(vue.getByLabelText('Du'), '2026-10-05')
-    await waitFor(() => expect(lire).toHaveBeenLastCalledWith({ releve: 10, du: '2026-10-05', au: '' }, 0))
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ releve: 10, du: '2026-10-05', au: '' }), 0))
     await saisir(vue.getByLabelText('Au'), '2026-10-01')
     expect(await vue.findByText('La date de début est après la date de fin.')).toBeInTheDocument()
     expect(lire).toHaveBeenCalledTimes(3)
     await saisir(vue.getByLabelText('Au'), '2026-10-20')
-    await waitFor(() => expect(lire).toHaveBeenLastCalledWith({ releve: 10, du: '2026-10-05', au: '2026-10-20' }, 0))
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ releve: 10, du: '2026-10-05', au: '2026-10-20' }), 0))
     await fireEvent.click(vue.getByRole('button', { name: 'Réinitialiser' }))
-    await waitFor(() => expect(lire).toHaveBeenLastCalledWith({ releve: null, du: '', au: '' }, 0))
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ releve: null, du: '', au: '' }), 0))
     expect((vue.getByLabelText('Du') as HTMLInputElement).value).toBe('')
   })
 
-  it('ne propose ni recherche, ni filtre par catégorie, commerçant ou montant, ni export', async () => {
+  it('montre la catégorie de chaque ligne, ou « à classer », et le nom du commerçant', async () => {
     await preparer()
-    vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page())
+    vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page([
+      operation({ id: 1, merchant_id: 3, merchant_name: 'Marche Colline Villeneuve', category_id: 2, category_source: 'regle', rule_id: 4 }),
+      operation({ id: 2, label: 'CARTE 26/11 KSQ 4471', merchant: 'KSQ 4471', amount: 240 }),
+    ]))
+    const vue = render(TirelireOperations, { annee: 2026 })
+    const lignes = within(await vue.findByRole('region', { name: 'Liste des opérations' })).getAllByRole('link')
+    expect(lignes.map(texte)).toEqual(['Marche Colline VilleneuveCoursesCarte −31,20 €', 'KSQ 4471à classerCarte −2,40 €'])
+    expect(lignes[0].querySelector('.tir-pt--2')).not.toBeNull()
+  })
+
+  it('filtre par catégorie, par commerçant et « à classer » ; pas de recherche, de montant ni d’export', async () => {
+    await preparer()
+    const lire = vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page())
     const vue = render(TirelireOperations, { annee: 2026 })
     await vue.findByRole('region', { name: 'Liste des opérations' })
-    await fireEvent.click(vue.getByRole('button', { name: 'Afficher les filtres de période' }))
+    await fireEvent.click(vue.getByRole('button', { name: 'Afficher les filtres' }))
+    const categories = vue.getByLabelText('Catégorie')
+    expect(within(categories).getAllByRole('option').map(texte)).toEqual(['Toutes', 'À classer', 'Logement', 'Courses', 'Restaurants', 'Épargne', 'Revenus'])
+    await fireEvent.change(categories, { target: { value: '2' } })
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ categorie: 2 }), 0))
+    await fireEvent.change(categories, { target: { value: 'a-classer' } })
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ aClasser: true }), 0))
+    await fireEvent.change(await vue.findByLabelText('Commerçant'), { target: { value: '7' } })
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres({ aClasser: true, commercant: 7 }), 0))
+    await fireEvent.click(vue.getByRole('button', { name: 'Réinitialiser' }))
+    await waitFor(() => expect(lire).toHaveBeenLastCalledWith(filtres(), 0))
     expect(vue.queryByRole('searchbox')).toBeNull()
-    expect(vue.queryByText(/Catégorie|Commerçant|Montant|CSV|à classer/)).toBeNull()
+    expect(vue.queryByText(/Montant|CSV/)).toBeNull()
   })
 
   it('sans relevé, invite à importer ; sans résultat pour un filtre, le dit', async () => {
@@ -113,7 +145,7 @@ describe('TirelireOperation', () => {
     vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page())
     const vue = render(TirelireOperation, { id: 3 })
     const resume = await vue.findByRole('region', { name: 'Résumé de l’opération' })
-    expect(texte(resume)).toBe('LIVREO*CMD PARISCarte −41,80 €')
+    expect(texte(resume)).toBe('LIVREO*CMD PARISà classerCarte −41,80 €')
     const releveVu = within(vue.getByRole('region', { name: 'Libellé du relevé' }))
     expect(releveVu.getByText('CARTE 22/11 LIVREO*CMD PARIS')).toBeInTheDocument()
     expect(releveVu.getByText('Détails (2 lignes)')).toBeInTheDocument()
@@ -133,13 +165,59 @@ describe('TirelireOperation', () => {
     await preparer()
     vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page())
     const vue = render(TirelireOperation, { id: 5 })
-    expect(texte(await vue.findByRole('region', { name: 'Résumé de l’opération' }))).toBe('VIR ATELIER MERIDIEN SALAIREVirement +2 640,00 €')
+    expect(texte(await vue.findByRole('region', { name: 'Résumé de l’opération' }))).toBe('VIR ATELIER MERIDIEN SALAIREà classerVirement +2 640,00 €')
     expect(vue.getByText('Détails (1 ligne)')).toBeInTheDocument()
     expect(vue.queryByText('Date d’achat carte')).toBeNull()
-    expect(vue.getByText('Crédit')).toBeInTheDocument()
+    expect(texte(vue.getByText('Sens').parentElement)).toBe('SensCrédit')
   })
 
-  it('opération absente de la liste chargée : le dit et renvoie à la liste', async () => {
+  it('lien direct : l’opération est lue seule, sans charger la liste', async () => {
+    await preparer()
+    const liste = vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page())
+    const vue = render(TirelireOperation, { id: 4 })
+    expect(texte(await vue.findByRole('region', { name: 'Résumé de l’opération' }))).toContain('VIR VERS LIVRET')
+    expect(tirelireApi.operation).toHaveBeenCalledWith(4)
+    expect(liste).not.toHaveBeenCalled()
+  })
+
+  it('reclasse tout le commerçant, ou cette opération seulement', async () => {
+    await preparer()
+    const o = operation({ id: 8, merchant_id: 3, merchant_name: 'Marche Colline Villeneuve', category_id: 2, category_source: 'regle', rule_id: 4 })
+    vi.mocked(tirelireApi.operation).mockResolvedValue(o)
+    const classer = vi.spyOn(tirelireApi, 'classerOperation').mockImplementation(async (_id, categorie, portee) => ({ operation: { ...o, category_id: categorie, category_source: portee === 'merchant' ? 'commercant' : 'operation', rule_id: null }, reclassified: portee === 'merchant' ? 31 : 1 }))
+    const vue = render(TirelireOperation, { id: 8 })
+    const carte = within(await vue.findByRole('region', { name: 'Catégorie' }))
+    expect(carte.getByText('règle par mots-clés')).toBeInTheDocument()
+    const choix = carte.getByRole('combobox', { name: 'Catégorie de l’opération' }) as HTMLSelectElement
+    expect(choix.value).toBe('2')
+    expect(carte.getByRole('button', { name: 'Tout le commerçant' })).toHaveAttribute('aria-pressed', 'true')
+    expect(carte.getByRole('button', { name: 'Appliquer à tout le commerçant' })).toBeDisabled()
+    await fireEvent.change(choix, { target: { value: '3' } })
+    await fireEvent.click(carte.getByRole('button', { name: 'Appliquer à tout le commerçant' }))
+    await waitFor(() => expect(classer).toHaveBeenLastCalledWith(8, 3, 'merchant'))
+    expect(texte(await carte.findByRole('status'))).toBe('Règle enregistrée pour tout le commerçant : 31 opérations reclassées.')
+    expect(carte.getByText('règle du commerçant')).toBeInTheDocument()
+    await fireEvent.click(carte.getByRole('button', { name: 'Cette opération' }))
+    await fireEvent.change(choix, { target: { value: '1' } })
+    await fireEvent.click(carte.getByRole('button', { name: 'Appliquer à cette opération' }))
+    await waitFor(() => expect(classer).toHaveBeenLastCalledWith(8, 1, 'operation'))
+    await waitFor(() => expect(texte(carte.getByRole('status'))).toBe('Catégorie enregistrée pour cette opération seulement.'))
+    expect(carte.getByText('choisie pour cette opération')).toBeInTheDocument()
+  })
+
+  it('sans commerçant, seule cette opération se classe ; un refus s’affiche', async () => {
+    await preparer()
+    vi.mocked(tirelireApi.operation).mockResolvedValue(operation({ id: 9 }))
+    vi.spyOn(tirelireApi, 'classerOperation').mockRejectedValue(new ApiError(500, 'internal', 'erreur interne'))
+    const vue = render(TirelireOperation, { id: 9 })
+    const carte = within(await vue.findByRole('region', { name: 'Catégorie' }))
+    expect(carte.queryByRole('button', { name: 'Tout le commerçant' })).toBeNull()
+    await fireEvent.change(carte.getByRole('combobox'), { target: { value: '2' } })
+    await fireEvent.click(carte.getByRole('button', { name: 'Appliquer à cette opération' }))
+    expect(texte(await carte.findByRole('alert'))).toBe('Tirelire est indisponible pour le moment.')
+  })
+
+  it('opération inconnue : le dit et renvoie à la liste', async () => {
     await preparer()
     vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page())
     const vue = render(TirelireOperation, { id: 999 })
@@ -163,16 +241,41 @@ describe('TirelireSpace', () => {
     ])
   })
 
-  it('Accueil, Mois, Évolution et Habitudes disent attendre les catégories, sans chiffre inventé', async () => {
+  it('Mois, Évolution et Habitudes restent en attente, sans chiffre inventé ; l’accueil aussi, hors bandeau', async () => {
     vi.spyOn(tirelireApi, 'releves').mockResolvedValue([releve(), releve({ id: 10, number: 10, from: '2026-09-30', to: '2026-10-31', operations: 91 })])
     for (const [section, titre] of [[undefined, 'Accueil'], ['mois', 'Vue du mois'], ['evolution', 'Évolution'], ['habitudes', 'Habitudes']] as const) {
       const vue = monter(section)
-      expect(await vue.findByRole('heading', { name: 'Disponible quand les catégories seront en place' })).toBeInTheDocument()
+      expect(await vue.findByRole('heading', { name: 'Bientôt disponible' })).toBeInTheDocument()
       expect(vue.getByRole('heading', { name: titre, level: 1 })).toBeInTheDocument()
       expect(vue.container.textContent).not.toMatch(/€/)
+      expect(vue.queryByRole('link', { name: /à classer/i })).toBeNull()
       expect(texte(vue.getByRole('link', { name: /^Opérations\s*175/ }))).toContain('175 opérations · du 30 sept. au 26 nov. 2026')
+      expect(vue.getByRole('link', { name: /Catégories et règles/ })).toHaveAttribute('href', '#/tirelire/categories')
       vue.unmount()
+      tirelire.reinitialiser()
     }
+  })
+
+  it('bandeau « à classer » sur l’accueil et pastille dans l’en-tête tant que la file n’est pas vide', async () => {
+    vi.spyOn(tirelireApi, 'releves').mockResolvedValue([releve()])
+    vi.mocked(tirelireApi.compteur).mockResolvedValue({ operations: 7, merchants: 5, debits: 2800, credits: 0 })
+    const vue = monter()
+    const bandeau = await vue.findByRole('link', { name: /^7 opérations à classer/ })
+    expect(bandeau).toHaveAttribute('href', '#/tirelire/a-classer')
+    expect(texte(bandeau)).toBe('7 opérations à classer28,00 € de débits sans catégorie · 5 commerçants')
+    vue.unmount()
+    const mois = monter('mois')
+    expect(await mois.findByRole('heading', { name: 'Bientôt disponible' })).toBeInTheDocument()
+    expect(mois.getByRole('link', { name: 'À classer : 7 opérations' })).toHaveAttribute('href', '#/tirelire/a-classer')
+    expect(mois.container.querySelector('.tir-bandeau')).toBeNull()
+  })
+
+  it('premier lancement : l’étape « classe l’inconnu » n’est plus à venir', async () => {
+    vi.spyOn(tirelireApi, 'releves').mockResolvedValue([])
+    const vue = monter()
+    const etapes = within(await vue.findByRole('region', { name: 'Comment ça marche' }))
+    expect(texte(etapes.getByText('Classe l’inconnu').closest('.tir-li'))).toBe('2Classe l’inconnuUn choix crée une règle pour tout le commerçant.')
+    expect(etapes.getAllByText('à venir')).toHaveLength(1)
   })
 
   it('Tirelire injoignable : message et relance, sans bloquer la navigation', async () => {
@@ -187,7 +290,6 @@ describe('TirelireSpace', () => {
 
   it('l’en-tête du détail donne la date et la nature de l’opération', async () => {
     vi.spyOn(tirelireApi, 'releves').mockResolvedValue([releve()])
-    vi.spyOn(tirelireApi, 'operations').mockResolvedValue(page(OPERATIONS))
     const vue = monter('operations', '3')
     expect(await vue.findByText('24 nov. 2026 · débit · carte')).toBeInTheDocument()
     expect(vue.getByRole('link', { name: 'Retour aux opérations' })).toHaveAttribute('href', '#/tirelire/operations')

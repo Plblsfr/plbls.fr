@@ -1,4 +1,4 @@
-import type { ClientTirelire, Operation, PageOperations, Releve, ResultatImport } from './tirelire'
+import type { Categorie, ClientTirelire, Commercant, FileAClasser, Groupe, Operation, PageOperations, Regle, Releve, ResultatImport } from './tirelire'
 
 export const releve = (o: Partial<Releve> = {}): Releve => ({
   id: 11, account_id: 1, number: 11, year: 2026, from: '2026-10-31', to: '2026-11-26',
@@ -12,7 +12,7 @@ export const releve = (o: Partial<Releve> = {}): Releve => ({
 export const operation = (o: Partial<Operation> = {}): Operation => ({
   id: 1, statement_id: 11, account_id: 1, date: '2026-11-26', value_date: '2026-11-26', purchase_date: null,
   section: 'PAIEMENTS PAR CARTE', type: 'carte', label: 'CARTE 25/11 MARCHE COLLINE VILLENEUVE', details: [], merchant: 'MARCHE COLLINE VILLENEUVE',
-  amount: 3120, direction: 'debit', merchant_id: null, category_id: null,
+  amount: 3120, direction: 'debit', merchant_id: null, merchant_name: null, category_id: null, category_source: null, rule_id: null,
   ...o,
 })
 
@@ -43,6 +43,22 @@ export const pdf = (nom: string, taille = 1200): File => {
   return f
 }
 
+export const categorie = (o: Partial<Categorie> = {}): Categorie => ({ id: 1, key: null, name: 'Courses', kind: 'variable', monthly_cap: null, color: 1, position: 0, archived: false, operations: 0, merchants: 0, rules: 0, ...o })
+
+export const CATEGORIES: Categorie[] = [
+  categorie({ id: 1, key: 'logement', name: 'Logement', kind: 'fixe', monthly_cap: 78_000, color: 0 }),
+  categorie({ id: 2, key: 'courses', name: 'Courses', monthly_cap: 38_000, color: 1 }),
+  categorie({ id: 3, key: 'restaurants', name: 'Restaurants', monthly_cap: 15_000, color: 2 }),
+  categorie({ id: 4, key: 'epargne', name: 'Épargne', kind: 'epargne', color: 7 }),
+  categorie({ id: 5, key: 'revenus', name: 'Revenus', kind: 'revenu', color: 9 }),
+  categorie({ id: 6, key: 'divers', name: 'Divers', color: 10, archived: true }),
+]
+
+export const regle = (o: Partial<Regle> = {}): Regle => ({ id: 1, key: null, keywords: ['MARCHE COLLINE'], type: null, section: null, category_id: 2, position: 0, operations: 2, ...o })
+export const commercant = (o: Partial<Commercant> = {}): Commercant => ({ id: 1, name: 'Marche Colline Villeneuve', category_id: null, operations: 3, debits: 9360, credits: 0, last_date: '2026-11-26', variants: 1, ...o })
+export const groupe = (o: Partial<Groupe> = {}): Groupe => ({ merchant_id: 7, merchant_name: 'Cafe Tamis Villeneuve', operations: 2, debits: 780, credits: 0, first_date: '2026-11-20', last_date: '2026-11-26', sample: [operation({ id: 2, label: 'CARTE 26/11 CAFE TAMIS VILLENEUVE', merchant: 'CAFE TAMIS VILLENEUVE', merchant_id: 7, merchant_name: 'Cafe Tamis Villeneuve', amount: 390 })], ...o })
+export const file = (groups: Groupe[] = [groupe()]): FileAClasser => ({ operations: groups.reduce((n, g) => n + g.operations, 0), merchants: groups.length, debits: groups.reduce((n, g) => n + g.debits, 0), credits: groups.reduce((n, g) => n + g.credits, 0), groups })
+
 export const fauxClient = (o: Partial<ClientTirelire> = {}): ClientTirelire => ({
   me: async () => ({ sub: 'kc-moi', name: 'Camille', email: '', permissions: { access: true } }),
   comptes: async () => [],
@@ -50,5 +66,22 @@ export const fauxClient = (o: Partial<ClientTirelire> = {}): ClientTirelire => (
   importer: async () => [],
   supprimer: async () => {},
   operations: async () => page([]),
+  operation: async () => operation(),
+  classerOperation: async () => ({ operation: operation(), reclassified: 1 }),
+  aClasser: async () => file([]),
+  compteur: async () => ({ operations: 0, merchants: 0, debits: 0, credits: 0 }),
+  categories: async () => CATEGORIES,
+  creerCategorie: async () => categorie(),
+  modifierCategorie: async () => categorie(),
+  regles: async () => [],
+  creerRegle: async () => ({ rule: regle(), reclassified: 0 }),
+  modifierRegle: async () => ({ rule: regle(), reclassified: 0 }),
+  supprimerRegle: async () => ({ reclassified: 0 }),
+  ordonnerRegles: async () => ({ rules: [], reclassified: 0 }),
+  commercants: async () => [],
+  commercant: async () => commercant(),
+  classerCommercant: async () => ({ merchant: commercant(), reclassified: 0 }),
+  fusionner: async () => ({ merchant: commercant(), reclassified: 0 }),
+  separer: async () => ({ merchant: commercant(), created: [] }),
   ...o,
 })

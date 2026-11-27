@@ -1,13 +1,14 @@
 # Tirelire
 
 Suivi des comptes bancaires de plbls.fr. Ce document décrit ce qui existe aujourd'hui : l'import des relevés de compte PDF du Crédit
-Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations, la suppression d'un relevé. Il n'y a pas encore de
-section dans l'app, ni de commerçants, ni de catégories.
+Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations, la suppression d'un relevé, les catégories, les
+règles de classement, les commerçants et la file « à classer ». Les statistiques (mois, évolution, habitudes) n'existent pas encore.
 
 | Où | Quoi |
 |---|---|
 | [`api/tirelire`](../../api/tirelire/README.md) | API Rust (axum, sqlx), membre du workspace Cargo, base `tirelire` de PostgreSQL |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
+| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : import, opérations, à classer, catégories et règles |
 | [`deploy/tirelire/.env.example`](../../deploy/tirelire/.env.example) | secrets, service `tirelire-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 
 ## Permission et cloisonnement
@@ -16,7 +17,7 @@ Déclarée à aegis par manifeste (application `tirelire`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `tirelire:access` | importer ses relevés, voir ses comptes, ses relevés et ses opérations, supprimer un relevé |
+| `tirelire:access` | importer ses relevés, voir ses comptes, ses relevés et ses opérations, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/tirelire/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -26,15 +27,15 @@ Sans `AEGIS_TOKEN_TIRELIRE`, tout est refusé.
 Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer`, vérifié par `GET /auth/me` du gateway
 (cache de 30 s). Requête modifiante avec cookie : `Origin` dans `TIRELIRE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
 
-Les données sont cloisonnées par personne : chaque ligne des tables `comptes`, `releves` et `operations` porte le `sub` de son
-propriétaire, et toute lecture ou suppression filtre sur celui de la session. Il n'y a ni route d'administration ni partage :
-un identifiant d'une autre personne répond 404.
+Les données sont cloisonnées par personne : chaque ligne des tables `comptes`, `releves`, `operations`, `categories`, `regles`,
+`commercants` et `variantes` porte le `sub` de son propriétaire, et toute lecture ou modification filtre sur celui de la session.
+Il n'y a ni route d'administration ni partage : un identifiant d'une autre personne répond 404 dans un chemin, 400 dans un corps.
 
 ## Confidentialité
 
 - Le PDF n'est pas conservé : il est lu en mémoire, puis seuls restent en base son empreinte SHA-256, les métadonnées du relevé,
   ses opérations et le rapport de contrôle. Aucune donnée ne quitte le service : la lecture du PDF est faite dans le processus, sans service tiers.
-- Les journaux ne contiennent ni libellé, ni montant, ni IBAN, ni nom de fichier : un import y laisse le nombre d'opérations et de pages.
+- Les journaux ne contiennent ni libellé, ni commerçant, ni mot-clé, ni montant, ni IBAN, ni nom de fichier : un import y laisse le nombre d'opérations et de pages.
   Les lignes non reconnues d'un relevé refusé ne sont rendues qu'à la personne qui l'a envoyé, dans la réponse.
 - L'IBAN, le numéro de compte et le titulaire sont en base (ils distinguent les comptes) et rendus à leur seul propriétaire.
 
@@ -91,19 +92,92 @@ Le rapport du contrôle d'un relevé accepté est gardé avec lui (`checks`).
 Un relevé est identifié par son compte (IBAN), son numéro, son année et sa date d'arrêté. Renvoyer le même fichier (même empreinte)
 ou un autre export du même relevé répond `already_imported` sans rien modifier. Pour réimporter un relevé, le supprimer d'abord.
 
+## Catégorisation
+
+### Catégories
+
+Au premier accès d'une personne (première route de la section ou premier import), le service crée son jeu de catégories et ses règles
+par défaut, une seule fois (`personnes`) : ce qu'elle renomme, archive ou supprime ensuite n'est jamais recréé.
+
+| Nature (`kind`) | Catégories par défaut | Rôle |
+|---|---|---|
+| `fixe` | Logement, Crédit, Assurances, Télécom, Énergie, Abonnements, Frais bancaires, Impôts et taxes | dépense fixe |
+| `variable` | Courses, Restaurants, Transports, Santé, Loisirs et sorties, Shopping, Divers | dépense variable |
+| `epargne` | Épargne | un virement vers un livret n'est pas une dépense |
+| `revenu` | Revenus | |
+| `neutre` | Transferts neutres | mouvement entre ses propres comptes, sans effet |
+
+Une catégorie se renomme, change de nature, reçoit un plafond mensuel facultatif (centimes) et s'archive (`PATCH /categories/{id}`) ;
+archivée, elle garde ses opérations et ses règles mais ne peut plus être choisie. Elle ne se supprime pas. `color` est le rang de sa
+teinte, fixé à la création : l'app donne une teinte aux huit premiers rangs (Logement, Courses, Restaurants, Shopping, Loisirs et
+sorties, Transports, Santé, Épargne) et un point gris aux suivants, toujours avec le nom.
+
+### Commerçants
+
+Chaque opération reçoit une clé de commerçant ou de tiers (`normalisation.rs`, `operations.commercant_cle`), déduite du commerçant brut
+d'un paiement par carte, sinon du libellé : majuscules, accents et ponctuation retirés, mots techniques de tête retirés (`PRLV`, `SEPA`,
+`VIR`, `INST`, puis un mot de direction et une civilité pour un virement), nombres et références retirés (un nombre de trois chiffres
+au plus reste en tête de nom), formes juridiques et code pays retirés en fin (`SA`, `SAS`, `SARL`, `FR`…). Le nom affiché en est tiré
+(`Marche Colline Villeneuve`). Sur un relevé du CMB la ville n'est pas séparable du commerçant : deux villes donnent deux clés.
+
+Une clé appartient à un commerçant (`variantes`) : un commerçant est créé pour chaque clé nouvelle. `POST /merchants/{id}/merge`
+rattache les clés d'autres commerçants à celui-ci, `POST /merchants/{id}/split` en détache ; ces rattachements restent en base et
+s'appliquent aux imports suivants, y compris après la suppression de tous les relevés.
+
+### Classement
+
+Une opération prend, dans l'ordre (`classement.rs`) :
+
+1. la catégorie choisie pour elle seule (`category_source: operation`), que rien ne modifie ensuite ;
+2. la catégorie de son commerçant (`commercant`) : reclasser une opération avec `scope: merchant` la fixe pour tout le commerçant ;
+3. la catégorie de la première règle qui lui convient (`regle`), dans l'ordre des règles ;
+4. sinon aucune : elle est « à classer » (`GET /unclassified`, regroupée par commerçant, et `GET /unclassified/count`).
+
+Une règle convient quand le type de l'opération est le sien (s'il est donné), que le titre de sa section est le sien (s'il est donné)
+et que le libellé contient l'un de ses mots-clés, en mots entiers et sans tenir compte de la casse, des accents ni de la ponctuation
+(`LOYER` ne convient pas à `EMPLOYER`). Une règle créée se place en tête ; `PUT /rules/order` fixe l'ordre.
+
+Règles par défaut, dans l'ordre : type `echeance_pret` → Crédit ; type `cotisation` → Frais bancaires ; section
+`SERVICES ET FRAIS BANCAIRES` → Frais bancaires ; `LIVRET`, `EPARGNE` → Épargne ; `SALAIRE` → Revenus ; `LOYER` → Logement ;
+`ASSURANCE`, `ASSURANCES`, `MUTUELLE` → Assurances ; `IMPOT`, `IMPOTS`, `DGFIP`, `TRESOR PUBLIC` → Impôts et taxes ; `TELECOM` → Télécom ;
+`ELECTRICITE`, `ENERGIE`, `GAZ` → Énergie ; `PHARMACIE`, `MEDECIN`, `DOCTEUR`, `DENTISTE`, `OPTICIEN`, `LABORATOIRE`, `HOPITAL`,
+`CLINIQUE` → Santé ; `BOULANGERIE`, `BOUCHERIE`, `EPICERIE`, `SUPERMARCHE`, `HYPERMARCHE`, `SUPERETTE`, `PRIMEUR`, `FROMAGERIE`,
+`POISSONNERIE` → Courses ; `RESTAURANT`, `BRASSERIE`, `PIZZERIA`, `CREPERIE`, `BISTROT`, `TRAITEUR` → Restaurants ; `SNCF`, `PEAGE`,
+`PARKING`, `TAXI`, `CARBURANT`, `AUTOROUTE`, `STATIONNEMENT` → Transports ; `CINEMA`, `THEATRE`, `MUSEE`, `LIBRAIRIE`, `PISCINE` →
+Loisirs et sorties. Elles ne contiennent que des types d'opération et des mots génériques, aucune enseigne : ce qu'elles ne
+reconnaissent pas reste à classer.
+
+Le classement est rejoué sur toutes les opérations de la personne (`classement::rejouer`) à chaque import, dans la transaction de
+l'import, et à chaque changement de règle, de catégorie de commerçant, de fusion ou de séparation, dans la transaction du changement.
+Il est idempotent : rejoué sans changement, il ne modifie aucune ligne. Les modifications d'une même personne sont sérialisées par un
+verrou sur sa ligne de `personnes`. `personnes.normalisation` porte la version de la normalisation appliquée à ses opérations
+(`classement::NORMALISATION`) : les opérations importées avant cette étape, ou avant un changement de la normalisation, sont
+normalisées et classées à l'accès suivant.
+
+### Totaux
+
+`bilan.rs` (`bilan`, `calculer`) additionne une période par catégorie : un crédit classé dans une catégorie de dépense (un
+remboursement) diminue le total de cette catégorie ; l'épargne, les revenus et les transferts neutres sont comptés à part, hors
+dépenses. Aucune route ne l'expose encore.
+
 ## Données
 
-Migration `api/tirelire/migrations/0001_tirelire.sql` :
+Migrations `api/tirelire/migrations/` (`0001_tirelire.sql`, `0002_categories.sql`) :
 
 | Table | Contenu |
 |---|---|
 | `comptes` | un compte par personne, banque (`cmb`) et IBAN : BIC, numéro de compte, référence courte, titulaire |
 | `releves` | numéro, année, période (`debut`, `date_arrete`), soldes, totaux, nombre de pages, empreinte SHA-256 du PDF, rapport de contrôle |
-| `operations` | rang dans le relevé, page, dates d'opération, de valeur et d'achat, section, type, libellé brut, détails, commerçant brut, montant en centimes et sens |
+| `operations` | rang dans le relevé, page, dates d'opération, de valeur et d'achat, section, type, libellé brut, détails, commerçant brut, montant en centimes et sens, clé de commerçant, commerçant, catégorie, origine du classement (`operation`, `commercant`, `regle`) et règle appliquée |
+| `personnes` | une ligne par personne : jeu par défaut créé, version de la normalisation |
+| `categories` | nom (unique par personne, sans tenir compte de la casse), clé des catégories par défaut, nature, plafond mensuel, rang de teinte, rang, archivée |
+| `regles` | catégorie, mots-clés normalisés, type et section facultatifs, rang, clé des règles par défaut |
+| `commercants` | nom affiché, catégorie de tout le commerçant |
+| `variantes` | clé de commerçant → commerçant, par personne ; `manuelle` après une fusion ou une séparation |
 
-`operations.commercant_id` et `operations.categorie_id` existent déjà, nulles et sans clé étrangère : les tables des commerçants et
-des catégories n'existent pas encore, la contrainte sera ajoutée avec elles.
-Supprimer un relevé supprime ses opérations ; un compte disparaît avec son dernier relevé.
+`operations.commercant_id`, `operations.categorie_id` et `operations.regle_id` ont une clé étrangère (`ON DELETE SET NULL`).
+Supprimer un relevé supprime ses opérations ; un compte disparaît avec son dernier relevé ; les commerçants, leurs variantes, les
+catégories et les règles restent.
 
 ## Configuration
 

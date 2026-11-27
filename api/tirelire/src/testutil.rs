@@ -284,28 +284,32 @@ pub struct Env {
 
 pub async fn env() -> Option<Env> {
     let (base, url) = postgres().await?;
-    let droits = droits_par_defaut();
-    let gateway = faux_gateway().await;
-    let aegis = faux_aegis(droits.clone()).await;
-    let mut cfg = Config::pour_tests(&url);
-    cfg.gateway_url = gateway.url.clone();
-    cfg.aegis = Some((aegis.url.clone(), "jeton-aegis".into()));
-    cfg.origines = vec!["https://estompe.plbls.fr".into()];
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&url)
         .await
         .unwrap();
     crate::MIGRATIONS.run(&pool).await.unwrap();
+    Some(monter(base, &url, pool).await)
+}
+
+pub async fn monter(base: BasePostgres, url: &str, pool: sqlx::PgPool) -> Env {
+    let droits = droits_par_defaut();
+    let gateway = faux_gateway().await;
+    let aegis = faux_aegis(droits.clone()).await;
+    let mut cfg = Config::pour_tests(url);
+    cfg.gateway_url = gateway.url.clone();
+    cfg.aegis = Some((aegis.url.clone(), "jeton-aegis".into()));
+    cfg.origines = vec!["https://estompe.plbls.fr".into()];
     let state = AppState::new(cfg, pool);
-    Some(Env {
+    Env {
         _base: base,
         app: routes::routeur(state.clone()),
         state,
         droits,
         gateway,
         aegis,
-    })
+    }
 }
 
 pub struct Rep {
@@ -369,6 +373,17 @@ impl Env {
 
     pub async fn get(&self, qui: &str, chemin: &str) -> Rep {
         self.appel(Some(qui), "GET", chemin).await
+    }
+
+    pub async fn envoyer(&self, qui: &str, methode: &str, chemin: &str, corps: &Value) -> Rep {
+        let req = axum::http::Request::builder()
+            .method(methode)
+            .uri(chemin)
+            .header("authorization", format!("Bearer {qui}"))
+            .header("content-type", "application/json")
+            .body(Body::from(corps.to_string()))
+            .unwrap();
+        requete(&self.app, req).await
     }
 
     pub async fn importer(&self, qui: &str, fichiers: &[(&str, &[u8])]) -> Rep {

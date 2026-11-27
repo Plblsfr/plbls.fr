@@ -3,7 +3,8 @@ info:
   title: Tirelire
   version: 0.1.0
   description: |
-    Suivi des comptes bancaires de plbls.fr : import des relevés de compte PDF du Crédit Mutuel de Bretagne, relevés et opérations.
+    Suivi des comptes bancaires de plbls.fr : import des relevés de compte PDF du Crédit Mutuel de Bretagne, relevés et opérations,
+    catégories, règles de classement et commerçants.
     Ce document suit le code : chaque route de `api/tirelire/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
 
     Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
@@ -11,8 +12,15 @@ info:
     Requêtes modifiantes avec cookie : `Origin` dans `TIRELIRE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
     Erreurs : `{"error": "<code>", "message": "…"}`.
 
-    Chaque personne ne lit et ne supprime que ses propres comptes, relevés et opérations : un identifiant d'une autre personne
-    répond 404. Les montants sont des entiers en centimes ; les dates sont au format `AAAA-MM-JJ`.
+    Chaque personne ne lit et ne modifie que ses propres comptes, relevés, opérations, catégories, règles et commerçants : un
+    identifiant d'une autre personne répond 404 dans un chemin, 400 dans un corps. Les montants sont des entiers en centimes ; les
+    dates sont au format `AAAA-MM-JJ`.
+
+    Classement : une opération prend, dans l'ordre, la catégorie choisie pour elle seule (`category_source: operation`), celle de
+    son commerçant (`commercant`), celle de la première règle qui lui convient (`regle`), sinon aucune (« à classer »). Tout
+    changement de règle, de commerçant ou de regroupement rejoue ce classement sur toutes les opérations de la personne, dans la
+    même transaction ; `reclassified` donne le nombre d'opérations dont le classement a changé. Les catégories et les règles par
+    défaut sont créées au premier accès de la personne.
 servers:
   - url: https://tirelire-api.plbls.fr
 components:
@@ -24,7 +32,44 @@ components:
     bearer:
       type: http
       scheme: bearer
+  schemas:
+    Operation:
+      description: |
+        `{id, statement_id, account_id, date, value_date, purchase_date, section, type, label, details, merchant, amount, direction,
+        merchant_id, merchant_name, category_id, category_source, rule_id}`.
+        `section` : titre de la section du relevé (`VIREMENTS RECUS`, `PAIEMENTS PAR CARTE`…) ; `type` : `carte`, `prelevement`,
+        `virement`, `virement_instantane`, `echeance_pret`, `cotisation` ou `autre` ; `label` : libellé brut ; `details` : lignes
+        de détail ; `purchase_date` et `merchant` (commerçant et ville bruts) : paiements par carte seulement ; `amount` : centimes,
+        toujours positif ; `direction` : `debit` ou `credit` ; `merchant_id` et `merchant_name` : commerçant ou tiers déduit du
+        libellé (`null` si rien n'a pu en être déduit) ; `category_id` : `null` tant que l'opération est à classer ;
+        `category_source` : `operation`, `commercant`, `regle` ou `null` ; `rule_id` : règle appliquée quand la source est `regle`.
+      type: object
+    Categorie:
+      description: |
+        `{id, key, name, kind, monthly_cap, color, position, archived, operations, merchants, rules}`. `key` : clé d'une catégorie
+        par défaut (`logement`, `credit`, `assurances`, `telecom`, `energie`, `abonnements`, `frais`, `courses`, `restaurants`,
+        `transports`, `sante`, `loisirs`, `shopping`, `divers`, `epargne`, `revenus`, `transferts`), `null` pour une catégorie créée ;
+        `kind` : `fixe`, `variable` (dépenses), `epargne`, `revenu` ou `neutre` (transfert sans effet) ; `monthly_cap` : plafond mensuel
+        en centimes ou `null` ; `color` : rang de la teinte, stable ; `operations`, `merchants`, `rules` : nombres d'opérations classées,
+        de commerçants et de règles qui la désignent.
+      type: object
+    Regle:
+      description: |
+        `{id, key, keywords, type, section, category_id, position, operations}`. Une règle convient à une opération quand son type est
+        `type` (si donné), que le titre de sa section est `section` (si donné) et que son libellé contient l'un des `keywords` (s'il y en a),
+        en mots entiers, sans tenir compte de la casse, des accents ni de la ponctuation. `position` : rang, 0 en premier ; la première
+        règle qui convient l'emporte. `key` : clé d'une règle par défaut, sinon `null`. `operations` : opérations classées par cette règle.
+      type: object
+    Commercant:
+      description: |
+        `{id, name, category_id, operations, debits, credits, last_date, variants}`, et `variant_list: [{key, manual, operations}]` dans un
+        détail. `category_id` : catégorie de tout le commerçant, prioritaire sur les règles, ou `null` ; `variants` : nombre de libellés
+        normalisés regroupés ; `key` : libellé normalisé (majuscules, sans accent ni ponctuation, sans numéro de magasin ou de terminal,
+        sans forme juridique) ; `manual` : variante rattachée par une fusion ou une séparation.
+      type: object
   responses:
+    "400":
+      description: "`invalid` : corps ou paramètre illisible (le message dit lequel)"
     "401":
       description: "`unauthorized` : connexion requise"
     "403":
@@ -134,20 +179,242 @@ paths:
         - { name: statement, in: query, description: "Identifiant d'un relevé", schema: { type: integer } }
         - { name: from, in: query, description: "Date d'opération minimale, incluse", schema: { type: string, format: date } }
         - { name: to, in: query, description: "Date d'opération maximale, incluse", schema: { type: string, format: date } }
+        - { name: category, in: query, description: "Identifiant d'une catégorie", schema: { type: integer } }
+        - { name: merchant, in: query, description: "Identifiant d'un commerçant", schema: { type: integer } }
+        - { name: unclassified, in: query, description: "`true` : seulement les opérations sans catégorie", schema: { type: boolean, default: false } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
-        "200":
-          description: |
-            `{operations: [operation], total, limit, offset}` ; `total` : nombre d'opérations qui répondent aux filtres.
-            `operation` : `{id, statement_id, account_id, date, value_date, purchase_date, section, type, label, details, merchant,
-            amount, direction, merchant_id, category_id}`.
-            `section` : titre de la section du relevé (`VIREMENTS RECUS`, `PAIEMENTS PAR CARTE`…) ; `type` : `carte`, `prelevement`,
-            `virement`, `virement_instantane`, `echeance_pret`, `cotisation` ou `autre` ; `label` : libellé brut ; `details` : lignes
-            de détail ; `purchase_date` et `merchant` (commerçant et ville bruts) : paiements par carte seulement ; `amount` : centimes,
-            toujours positif ; `direction` : `debit` ou `credit` ; `merchant_id` et `category_id` : toujours `null` pour l'instant.
+        "200": { description: "`{operations: [Operation], total, limit, offset}` ; `total` : nombre d'opérations qui répondent aux filtres" }
         "400": { description: "`invalid` : filtre ou pagination illisible" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /operations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: "Une opération (`tirelire:access`)"
+      responses:
+        "200": { description: "`{operation: Operation}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : opération inconnue ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /operations/{id}/category:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      summary: "Reclasser une opération, seule ou avec tout son commerçant (`tirelire:access`)"
+      description: |
+        Corps `{category_id, scope}`. `scope: merchant` : la catégorie devient celle du commerçant de l'opération, appliquée à toutes
+        ses opérations, passées et à venir (`category_id: null` retire cette règle) ; refusé si l'opération n'a pas de commerçant.
+        `scope: operation` : exception pour cette seule opération, que les règles ne modifient plus ; `category_id: null` retire
+        l'exception et l'opération reprend le classement des règles.
+      responses:
+        "200": { description: "`{operation: Operation, reclassified}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : opération inconnue ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /unclassified:
+    get:
+      summary: "File « à classer » : opérations sans catégorie, regroupées par commerçant (`tirelire:access`)"
+      responses:
+        "200":
+          description: |
+            `{operations, merchants, debits, credits, groups: [{merchant_id, merchant_name, operations, debits, credits, first_date,
+            last_date, sample: [Operation]}]}`. `operations` et `merchants` : nombres d'opérations et de groupes à classer ; un groupe
+            par commerçant, ou par opération quand elle n'a pas de commerçant (`merchant_id: null`) ; `sample` : ses trois opérations les
+            plus récentes ; 200 groupes au plus, les plus fournis d'abord.
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /unclassified/count:
+    get:
+      summary: "Compteur de la file « à classer » (`tirelire:access`)"
+      responses:
+        "200": { description: "`{operations, merchants, debits, credits}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /categories:
+    get:
+      summary: "Catégories de la personne, archivées en dernier (`tirelire:access`)"
+      responses:
+        "200": { description: "`{categories: [Categorie]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Créer une catégorie (`tirelire:access`)"
+      description: "Corps `{name, kind, monthly_cap?}` ; `name` : 1 à 40 caractères ; 100 catégories au plus."
+      responses:
+        "201": { description: "`{category: Categorie}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`conflict` : une catégorie porte déjà ce nom" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /categories/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      summary: "Renommer une catégorie, changer sa nature ou son plafond, l'archiver (`tirelire:access`)"
+      description: |
+        Corps `{name?, kind?, monthly_cap?, archived?}` ; seuls les champs présents changent, `monthly_cap: null` retire le plafond.
+        Une catégorie archivée garde ses opérations et ses règles, mais ne peut plus être choisie.
+      responses:
+        "200": { description: "`{category: Categorie}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : catégorie inconnue ou d'une autre personne" }
+        "409": { description: "`conflict` : une catégorie porte déjà ce nom" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /rules:
+    get:
+      summary: "Règles de classement, dans l'ordre d'application (`tirelire:access`)"
+      responses:
+        "200": { description: "`{rules: [Regle]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Créer une règle, placée en tête, et rejouer le classement (`tirelire:access`)"
+      description: |
+        Corps `{keywords, category_id, type?, section?}` : au moins un mot-clé, un type ou une section ; 12 mots-clés de 2 à 60
+        caractères au plus, enregistrés normalisés ; 500 règles au plus.
+      responses:
+        "201": { description: "`{rule: Regle, reclassified}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /rules/order:
+    put:
+      summary: "Fixer l'ordre des règles et rejouer le classement (`tirelire:access`)"
+      description: "Corps `{ids}` : toutes les règles de la personne, une fois chacune, de la plus prioritaire à la moins prioritaire."
+      responses:
+        "200": { description: "`{rules: [Regle], reclassified}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /rules/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      summary: "Modifier une règle et rejouer le classement (`tirelire:access`)"
+      description: "Corps `{keywords?, category_id?, type?, section?}` ; `type: null` et `section: null` retirent la condition."
+      responses:
+        "200": { description: "`{rule: Regle, reclassified}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : règle inconnue ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    delete:
+      summary: "Supprimer une règle et rejouer le classement (`tirelire:access`)"
+      responses:
+        "200": { description: "`{reclassified}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : règle inconnue ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /merchants:
+    get:
+      summary: "Commerçants et tiers de la personne, les plus fréquents d'abord (`tirelire:access`)"
+      description: "500 au plus. Un commerçant sans opération n'est rendu que s'il porte une catégorie ou regroupe plusieurs variantes."
+      parameters:
+        - { name: q, in: query, description: "Texte cherché dans le nom ou dans une variante", schema: { type: string } }
+      responses:
+        "200": { description: "`{merchants: [Commercant]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /merchants/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: "Un commerçant et ses variantes (`tirelire:access`)"
+      responses:
+        "200": { description: "`{merchant: Commercant}`, avec `variant_list`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : commerçant inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    patch:
+      summary: "Renommer un commerçant (`tirelire:access`)"
+      description: "Corps `{name}` : 1 à 80 caractères."
+      responses:
+        "200": { description: "`{merchant: Commercant}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : commerçant inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /merchants/{id}/category:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      summary: "Classer tout un commerçant et rejouer le classement (`tirelire:access`)"
+      description: "Corps `{category_id}` ; `null` retire la catégorie du commerçant, ses opérations reprennent le classement des règles."
+      responses:
+        "200": { description: "`{merchant: Commercant, reclassified}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : commerçant inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /merchants/{id}/merge:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      summary: "Regrouper d'autres commerçants dans celui-ci (`tirelire:access`)"
+      description: |
+        Corps `{merchant_ids}` : 1 à 50 autres commerçants de la personne. Leurs variantes passent à ce commerçant, qui garde son nom
+        et sa catégorie (ou prend, s'il n'en a pas, celle du premier commerçant regroupé qui en a une) ; ils sont supprimés. Le
+        regroupement est mémorisé : les prochains imports rattachent ces libellés au même commerçant.
+      responses:
+        "200": { description: "`{merchant: Commercant, reclassified}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : commerçant inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /merchants/{id}/split:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      summary: "Séparer des variantes d'un commerçant (`tirelire:access`)"
+      description: |
+        Corps `{keys}` : variantes de ce commerçant, qui doit en garder au moins une. Chaque variante devient un commerçant à part,
+        nommé d'après elle, avec la même catégorie ; la séparation est mémorisée pour les prochains imports.
+      responses:
+        "200": { description: "`{merchant: Commercant, created: [Commercant]}`" }
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : commerçant inconnu ou d'une autre personne" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }

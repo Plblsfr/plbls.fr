@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, setUnauthorizedHandler } from '../../lib/api'
-import { dejaImporte, fauxClient, importe, operation, OPERATIONS, page, pdf, refuse, releve } from './essais'
-import { bilan, ENVOI_MAX, FICHIER_MAX, lots, messageErreur, messageRefus, natureDe, parGravite, parJour, raisonControle, requeteOperations, tirelireApi, titreDe, totaux, totauxConnus, type Filtres, type Issue } from './tirelire'
+import { categorie, CATEGORIES, dejaImporte, fauxClient, file, groupe, importe, operation, OPERATIONS, page, pdf, refuse, regle, releve } from './essais'
+import { actives, bilan, budget, conditionDe, deplacer, ENVOI_MAX, FICHIER_MAX, filtres, lots, motCle, teinte, messageErreur, messageRefus, natureDe, parGravite, parJour, raisonControle, requeteOperations, tirelireApi, titreDe, totaux, totauxConnus, type Filtres, type Issue } from './tirelire'
 import { EtatTirelire } from './tirelire.svelte'
 
 const json = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: body === undefined ? {} : { 'Content-Type': 'application/json' } })
-const TOUT: Filtres = { releve: null, du: '', au: '' }
+const TOUT: Filtres = filtres()
 
 let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => { fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock) })
@@ -54,11 +54,56 @@ describe('client de Tirelire', () => {
 
   it('passe les filtres et la pagination aux opérations', async () => {
     expect(requeteOperations(TOUT)).toBe('/operations?limit=50&offset=0')
-    expect(requeteOperations({ releve: 11, du: '2026-11-01', au: '2026-11-26' }, 50)).toBe('/operations?statement=11&from=2026-11-01&to=2026-11-26&limit=50&offset=50')
+    expect(requeteOperations(filtres({ releve: 11, du: '2026-11-01', au: '2026-11-26' }), 50)).toBe('/operations?statement=11&from=2026-11-01&to=2026-11-26&limit=50&offset=50')
     fetchMock.mockResolvedValue(json(200, page()))
-    const p = await tirelireApi.operations({ releve: 11, du: '', au: '' }, 100)
+    const p = await tirelireApi.operations(filtres({ releve: 11, du: '', au: '' }), 100)
     expect(fetchMock.mock.calls[0][0]).toBe('/operations?statement=11&limit=50&offset=100')
     expect(p.total).toBe(5)
+  })
+
+  it('passe les filtres de catégorie, de commerçant et « à classer »', () => {
+    expect(requeteOperations(filtres({ categorie: 4, commercant: 9, aClasser: true }), 0, 10)).toBe('/operations?category=4&merchant=9&unclassified=true&limit=10&offset=0')
+  })
+
+  it('appelle les routes des catégories, des règles, des commerçants et du classement', async () => {
+    fetchMock.mockImplementation(async () => json(200, { categories: CATEGORIES, category: categorie(), rules: [regle()], rule: regle(), merchants: [], merchant: {}, operation: operation(), created: [], reclassified: 3, operations: 2, merchants_count: 0, groups: [] }))
+    expect(await tirelireApi.categories()).toHaveLength(6)
+    await tirelireApi.creerCategorie({ name: 'Animaux', kind: 'variable', monthly_cap: 4000 })
+    await tirelireApi.modifierCategorie(3, { monthly_cap: null, archived: true })
+    await tirelireApi.regles()
+    await tirelireApi.creerRegle({ keywords: ['LIVREO'], category_id: 3 })
+    await tirelireApi.modifierRegle(5, { category_id: 2 })
+    await tirelireApi.supprimerRegle(5)
+    await tirelireApi.ordonnerRegles([2, 1])
+    await tirelireApi.commercants('café & co')
+    await tirelireApi.commercant(7)
+    await tirelireApi.classerCommercant(7, null)
+    await tirelireApi.fusionner(7, [8, 9])
+    await tirelireApi.separer(7, ['CAFE TAMIS VILLENEUVE'])
+    expect((await tirelireApi.operation(4)).id).toBe(1)
+    expect((await tirelireApi.classerOperation(4, 2, 'merchant')).reclassified).toBe(3)
+    await tirelireApi.aClasser()
+    await tirelireApi.compteur()
+    const appels = fetchMock.mock.calls.map((c) => [c[1].method, c[0], c[1].body ? JSON.parse(c[1].body as string) : undefined])
+    expect(appels).toEqual([
+      ['GET', '/categories', undefined],
+      ['POST', '/categories', { name: 'Animaux', kind: 'variable', monthly_cap: 4000 }],
+      ['PATCH', '/categories/3', { monthly_cap: null, archived: true }],
+      ['GET', '/rules', undefined],
+      ['POST', '/rules', { keywords: ['LIVREO'], category_id: 3 }],
+      ['PATCH', '/rules/5', { category_id: 2 }],
+      ['DELETE', '/rules/5', undefined],
+      ['PUT', '/rules/order', { ids: [2, 1] }],
+      ['GET', '/merchants?q=caf%C3%A9%20%26%20co', undefined],
+      ['GET', '/merchants/7', undefined],
+      ['PUT', '/merchants/7/category', { category_id: null }],
+      ['POST', '/merchants/7/merge', { merchant_ids: [8, 9] }],
+      ['POST', '/merchants/7/split', { keys: ['CAFE TAMIS VILLENEUVE'] }],
+      ['GET', '/operations/4', undefined],
+      ['PUT', '/operations/4/category', { category_id: 2, scope: 'merchant' }],
+      ['GET', '/unclassified', undefined],
+      ['GET', '/unclassified/count', undefined],
+    ])
   })
 
   it('un 401 sur une route de la section prévient l’app après une seconde tentative', async () => {
@@ -128,9 +173,9 @@ describe('calculs', () => {
     const releves = [releve()]
     expect(totauxConnus(TOUT, releves, OPERATIONS, 5)).toEqual({ debits: 32_690, credits: 264_000 })
     expect(totauxConnus(TOUT, releves, OPERATIONS, 84)).toBeNull()
-    expect(totauxConnus({ releve: 11, du: '', au: '' }, releves, OPERATIONS, 84)).toEqual({ debits: 246_340, credits: 284_000 })
-    expect(totauxConnus({ releve: 11, du: '2026-11-10', au: '' }, releves, OPERATIONS, 84)).toBeNull()
-    expect(totauxConnus({ releve: 99, du: '', au: '' }, releves, OPERATIONS, 84)).toBeNull()
+    expect(totauxConnus(filtres({ releve: 11, du: '', au: '' }), releves, OPERATIONS, 84)).toEqual({ debits: 246_340, credits: 284_000 })
+    expect(totauxConnus(filtres({ releve: 11, du: '2026-11-10', au: '' }), releves, OPERATIONS, 84)).toBeNull()
+    expect(totauxConnus(filtres({ releve: 99, du: '', au: '' }), releves, OPERATIONS, 84)).toBeNull()
   })
 
   it('nomme une opération par son commerçant, sinon par son libellé', () => {
@@ -138,6 +183,17 @@ describe('calculs', () => {
     expect(titreDe(OPERATIONS[3])).toBe('VIR VERS LIVRET')
     expect(natureDe(OPERATIONS[0])).toBe('débit · carte')
     expect(natureDe(OPERATIONS[4])).toBe('crédit · virement')
+  })
+
+  it('teinte, budget, mots-clés et ordre des règles', () => {
+    expect([teinte(categorie({ color: 0 })), teinte(categorie({ color: 7 })), teinte(categorie({ color: 8 })), teinte(null)]).toEqual([1, 8, 0, 0])
+    expect(actives(CATEGORIES).map((c) => c.name)).toEqual(['Logement', 'Courses', 'Restaurants', 'Épargne', 'Revenus'])
+    expect(budget([...CATEGORIES, categorie({ id: 9, kind: 'epargne', monthly_cap: 99_999 }), categorie({ id: 10, monthly_cap: 500, archived: true })])).toBe(131_000)
+    expect([motCle(' Marché  colline* '), motCle('l’Épicerie'), motCle('--')]).toEqual(['MARCHE COLLINE', 'L EPICERIE', ''])
+    expect(conditionDe(regle({ type: 'echeance_pret' }))).toBe('type « échéance de prêt »')
+    expect(conditionDe(regle({ type: 'cotisation', section: 'SERVICES ET FRAIS BANCAIRES' }))).toBe('type « cotisation » · section « SERVICES ET FRAIS BANCAIRES »')
+    expect(conditionDe(regle())).toBe('')
+    expect([deplacer([1, 2, 3], 2, 0), deplacer([1, 2, 3], 0, 1), deplacer([1, 2, 3], 0, 3), deplacer([1, 2, 3], 1, 1)]).toEqual([[3, 1, 2], [2, 1, 3], [1, 2, 3], [1, 2, 3]])
   })
 
   it('découpe un envoi : fichiers trop gros écartés, 24 fichiers et 32 Mo au plus par lot', () => {
@@ -201,7 +257,7 @@ describe('état de la section', () => {
     await Promise.all([premiere, seconde])
     expect(etat.operations?.map((o) => o.id)).toEqual([7])
     expect(etat.filtre).toBe(true)
-    expect(operations.mock.calls[1][0]).toEqual({ releve: 11, du: '', au: '' })
+    expect(operations.mock.calls[1][0]).toEqual(filtres({ releve: 11, du: '', au: '' }))
   })
 
   it('une panne des opérations laisse un message et permet de relancer', async () => {
@@ -258,5 +314,63 @@ describe('état de la section', () => {
     const refus = new EtatTirelire(fauxClient({ supprimer: async () => { throw new ApiError(404, 'not_found', '') } }))
     expect(await refus.supprimer(3)).toBe(false)
     expect(refus.erreurSuppression).toMatch(/n’existe plus/)
+  })
+
+  it('charge les catégories et le compteur à l’ouverture ; un import les relit', async () => {
+    let n = 0
+    const compteur = vi.fn(async () => ({ operations: (n += 4), merchants: 2, debits: 900, credits: 0 }))
+    const etat = new EtatTirelire(fauxClient({ compteur, importer: async (f) => f.map((x) => importe(x.name)) }))
+    await etat.ouvrir()
+    expect([etat.categories?.length, etat.aClasser, etat.categorie(2)?.name, etat.categorie(99), etat.categorie(null)]).toEqual([6, 4, 'Courses', null, null])
+    await etat.importer([pdf('a.pdf')])
+    expect(etat.aClasser).toBe(8)
+  })
+
+  it('classe un groupe : règle pour le commerçant, confirmation, annulation, et « cette opération seulement »', async () => {
+    const groupes = [groupe(), groupe({ merchant_id: null, merchant_name: null, operations: 1, sample: [operation({ id: 9, label: 'RETRAIT DAB' })] })]
+    const classerCommercant = vi.fn(async (_id: number, c: number | null) => { if (c !== null) groupes.shift(); else groupes.unshift(groupe()); return { merchant: {} as never, reclassified: 2 } })
+    const classerOperation = vi.fn(async () => ({ operation: operation(), reclassified: 1 }))
+    const etat = new EtatTirelire(fauxClient({ aClasser: async () => file([...groupes]), classerCommercant, classerOperation }))
+    await etat.chargerReference()
+    await etat.chargerFile()
+    expect([etat.aClasser, etat.groupes.length]).toEqual([3, 2])
+    etat.passer(etat.groupes[0])
+    expect(etat.groupes.map((g) => g.merchant_id)).toEqual([null, 7])
+    etat.choisir(etat.groupes[1])
+    expect(etat.groupes[0].merchant_id).toBe(7)
+    expect(await etat.classerGroupe(etat.groupes[0], CATEGORIES[2], true)).toBe(true)
+    expect(classerCommercant).toHaveBeenLastCalledWith(7, 3)
+    expect(etat.dernier).toEqual({ titre: 'Règle créée pour tout le commerçant', detail: '« Cafe Tamis Villeneuve » → Restaurants · 2 opérations reclassées', commercant: 7, operation: null })
+    expect([etat.aClasser, etat.classeesIci]).toEqual([1, 2])
+    await etat.annuler()
+    expect(classerCommercant).toHaveBeenLastCalledWith(7, null)
+    expect([etat.dernier, etat.aClasser, etat.classeesIci]).toEqual([null, 3, 0])
+    await etat.classerGroupe(etat.groupes[0], CATEGORIES[2], false)
+    expect(classerOperation).toHaveBeenLastCalledWith(2, 3, 'operation')
+    expect(etat.dernier?.titre).toBe('Opération classée')
+    await etat.annuler()
+    expect(classerOperation).toHaveBeenLastCalledWith(2, null, 'operation')
+  })
+
+  it('un refus du classement laisse un message et ne confirme rien', async () => {
+    const etat = new EtatTirelire(fauxClient({ aClasser: async () => file(), classerCommercant: async () => { throw new ApiError(400, 'invalid', '') }, creerCategorie: async () => { throw new ApiError(409, 'conflict', '') } }))
+    await etat.chargerFile()
+    expect(await etat.classerGroupe(etat.groupes[0], CATEGORIES[1], true)).toBe(false)
+    expect([etat.dernier, etat.erreurClassement, etat.occupe]).toEqual([null, 'Tirelire n’a pas pu lire la demande.', false])
+    expect(await etat.enregistrerCategorie(null, { name: 'Courses', kind: 'variable', monthly_cap: null })).toBe(false)
+    expect(etat.erreurClassement).toBe('Une catégorie porte déjà ce nom.')
+  })
+
+  it('lit une opération seule quand elle n’est pas dans la liste chargée', async () => {
+    const lire = vi.fn(async (id: number) => { if (id === 404) throw new ApiError(404, 'not_found', ''); return operation({ id }) })
+    const etat = new EtatTirelire(fauxClient({ operation: lire, operations: async () => page() }))
+    await etat.chargerDetail(77)
+    expect([etat.operation(77)?.id, etat.detailAbsent]).toEqual([77, false])
+    await etat.chargerOperations()
+    await etat.chargerDetail(3)
+    expect(lire).toHaveBeenCalledTimes(1)
+    expect(etat.operation(3)?.label).toBe('CARTE 22/11 LIVREO*CMD PARIS')
+    await etat.chargerDetail(404)
+    expect([etat.operation(404), etat.detailAbsent]).toEqual([null, true])
   })
 })

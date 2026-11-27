@@ -59,7 +59,7 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             }
         }
     }
-    assert_eq!(protegees, 5);
+    assert_eq!(protegees, 23);
 }
 
 #[tokio::test]
@@ -250,8 +250,11 @@ async fn operations_paginees_et_filtrees() {
             "merchant": "Jeux En Ligne Fictifs Fictiville",
             "amount": 1599,
             "direction": "credit",
-            "merchant_id": null,
+            "merchant_id": remboursement["merchant_id"],
+            "merchant_name": "Jeux En Ligne Fictifs Fictiville",
             "category_id": null,
+            "category_source": null,
+            "rule_id": null,
         })
     );
     let prelevement = du_releve["operations"]

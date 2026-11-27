@@ -4,7 +4,8 @@
   import Loader from '../../components/Loader.svelte'
   import { hrefs } from '../../lib/route.svelte'
   import { anneeDe, dateCourte, eurosSignes, jourLong, montant, nombre, periode } from './formats'
-  import { nomReleve, parJour, titreDe, totauxConnus, typeDe } from './tirelire'
+  import TirelirePastille from './TirelirePastille.svelte'
+  import { actives, filtres, nomReleve, parJour, titreDe, totauxConnus, typeDe } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
   let { annee = new Date().getFullYear() }: { annee?: number } = $props()
@@ -20,8 +21,9 @@
   onMount(() => {
     du = tirelire.filtres.du
     au = tirelire.filtres.au
-    ouverts = !!du || !!au
+    ouverts = !!du || !!au || tirelire.filtres.categorie !== null || tirelire.filtres.commercant !== null || tirelire.filtres.aClasser
     if (!tirelire.operations) void tirelire.chargerOperations()
+    if (!tirelire.commercants) void tirelire.chargerCommercants()
   })
 
   function dates() {
@@ -32,7 +34,7 @@
   function effacer() {
     du = ''
     au = ''
-    void tirelire.effacerFiltres()
+    void tirelire.filtrer(filtres())
   }
 </script>
 
@@ -53,7 +55,7 @@
       </select>
       <Icon name="bas" size={16} />
     </label>
-    <button class="tir-ib tir-ib--fond" aria-expanded={ouverts} aria-controls="tir-filtres" aria-label={ouverts ? 'Masquer les filtres de période' : 'Afficher les filtres de période'} onclick={() => (ouverts = !ouverts)}><Icon name="filtre" size={20} /></button>
+    <button class="tir-ib tir-ib--fond" aria-expanded={ouverts} aria-controls="tir-filtres" aria-label={ouverts ? 'Masquer les filtres' : 'Afficher les filtres'} onclick={() => (ouverts = !ouverts)}><Icon name="filtre" size={20} /></button>
   </div>
 
   {#if ouverts}
@@ -63,6 +65,19 @@
         <label class="tir-fl"><span>Au</span><span class="tir-champ"><input type="date" bind:value={au} min={du || undefined} onchange={dates} /></span></label>
       </div>
       {#if inverse}<p class="tir-alerte" role="alert"><Icon name="alerte" size={18} />La date de début est après la date de fin.</p>{/if}
+      <div class="tir-g2">
+        <label class="tir-fl"><span>Catégorie</span><span class="tir-champ">
+          <select value={tirelire.filtres.aClasser ? 'a-classer' : tirelire.filtres.categorie === null ? '' : String(tirelire.filtres.categorie)} onchange={(e) => { const v = e.currentTarget.value; void tirelire.filtrer({ aClasser: v === 'a-classer', categorie: v && v !== 'a-classer' ? Number(v) : null }) }}>
+            <option value="">Toutes</option>
+            <option value="a-classer">À classer</option>
+            {#each actives(tirelire.categories ?? []) as c (c.id)}<option value={String(c.id)}>{c.name}</option>{/each}
+          </select><Icon name="bas" size={16} /></span></label>
+        <label class="tir-fl"><span>Commerçant</span><span class="tir-champ">
+          <select value={tirelire.filtres.commercant === null ? '' : String(tirelire.filtres.commercant)} onchange={(e) => void tirelire.filtrer({ commercant: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+            <option value="">Tous</option>
+            {#each tirelire.commercants ?? [] as c (c.id)}<option value={String(c.id)}>{c.name}</option>{/each}
+          </select><Icon name="bas" size={16} /></span></label>
+      </div>
       <div class="tir-ligne"><button class="tir-btn tir-btn--contour" disabled={!tirelire.filtre && !du && !au} onclick={effacer}>Réinitialiser</button></div>
     </section>
   {/if}
@@ -100,7 +115,7 @@
             {#each j.operations as o (o.id)}
               <li>
                 <a class="tir-li" href={hrefs.tirelire('operations', o.id)}>
-                  <span class="tir-col tir-col--serre tir-grandit"><span class="tir-mono">{titreDe(o)}</span><span class="tir-note">{typeDe(o)}</span></span>
+                  <span class="tir-col tir-grandit"><span class={o.merchant_name ? 'tir-h3' : 'tir-mono'}>{titreDe(o)}</span><span class="tir-sous"><TirelirePastille categorie={tirelire.categorie(o.category_id)} /><span class="tir-note tir-fixe">{typeDe(o)}</span></span></span>
                   <span class="tir-fort tir-fixe" class:tir-credit={o.direction === 'credit'}>{montant(o.amount, o.direction)}</span>
                 </a>
               </li>

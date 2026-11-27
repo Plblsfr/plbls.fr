@@ -18,7 +18,7 @@ npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe se
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
-npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations, détail, écran de téléphone, Tirelire arrêté : API simulées
+npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations, détail, à classer, catégories et règles, écran de téléphone, Tirelire arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -128,19 +128,35 @@ système de Chromium doivent être présentes).
   `/me` en échec ou Tirelire absent : pas de section, rien d'autre ne change. `tirelireUrl` : `TIRELIRE_PUBLIC_URL` de l'image, `VITE_TIRELIRE_URL` au build
   des apps ; sans elle, pas de section. Entrée dans le rail (`ServerRail`) et dans `SectionsShell` ; comme Stats, elle ne suffit pas à ouvrir la phase `sections`.
   - Coque `TirelireSpace` : en-tête (`TirelireTete`), contenu, et barre d'onglets en bas sous 900 px (`TirelireOnglets` : Accueil, Mois, Évolution,
-    Habitudes, Opérations) ; au-dessus, les mêmes entrées et « Import » sont dans le panneau latéral (`TirelireNav`). Cibles tactiles de 44 px au moins.
+    Habitudes, Opérations) ; au-dessus, les mêmes entrées et les outils (« À classer » avec son compteur, « Catégories et règles », « Import ») sont
+    dans le panneau latéral (`TirelireNav`). Sous 900 px, l'en-tête porte une icône « à classer » avec le compteur tant que la file n'est pas vide.
+    Les écrans d'outil n'ont pas de barre d'onglets, mais un retour. Cibles tactiles de 44 px au moins.
   - `#/tirelire` : sans relevé, `TirelireVide` (premier lancement) ; sinon `TirelireAttente`, comme `#/tirelire/mois`, `/evolution` et `/habitudes` :
-    « Disponible quand les catégories seront en place », sans aucun chiffre, avec les liens vers ce qui existe.
+    « Bientôt disponible », sans aucun chiffre, avec les liens vers ce qui existe. Sur l'accueil seulement, un bandeau « N opérations à classer »
+    (`GET /unclassified/count`) mène à la file tant qu'elle n'est pas vide.
+  - `#/tirelire/a-classer` : `TirelireClasser`. File `GET /unclassified`, un groupe par commerçant : le premier groupe en grand (libellés bruts,
+    choix rapide d'une catégorie), « Passer », puis la liste « Ensuite ». Classer fixe la catégorie de tout le commerçant
+    (`PUT /merchants/{id}/category`), ou de la seule opération la plus récente si la case de la règle est décochée ou si l'opération n'a pas de
+    commerçant (`PUT /operations/{id}/category`, `scope: operation`) ; un bandeau confirme (« Règle créée pour tout le commerçant », nombre
+    d'opérations reclassées) et permet d'annuler.
+  - `#/tirelire/categories[/regles|/commercants]` : `TirelireCategories`, trois volets. Catégories : nature, plafond mensuel (saisi en euros,
+    `centimes`), budget du mois (`budget` : somme des plafonds des dépenses), création, modification, archivage. Règles : mots-clés ou condition de
+    type et de section, catégorie, ordre de priorité (monter, descendre), création, modification, suppression ; le nombre d'opérations reclassées
+    est affiché. Commerçants : recherche, catégorie de tout un commerçant, regroupement de plusieurs commerçants cochés, séparation d'une variante.
+  - Couleur d'une catégorie (`teinte`, `TirelirePastille`) : huit teintes `--tir-c1` à `--tir-c8` de `tirelire.css` (claires et sombres, écart
+    vérifié pour les daltonismes) pour les rangs 0 à 7, un point gris au-delà ; le nom est toujours écrit à côté.
   - `#/tirelire/import` : `TirelireImport`. Dépôt ou choix de plusieurs PDF, envoyés à `POST /statements/import` par lots (`lots` : 24 fichiers et
     32 Mo au plus par envoi ; un fichier de plus de 8 Mo est refusé sur place, sans envoi). Une carte par fichier (`TirelireFichier`), refus en tête :
     importé, déjà importé, refusé (motif traduit par `messageRefus` ; pour `checks_failed`, tableau des écarts entre totaux lus et totaux du relevé,
     éléments introuvables, lignes non reconnues avec leur page), ou « non envoyé » quand l'envoi lui-même échoue (401, 403, 413, réseau : `messageErreur`),
     avec « Réessayer ». Liste des relevés importés (période, nombre d'opérations, date d'import) et suppression après la confirmation partagée `ConfirmModal`.
   - `#/tirelire/operations` : `TirelireOperations`. Opérations groupées par jour (`parJour`, total du jour seulement quand le jour est entièrement chargé),
-    pages de 50 (« Afficher la suite »), filtre par relevé et par période (`statement`, `from`, `to` de `GET /operations`). Débits et crédits ne sont
-    affichés que s'ils sont exacts (`totauxConnus` : tout est chargé, ou un relevé entier est choisi). `#/tirelire/operations/<id>` : `TirelireOperation`,
-    détail d'une opération de la liste chargée (libellé brut, détails, dates d'achat, d'opération et de valeur, section, type, relevé) ; l'API n'a pas de
-    lecture par identifiant.
+    pages de 50 (« Afficher la suite »), filtre par relevé, par période, par catégorie ou « à classer » et par commerçant (`statement`, `from`, `to`,
+    `category`, `unclassified`, `merchant` de `GET /operations`). Chaque ligne porte le nom du commerçant et la pastille de sa catégorie, ou
+    « à classer ». Débits et crédits ne sont affichés que s'ils sont exacts (`totauxConnus` : tout est chargé, ou un relevé entier est choisi sans
+    autre filtre). `#/tirelire/operations/<id>` : `TirelireOperation`, détail d'une opération, prise dans la liste chargée ou lue par
+    `GET /operations/{id}` (libellé brut, détails, dates d'achat, d'opération et de valeur, section, type, relevé), et carte Catégorie : origine du
+    classement, choix d'une catégorie, appliqué à cette opération seulement ou à tout le commerçant.
   - `formats.ts` : montants à partir de centimes entiers, sans flottant (`euros` : « 1 234,56 € », espace fine insécable des milliers, espace insécable
     avant le symbole ; `montant` signé selon le sens ; `ecart`), dates `AAAA-MM-JJ` lues en UTC (`jourLong`, `dateCourte`, `dateLongue`, `periode`).
     `tirelire.ts` : `tirelireApi`, types de l'API, messages d'erreur, calculs purs. `tirelire.svelte.ts` : état (`tirelire`, classe `EtatTirelire`, client
@@ -168,7 +184,9 @@ dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les d
 fixée) vérifie la section Stats : permissions, périodes, récap au clavier et au toucher, pastille, partage et profil, export (fichier
 téléchargé comparé à celui du serveur), effacement, parcours d'administration, Sablier arrêté, axe. `npm run e2e:tirelire`
 (`playwright.tirelire.config.ts`, `e2e/tirelire.spec.ts`, faux Tirelire dans `e2e/faux-tirelire.ts`) vérifie la section Tirelire : permission, premier lancement, import
-(les trois issues, refus au contrôle), suppression, opérations et détail, écran de 390 px sans débordement, Tirelire arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
+(les trois issues, refus au contrôle), suppression, opérations et détail, file à classer (règle, annulation), catégories, règles, fusion et séparation de
+commerçants, filtres et reclassement depuis le détail, écran de 390 px sans débordement, Tirelire arrêté, axe ; `TIRELIRE_CAPTURES=<dossier>` y enregistre
+les captures des écrans de catégorisation. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. `npm run e2e:cinema` (`playwright.cinema.config.ts`, `e2e/cinema.spec.ts`) vérifie le mode cinéma du salon cinéma
 sur un écran de téléphone, en portrait et en paysage : il tourne sur le serveur de dev de Vite, parce que le vocal (LiveKit) n'est pas simulé et que le test
 marque le salon comme rejoint en important le module `voice.svelte.ts` dans la page. La CI les lance dans le job `front`.

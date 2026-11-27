@@ -8,12 +8,13 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 use crate::{
+    classement,
     cmb::{self, Refus, Releve, Sens},
     etat::AppState,
     extraction::{self, Erreur},
     garde::Personne,
     http::{bd, erreur, invalide, ok},
-    releves,
+    normalisation, releves,
 };
 
 pub const BANQUE: &str = "cmb";
@@ -83,6 +84,7 @@ async fn enregistrer(
     r: &Releve,
 ) -> Result<Option<i64>, sqlx::Error> {
     let mut tx = pool.begin().await?;
+    classement::verrouiller(&mut tx, sub).await?;
     let compte: i64 = sqlx::query_scalar(
         "INSERT INTO comptes (sub, banque, iban, bic, numero, reference, titulaire)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -128,8 +130,8 @@ async fn enregistrer(
     for (rang, op) in r.operations.iter().enumerate() {
         sqlx::query(
             "INSERT INTO operations (releve_id, compte_id, sub, rang, page, date_operation, date_valeur, date_achat,
-                                     section, type, libelle, details, commercant_brut, montant, sens)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+                                     section, type, libelle, details, commercant_brut, montant, sens, commercant_cle)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
         )
         .bind(releve)
         .bind(compte)
@@ -149,9 +151,14 @@ async fn enregistrer(
             Sens::Debit => "debit",
             Sens::Credit => "credit",
         })
+        .bind(
+            normalisation::tiers(op.genre.cle(), &op.libelle, op.commercant.as_deref())
+                .map(|t| t.cle),
+        )
         .execute(&mut *tx)
         .await?;
     }
+    classement::rejouer(&mut tx, sub).await?;
     tx.commit().await?;
     Ok(Some(releve))
 }
