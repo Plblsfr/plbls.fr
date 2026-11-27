@@ -9,10 +9,7 @@
   async function affiche(b: FilmBadge): Promise<Affiche | null> {
     const a = afficheBadge(b)
     if (!a.image || !filmsApi.base) return null
-    try {
-      const url = await filmsApi.image(a.id, 'poster', 500)
-      try { return await createImageBitmap(await (await fetch(url)).blob()) } finally { URL.revokeObjectURL(url) }
-    } catch { return null }
+    try { return await createImageBitmap(await filmsApi.imageBlob(a.id, 'poster', 500)) } catch { return null }
   }
 
   function pixels(img: Affiche | null): Uint8ClampedArray | null {
@@ -60,11 +57,12 @@
   let canvas = $state<HTMLCanvasElement | null>(null)
   let pret = $state<Ressources | null>(null)
   let finie = $state(false)
+  let jouee = $state(false)
   let debut = 0
   let image = 0
 
   const style = $derived(styleDe(badge.title_id))
-  const calme = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  const calme = () => document.documentElement.dataset.motion === 'reduit' || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)
 
   function peindre(t: number) {
     const ctx = canvas?.getContext('2d')
@@ -73,11 +71,12 @@
     dessinerBadge(ctx, style, badge, pret.img, pret.palette, polices(), t)
   }
 
-  function jouer() {
+  function jouer(demande = false) {
     cancelAnimationFrame(image)
     if (!pret) return
-    if (calme()) { peindre(DUREES[style]); finie = true; return }
+    if (!demande && calme()) { peindre(DUREES[style]); finie = true; jouee = false; return }
     finie = false
+    jouee = true
     debut = performance.now()
     const pas = (now: number) => {
       const t = (now - debut) / 1000
@@ -113,7 +112,7 @@
 
 <div class="film-badge-anim" data-style={style}>
   <canvas bind:this={canvas} width={CARTE.largeur} height={CARTE.hauteur} aria-label={`${etiquetteBadge(badge)} : ${badge.title}`}></canvas>
-  {#if finie}<button type="button" class="film-badge-rejouer" onclick={jouer} aria-label="Rejouer l’animation"><Icon name="replay" size={16} /></button>{/if}
+  {#if finie}<button type="button" class="film-badge-rejouer" onclick={() => jouer(true)} aria-label={jouee ? 'Rejouer l’animation' : 'Lire l’animation'}><Icon name={jouee ? 'replay' : 'lecture'} size={16} /></button>{/if}
 </div>
 
 <style>

@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/svelte'
 import { describe, expect, it, vi } from 'vitest'
-import { api } from '../../lib/api'
+import { api, filmsApi } from '../../lib/api'
 import LinkCard from './LinkCard.svelte'
 
 describe('LinkCard YouTube', () => {
@@ -65,5 +65,45 @@ describe('LinkCard badge d’Entracte', () => {
     const vue = render(LinkCard, { url, message: '44' })
     expect((await vue.findAllByText('Voir la fiche dans Entracte'))[0].closest('a')?.getAttribute('href')).toBe('#/films/item/s1')
     app.entracteMe = null
+  })
+  const badge = (o: object = {}) => ({ kind: 'season' as const, title_id: 'p1', season: 1, title: 'La Série', season_title: null, year: 2019, poster: false, season_poster: false, episodes: 8, duration: 21600, obtained_at: '2026-11-26T23:10:00.000Z', ...o })
+
+  it('signale la carte intégrée pour masquer le lien du message, pas pour un autre aperçu', async () => {
+    const url = 'https://estompe.plbls.fr/#/films/badge/season%3Ap1%3A1'
+    vi.spyOn(api, 'linkPreview').mockResolvedValue({ url, title: 'La Série', entracte_badge: badge() } as any)
+    const integre = vi.fn()
+    render(LinkCard, { url, message: '45', onintegre: integre })
+    await vi.waitFor(() => expect(integre).toHaveBeenCalledWith(true))
+    vi.spyOn(api, 'linkPreview').mockResolvedValue({ url: 'https://exemple.fr', title: 'Exemple' } as any)
+    const autre = vi.fn()
+    render(LinkCard, { url: 'https://exemple.fr', message: '46', onintegre: autre })
+    await vi.waitFor(() => expect(autre).toHaveBeenCalledWith(false))
+  })
+
+  it("charge l'affiche sans repasser par une URL blob (refusée par la CSP)", async () => {
+    const url = 'https://estompe.plbls.fr/#/films/badge/movie%3Ap2'
+    vi.spyOn(api, 'linkPreview').mockResolvedValue({ url, title: 'Le Film', entracte_badge: badge({ kind: 'movie', title_id: 'p2', season: null, poster: true }) } as any)
+    const blob = vi.spyOn(filmsApi, 'imageBlob').mockResolvedValue(new Blob(['x']))
+    const bitmap = vi.fn().mockResolvedValue({ width: 2, height: 3 })
+    vi.stubGlobal('createImageBitmap', bitmap)
+    const recherche = vi.spyOn(globalThis, 'fetch')
+    const base = filmsApi.base
+    Object.assign(filmsApi, { base: 'https://entracte.test' })
+    render(LinkCard, { url, message: '47' })
+    await vi.waitFor(() => expect(bitmap).toHaveBeenCalled())
+    expect(blob).toHaveBeenCalledWith('p2', 'poster', 500)
+    expect(recherche).not.toHaveBeenCalled()
+    Object.assign(filmsApi, { base })
+    vi.unstubAllGlobals()
+  })
+
+  it('avec les animations réduites, ne joue pas seule mais se lance au clic', async () => {
+    const url = 'https://estompe.plbls.fr/#/films/badge/season%3Ap3%3A1'
+    vi.spyOn(api, 'linkPreview').mockResolvedValue({ url, title: 'La Série', entracte_badge: badge({ title_id: 'p3' }) } as any)
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} }))
+    const { findByLabelText, queryByLabelText } = render(LinkCard, { url, message: '48' })
+    await fireEvent.click(await findByLabelText('Lire l’animation'))
+    expect(queryByLabelText('Lire l’animation')).toBeNull()
+    vi.unstubAllGlobals()
   })
 })

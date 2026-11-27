@@ -17,7 +17,7 @@
   import SillonCover from '../../sections/sillon/SillonCover.svelte'
   import FilmBadgeAnimee from '../../sections/entracte/FilmBadgeAnimee.svelte'
 
-  let { url, message }: { url: string; message?: string } = $props()
+  let { url, message, onintegre }: { url: string; message?: string; onintegre?: (integre: boolean) => void } = $props()
 
   const yt = $derived(youtubeVideo(url))
   // Le lecteur n'est chargé qu'au clic ; une miniature introuvable (vidéo indisponible) laisse le lien simple.
@@ -29,6 +29,12 @@
   // Un aperçu ne se demande qu'une fois par lien et par message parmi les 200 derniers affichés (le serveur met aussi en cache) :
   // une carte Sillon dépend de l'auteur du message.
   const preview = $derived(cache.getOrSet(`${message ?? ''} ${url}`, () => api.linkPreview(url, message).catch(() => null)))
+
+  $effect(() => {
+    let actif = true
+    void preview.then((p) => { if (actif) onintegre?.(!!p?.entracte_badge) })
+    return () => { actif = false }
+  })
 </script>
 
 {#if yt}
