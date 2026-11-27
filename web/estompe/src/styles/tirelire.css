@@ -385,3 +385,104 @@ a.tir-depasse:focus-visible { outline: none; box-shadow: var(--anneau); }
   .tir-tab tfoot .tir-tab-nom { display: table-cell; }
   .tir-tab tfoot :is(th, td) { height: 48px; }
 }
+
+.tir-ev { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tir-ev-reglages { gap: 8px; }
+.tir-ev-tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tir-ev-tuile-tendance { grid-column: 1 / -1; }
+.tir-ev-tuiles .tir-etq { align-self: flex-start; }
+p.tir-invite { margin: 0; }
+.tir-val--mal { color: var(--danger); }
+.tir-apres { margin-left: 4px; }
+
+.tir-emp { position: relative; height: 190px; padding-top: 20px; }
+.tir-emp-grille { position: absolute; left: 0; right: 0; z-index: 0; height: 0; border-top: 1px solid var(--trait); pointer-events: none; }
+.tir-emp-grille > span { position: absolute; left: 0; bottom: 2px; font-size: 11px; color: var(--gris); }
+.tir-emp-budget { position: absolute; left: 0; right: 0; z-index: 1; height: 0; border-top: 1px dashed var(--encre-2); pointer-events: none; }
+.tir-emp-piles { position: relative; touch-action: pan-y; cursor: crosshair; display: flex; align-items: stretch; gap: 2px; height: 100%; padding-left: 44px; border-bottom: 1px solid var(--trait-fort); }
+.tir-emp-col { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; border-radius: 6px 6px 0 0; }
+.tir-emp-col--vise { background: color-mix(in srgb, var(--encre) 6%, transparent); }
+.tir-emp-piles:focus-visible { outline: none; box-shadow: var(--anneau); border-radius: var(--r-s); }
+.tir-emp-valeur { margin-bottom: 3px; font-size: 11px; color: var(--encre-2); white-space: nowrap; }
+.tir-emp-col--vise .tir-emp-valeur { color: var(--encre); font-weight: 700; }
+.tir-emp--dense .tir-emp-col:not(.tir-emp-col--vise) .tir-emp-valeur { visibility: hidden; }
+.tir-emp-pile { display: flex; flex-direction: column-reverse; gap: 2px; width: 100%; max-width: 44px; min-height: 2px; border-radius: 4px 4px 0 0; overflow: hidden; }
+.tir-emp-part { flex-basis: 0; min-height: 1px; }
+.tir-emp-pile--partiel { -webkit-mask-image: repeating-linear-gradient(135deg, #000 0 4px, rgb(0 0 0 / 0.45) 4px 7px); mask-image: repeating-linear-gradient(135deg, #000 0 4px, rgb(0 0 0 / 0.45) 4px 7px); }
+.tir-emp--0 { background: var(--gris); }
+.tir-emp--1 { background: var(--tir-c1); }
+.tir-emp--2 { background: var(--tir-c2); }
+.tir-emp--3 { background: var(--tir-c3); }
+.tir-emp--4 { background: var(--tir-c4); }
+.tir-emp--5 { background: var(--tir-c5); }
+.tir-emp--6 { background: var(--tir-c6); }
+.tir-emp--7 { background: var(--tir-c7); }
+.tir-emp--8 { background: var(--tir-c8); }
+.tir-emp--autres { background: color-mix(in srgb, var(--gris) 45%, var(--papier-3)); }
+.tir-emp--classer { background: var(--papier-3); box-shadow: inset 0 0 0 1.5px var(--gris); }
+.tir-emp--partiel { background: repeating-linear-gradient(135deg, var(--encre-2) 0 3px, color-mix(in srgb, var(--encre-2) 45%, transparent) 3px 5px); }
+.tir-emp-axe { padding-left: 44px; border-top: 0; }
+.tir-emp-court { display: none; }
+.tir-emp--dense .tir-emp-long { display: none; }
+.tir-emp--dense .tir-emp-court { display: inline; }
+.tir-emp-lecture { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--r); background: var(--papier-2); }
+.tir-emp-lecture .tir-val { font-size: 18px; }
+.tir-emp-lecture .tir-btn { min-height: 44px; }
+.tir-emp-detail { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 16px; font-size: 13px; }
+.tir-emp-detail li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+.tir-gr-defile { position: relative; overflow-x: auto; overscroll-behavior-x: contain; border-radius: var(--r-s); }
+.tir-gr-defile:focus-visible { outline: none; box-shadow: var(--anneau); }
+.tir-gr { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.tir-gr :is(th, td) { padding: 0 7px; height: 44px; border-top: 1px solid var(--trait); font-weight: 400; text-align: right; white-space: nowrap; }
+.tir-gr thead th { height: 40px; border-top: 0; font-size: 11.5px; color: var(--gris); vertical-align: bottom; padding-bottom: 6px; }
+.tir-gr :is(th, td):first-child { position: sticky; left: 0; z-index: 1; width: 124px; min-width: 124px; max-width: 124px; padding-left: 0; background: var(--surface); text-align: left; box-shadow: 1px 0 0 var(--trait); }
+.tir-gr tfoot :is(th, td) { border-top-color: var(--trait-fort); font-weight: 600; }
+.tir-gr-tete { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.tir-gr-an { min-height: 12px; font-size: 10.5px; }
+.tir-gr-nom { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; font-weight: 600; color: var(--encre); }
+a.tir-gr-nom:hover > .truncate { text-decoration: underline; }
+a.tir-gr-nom:focus-visible { outline: none; box-shadow: var(--anneau-in); border-radius: var(--r-s); }
+.tir-gr-nature { display: none; }
+.tir-gr-bord { border-left: 1px solid var(--trait-fort); }
+.tir-gr-actuel { color: var(--encre); font-weight: 600; }
+.tir-gr thead .tir-gr-actuel { color: var(--encre); }
+.tir-gr td.tir-gr-dessus { position: relative; background: var(--danger-fond); color: var(--danger); font-weight: 600; }
+.tir-gr-marque { position: absolute; top: 5px; left: 4px; font-size: 7px; line-height: 1; }
+.tir-gr-compte { color: var(--danger); font-weight: 600; }
+.tir-gr--annees :is(th, td) { padding: 0 10px; }
+
+.tir-td { gap: 10px; }
+.tir-td .tir-etq { min-width: 0; }
+.tir-serie--annee-avant { stroke: var(--encre-2); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.tir-point--avant { fill: var(--surface); stroke: var(--encre-2); stroke-width: 1.5; }
+.tir-cle--pointille { border-top: 2px dashed var(--encre-2); }
+.tir-trou { fill: url(#tir-hachures); }
+.tir-hachure { stroke: var(--trait-fort); stroke-width: 2; }
+.tir-carre--trou { display: inline-block; vertical-align: -1px; background: repeating-linear-gradient(135deg, var(--trait-fort) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px var(--trait-fort); }
+
+@container tir (min-width: 620px) {
+  .tir-emp { height: 240px; }
+  .tir-emp--dense:not(.tir-emp--serre) .tir-emp-col .tir-emp-valeur { visibility: visible; }
+  .tir-emp--dense:not(.tir-emp--serre) .tir-emp-long { display: inline; }
+  .tir-emp--dense:not(.tir-emp--serre) .tir-emp-court { display: none; }
+  .tir-gr :is(th, td):first-child { width: 190px; min-width: 190px; max-width: 190px; }
+  .tir-gr-nature { display: inline; flex: none; padding: 0 6px; border-radius: var(--r-p); background: var(--info-fond); color: var(--info); font-size: 11px; font-weight: 500; }
+}
+
+@container tir (min-width: 860px) {
+  .tir[data-vue='evolution'] .tir-corps { max-width: 1240px; }
+  .tir-ev { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .tir-ev > * { grid-column: 1 / -1; }
+  .tir-ev-reglages { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  .tir-ev-reglages .tir-seg { flex: 0 1 340px; }
+  .tir-ev-reglages .tir-note { flex: 1; min-width: 200px; text-align: right; }
+  .tir-ev > .tir-ev-graphe { grid-column: 1 / span 8; }
+  .tir-ev > .tir-ev-tuiles { grid-column: 9 / -1; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .tir-gr:not(.tir-gr--annees) { font-size: 12px; }
+  .tir-gr:not(.tir-gr--annees) :is(th, td) { padding: 0 4px; }
+  .tir-gr:not(.tir-gr--annees) :is(th, td):first-child { width: 150px; min-width: 150px; max-width: 150px; }
+  .tir-gr:not(.tir-gr--annees) thead th { font-size: 11px; }
+  .tir-ev > .tir-ev-tendance { grid-column: 1 / span 5; }
+  .tir-ev > .tir-ev-solde { grid-column: 6 / -1; }
+}

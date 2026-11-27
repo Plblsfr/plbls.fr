@@ -1,3 +1,4 @@
+import type { Annees, Historique, LigneHistorique, Soldes, Tendance } from './evolution'
 import type { DetailCategorie, LigneCategorie, Mois, Periode } from './stats'
 import type { Categorie, ClientTirelire, Commercant, FileAClasser, Groupe, Operation, PageOperations, Regle, Releve, ResultatImport } from './tirelire'
 
@@ -113,6 +114,52 @@ export const detailStats = (o: Partial<DetailCategorie> = {}): DetailCategorie =
   ...o,
 })
 
+const MOIS_ESSAI = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']
+
+export const tendanceStats = (o: Partial<Tendance> = {}): Tendance => ({ direction: 'up', periods: 5, average: 13_900, delta: 3000, delta_bp: 2158, values: [12_800, 15_500, 13_900, 13_300, 14_800], ...o })
+
+export const ligneHistorique = (o: Partial<LigneHistorique> = {}): LigneHistorique => ({ id: 3, name: 'Restaurants', kind: 'variable', color: 2, archived: false, monthly_cap: 15_000, amounts: [12_800, 15_500, 13_900, 13_300, 14_800, 23_680], total: 93_980, average: 14_060, over_cap: 2, trend: tendanceStats(), ...o })
+
+export const historiqueStats = (o: Partial<Historique> = {}): Historique => ({
+  mode: 'calendar', window: '6', available: 12, complete: 5,
+  periods: MOIS_ESSAI.map((id, i) => ({ id, from: `${id}-01`, to: `${id}-28`, complete: i < 5, open: i === 5, expenses: [144_800, 145_800, 146_500, 147_600, 148_800, 164_590][i] })),
+  trend_period_ids: MOIS_ESSAI.slice(0, 5),
+  categories: [
+    ligneHistorique({ id: 1, name: 'Logement', kind: 'fixe', color: 0, monthly_cap: 78_000, amounts: [78_000, 78_000, 78_000, 78_000, 78_000, 78_000], total: 468_000, average: 78_000, over_cap: 0, trend: tendanceStats({ direction: 'stable', average: 78_000, delta: 0, delta_bp: 0, values: [78_000, 78_000, 78_000, 78_000, 78_000] }) }),
+    ligneHistorique({ id: 2, name: 'Courses', color: 1, monthly_cap: 38_000, amounts: [35_200, 34_000, 36_100, 36_200, 37_100, 41_260], total: 219_860, average: 35_720, over_cap: 1, trend: tendanceStats({ direction: 'stable', average: 35_720, delta: 1900, delta_bp: 532, values: [35_200, 34_000, 36_100, 36_200, 37_100] }) }),
+    ligneHistorique(),
+    ligneHistorique({ id: 6, name: 'Transports', color: 5, monthly_cap: null, amounts: [15_800, 12_100, 16_000, 15_300, 15_100, 14_230], total: 88_530, average: 14_860, over_cap: null, trend: tendanceStats({ direction: 'down', average: 14_860, delta: -1600, delta_bp: -1077, values: [15_800, 12_100, 16_000, 15_300, 15_100] }) }),
+    ligneHistorique({ id: 7, name: 'Santé', color: 6, monthly_cap: null, amounts: [3000, 6200, 2500, 4800, 3800, 4620], total: 24_920, average: 4060, over_cap: null, trend: tendanceStats({ direction: 'stable', average: 4060, delta: 800, delta_bp: 1970, values: [3000, 6200, 2500, 4800, 3800] }) }),
+  ],
+  unclassified: { amounts: [0, 0, 0, 0, 0, 2800], total: 2800, average: 0 },
+  total: { amounts: [144_800, 145_800, 146_500, 147_600, 148_800, 164_590], total: 898_090, average: 146_700, budget: 131_000, over_budget: 6, trend: tendanceStats({ direction: 'stable', average: 146_700, delta: 4000, delta_bp: 273, values: [144_800, 145_800, 146_500, 147_600, 148_800] }) },
+  chart: { category_ids: [1, 2, 3, 6], others: [3000, 6200, 2500, 4800, 3800, 4620], others_categories: 1 },
+  ...o,
+})
+
+export const soldesStats = (o: Partial<Soldes> = {}): Soldes => ({
+  mode: 'calendar', window: '6', from: '2026-10-01', to: '2026-11-26',
+  accounts: [{
+    account_id: 1, days: 52, reconciled: true,
+    segments: [{ from: '2026-10-01', to: '2026-10-26', values: Array.from({ length: 26 }, (_, i) => (i < 4 ? 120_000 : i < 20 ? -4500 : 152_340)) }, { from: '2026-11-01', to: '2026-11-26', values: Array.from({ length: 26 }, (_, i) => (i < 10 ? 152_340 : i < 22 ? 61_000 : 190_000)) }],
+    gaps: [{ from: '2026-10-27', to: '2026-10-31', days: 5 }],
+    first: { date: '2026-10-01', amount: 120_000 }, last: { date: '2026-11-26', amount: 190_000 }, min: { date: '2026-10-05', amount: -4500 }, max: { date: '2026-11-23', amount: 190_000 },
+  }],
+  ...o,
+})
+
+export const anneesStats = (o: Partial<Annees> = {}): Annees => ({
+  mode: 'calendar', period: '2026-11', year: 2026, month: 11, previous_year: 2025, has_previous: true, compared_months: [10, 11], partial: true,
+  months: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, current: i >= 5 && i <= 10 ? [188_400, 193_700, 196_500, 189_400, 202_700, 221_340][i - 5] : null, current_complete: i >= 5 && i <= 10 ? i < 10 : null, previous: i >= 9 ? [199_000, 204_000, 216_500][i - 9] : null, previous_complete: i >= 9 ? true : null })),
+  total: { month: 221_340, month_previous: { amount: 204_000, delta: 17_340, delta_bp: 850 }, ytd: 1_192_040, ytd_compared: { current: 424_040, previous: 403_000, delta: 21_040, delta_bp: 522 } },
+  categories: [
+    { id: 1, name: 'Logement', kind: 'fixe', color: 0, month: 78_000, month_previous: { amount: 76_000, delta: 2000, delta_bp: 263 }, ytd: 468_000, ytd_compared: { current: 156_000, previous: 152_000, delta: 4000, delta_bp: 263 } },
+    { id: 3, name: 'Restaurants', kind: 'variable', color: 2, month: 23_680, month_previous: { amount: 0, delta: 23_680, delta_bp: null }, ytd: 93_980, ytd_compared: { current: 38_480, previous: 0, delta: 38_480, delta_bp: null } },
+  ],
+  unclassified: { month: 2800, month_previous: { amount: 0, delta: 2800, delta_bp: null }, ytd: 2800, ytd_compared: { current: 2800, previous: 0, delta: 2800, delta_bp: null } },
+  ...o,
+})
+
 export const fauxClient = (o: Partial<ClientTirelire> = {}): ClientTirelire => ({
   me: async () => ({ sub: 'kc-moi', name: 'Camille', email: '', permissions: { access: true } }),
   comptes: async () => [],
@@ -141,5 +188,8 @@ export const fauxClient = (o: Partial<ClientTirelire> = {}): ClientTirelire => (
   periodes: async () => [],
   mois: async () => moisStats(),
   categorieDuMois: async () => detailStats(),
+  historique: async () => historiqueStats(),
+  soldes: async () => soldesStats(),
+  annees: async () => anneesStats(),
   ...o,
 })

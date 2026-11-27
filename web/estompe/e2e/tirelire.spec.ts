@@ -116,18 +116,21 @@ test('opérations : groupes par jour, suite, filtres par relevé et par période
   await expect(liste(page)).toBeVisible()
 })
 
-test('Évolution et Habitudes en attente, sans chiffre ; Accueil et Mois chiffrés', async ({ page }) => {
+test('Habitudes en attente, sans chiffre ; Accueil, Mois et Évolution chiffrés', async ({ page }) => {
   await simulerTirelire(page, {}, serveurTirelire(true))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/#/tirelire')
-  for (const [onglet, titre] of [['Évolution', 'Évolution'], ['Habitudes', 'Habitudes']]) {
-    await onglets(page).getByRole('link', { name: onglet }).click()
-    await expect(page.getByRole('heading', { name: titre, level: 1 })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Bientôt disponible' })).toBeVisible()
-    await expect(onglets(page).getByRole('link', { name: onglet })).toHaveAttribute('aria-current', 'page')
-    await expect(page.locator('.tir')).not.toContainText('€')
-    await expect(page.locator('.tir-bandeau')).toHaveCount(0)
-  }
+  await onglets(page).getByRole('link', { name: 'Habitudes' }).click()
+  await expect(page.getByRole('heading', { name: 'Habitudes', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bientôt disponible' })).toBeVisible()
+  await expect(onglets(page).getByRole('link', { name: 'Habitudes' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('.tir')).not.toContainText('€')
+  await expect(page.locator('.tir-bandeau')).toHaveCount(0)
+  await onglets(page).getByRole('link', { name: 'Évolution' }).click()
+  await expect(page.getByRole('heading', { name: 'Évolution', level: 1 })).toBeVisible()
+  await expect(onglets(page).getByRole('link', { name: 'Évolution' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('region', { name: 'Dépenses par catégorie' })).toContainText('€')
+  await expect(page.getByRole('heading', { name: 'Bientôt disponible' })).toHaveCount(0)
   await onglets(page).getByRole('link', { name: 'Mois' }).click()
   await expect(page.getByRole('heading', { name: 'Vue du mois', level: 1 })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Par catégorie' })).toContainText('€')
@@ -140,12 +143,12 @@ test('Évolution et Habitudes en attente, sans chiffre ; Accueil et Mois chiffr�
 test('téléphone (390 px) : barre d’onglets, cibles de 44 px, rien ne déborde ; bureau : menu latéral', async ({ page }) => {
   await simulerTirelire(page, {}, serveurTirelire(true))
   await page.setViewportSize({ width: 390, height: 844 })
-  for (const chemin of ['/#/tirelire', '/#/tirelire/mois', '/#/tirelire/mois/2026-10', '/#/tirelire/categorie/2?periode=2026-11', '/#/tirelire/categorie/3', '/#/tirelire/mois/2020-01', '/#/tirelire/operations', '/#/tirelire/operations?statement=110&from=2026-10-01&to=2026-10-26&category=2&q=boulangerie+du+pont&min=500&max=6000&direction=debit&type=carte', '/#/tirelire/import', '/#/tirelire/a-classer', '/#/tirelire/categories', '/#/tirelire/categories/regles', '/#/tirelire/categories/commercants', '/#/tirelire/operations/104']) {
+  for (const chemin of ['/#/tirelire', '/#/tirelire/mois', '/#/tirelire/mois/2026-10', '/#/tirelire/categorie/2?periode=2026-11', '/#/tirelire/categorie/3', '/#/tirelire/mois/2020-01', '/#/tirelire/evolution', '/#/tirelire/operations', '/#/tirelire/operations?statement=110&from=2026-10-01&to=2026-10-26&category=2&q=boulangerie+du+pont&min=500&max=6000&direction=debit&type=carte', '/#/tirelire/import', '/#/tirelire/a-classer', '/#/tirelire/categories', '/#/tirelire/categories/regles', '/#/tirelire/categories/commercants', '/#/tirelire/operations/104']) {
     await page.goto(chemin)
     await expect(page.locator('.tir-corps > *').first()).toBeVisible()
     await expect(page.locator('.tir-fait')).toHaveCount(0)
     const mesures = await page.evaluate(() => ({
-      deborde: [...document.querySelectorAll('.tir *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > innerWidth + 0.5 || r.left < -0.5) }).map((e) => e.className),
+      deborde: [...document.querySelectorAll('.tir *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && !e.parentElement?.closest('.tir-gr-defile') && (r.right > innerWidth + 0.5 || r.left < -0.5) }).map((e) => e.className).concat(document.documentElement.scrollWidth > innerWidth ? ['page'] : []),
       petites: [...document.querySelectorAll<HTMLElement>('.tir a, .tir button, .tir select, .tir input:not(.v-sr):not([type=checkbox]), .tir-case')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.height < 43.5 || r.width < 43.5) }).map((e) => `${e.tagName} ${e.className} ${e.textContent?.trim().slice(0, 20)}`),
     }))
     expect(mesures, chemin).toEqual({ deborde: [], petites: [] })
@@ -185,7 +188,7 @@ test('accessibilité : aucune violation axe sur les écrans de la section', asyn
     expect(res.violations.map((v) => `${ou} · ${v.id} : ${v.nodes.map((n) => `${n.target.join(' ')} ${n.failureSummary}`).join(', ')}`)).toEqual([])
   }
   await verifier('import')
-  for (const [chemin, attente] of [['/#/tirelire', 'Ce qui dépasse'], ['/#/tirelire/mois', 'Par catégorie'], ['/#/tirelire/mois/2026-10', 'Par catégorie'], ['/#/tirelire/categorie/2?periode=2026-11', 'Historique'], ['/#/tirelire/evolution', 'Pas encore disponible'], ['/#/tirelire/operations', 'Liste des opérations']]) {
+  for (const [chemin, attente] of [['/#/tirelire', 'Ce qui dépasse'], ['/#/tirelire/mois', 'Par catégorie'], ['/#/tirelire/mois/2026-10', 'Par catégorie'], ['/#/tirelire/categorie/2?periode=2026-11', 'Historique'], ['/#/tirelire/evolution', 'Dépenses par catégorie'], ['/#/tirelire/habitudes', 'Pas encore disponible'], ['/#/tirelire/operations', 'Liste des opérations']]) {
     await page.goto(chemin)
     await expect(page.getByRole('region', { name: attente })).toBeVisible()
     await verifier(chemin)
@@ -688,4 +691,154 @@ test('captures de l’accueil, de la vue du mois et du détail d’une catégori
     await expect(page.getByRole('region', { name: 'Historique' })).toBeVisible()
     await prendre(largeur, 'limite-rien-de-classe-categorie')
   }
+})
+
+function garnirDeuxAnnees(srv: Srv) {
+  for (const m of [9, 10, 11, 12]) srv.ajouter(`releve-2025-${String(m).padStart(2, '0')}.pdf`, 20 + m, 2025, m, 30 + m * 2)
+  garnir(srv, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+}
+
+test('évolution : graphique empilé, tableau catégories × mois, tendances, solde avec trous, année sur l’autre, fenêtre et mode', async ({ page }) => {
+  const srv = serveurTirelire(true)
+  garnirDeuxAnnees(srv)
+  await simulerTirelire(page, {}, srv)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/tirelire/evolution')
+  const reglages = page.getByRole('region', { name: 'Fenêtre et découpage' })
+  await expect(reglages.getByRole('button', { name: '12 mois' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(reglages).toContainText('12 mois sur 15')
+  expect(srv.appels.filter((a) => a.chemin === '/stats/history').at(-1)!.requete).toBe('?mode=calendar&window=12')
+  const graphe = page.getByRole('region', { name: 'Dépenses par catégorie' })
+  await expect(graphe.locator('.tir-emp-col')).toHaveCount(12)
+  await expect(graphe.getByRole('list', { name: 'Légende' })).toContainText('Logement')
+  const barres = graphe.getByRole('slider', { name: 'Parcourir les mois du graphique' })
+  await expect(barres).toHaveAttribute('aria-valuetext', /^novembre 2026 \(incomplet\)/)
+  await barres.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(graphe.getByRole('status')).toContainText('Octobre 2026')
+  await expect(graphe.getByRole('status').getByRole('link', { name: 'Voir le mois' })).toHaveAttribute('href', '#/tirelire/mois/2026-10')
+  const table = page.getByRole('region', { name: 'Catégories × mois', exact: true })
+  await expect(table.getByRole('columnheader')).toHaveCount(17)
+  await expect(table.getByRole('row', { name: /^Logement/ }).getByRole('cell').first()).toHaveText('780')
+  await expect(table.getByRole('row', { name: /^Total/ })).toBeVisible()
+  const boite = table.getByRole('region', { name: /tableau à faire défiler/ })
+  expect(await boite.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true)
+  await boite.evaluate((e) => { e.scrollLeft = e.scrollWidth })
+  const fige = await table.getByRole('rowheader', { name: /Logement/ }).boundingBox()
+  expect(Math.round(fige!.x)).toBe(Math.round((await boite.boundingBox())!.x))
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await expect(boite).toBeVisible()
+  expect(await boite.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true)
+  await expect(table).not.toContainText('Fais défiler')
+  await page.setViewportSize({ width: 390, height: 844 })
+  const tendance = page.getByRole('region', { name: 'Tendance par catégorie' })
+  await expect(tendance).toContainText('sur les 6 derniers mois complets')
+  await expect(tendance.getByRole('link', { name: /Logement/ })).toContainText('stable')
+  await expect(tendance.getByRole('link', { name: /Logement/ }).locator('svg.tir-etincelle')).toBeVisible()
+  const solde = page.getByRole('region', { name: 'Solde du compte' })
+  await expect(solde).toContainText('Solde le plus bas')
+  await expect(solde).toContainText('la courbe s’interrompt, rien n’est estimé')
+  expect(await solde.locator('rect.tir-trou').count()).toBeGreaterThan(5)
+  expect(await solde.locator('path.tir-serie').count()).toBeGreaterThan(5)
+  const annees = page.getByRole('region', { name: 'D’une année sur l’autre' })
+  await expect(annees.getByRole('heading', { name: '2026 vs 2025' })).toBeVisible()
+  await expect(annees).toContainText('Novembre 2026 vs novembre 2025')
+  await expect(annees).toContainText('sur sept., oct., nov.')
+  await expect(annees.getByRole('columnheader', { name: 'nov. 2025' })).toBeVisible()
+  await reglages.getByRole('button', { name: '6 mois' }).click()
+  await expect(graphe.locator('.tir-emp-col')).toHaveCount(6)
+  expect(srv.appels.filter((a) => a.chemin === '/stats/balance').at(-1)!.requete).toBe('?mode=calendar&window=6')
+  await reglages.getByRole('button', { name: 'Tout' }).click()
+  await expect(graphe.locator('.tir-emp-col')).toHaveCount(15)
+  await reglages.getByRole('button', { name: 'Par relevé' }).click()
+  await expect(page.getByRole('region', { name: 'Catégories × relevés', exact: true })).toBeVisible()
+  expect(srv.appels.filter((a) => a.chemin === '/stats/years').at(-1)!.requete).toBe('?mode=statement')
+  await page.goto('/#/tirelire/mois')
+  await expect(page.getByRole('region', { name: 'Période', exact: true }).getByRole('button', { name: 'Par relevé' })).toHaveAttribute('aria-pressed', 'true')
+  await page.reload()
+  await page.goto('/#/tirelire/evolution')
+  await expect(page.getByRole('region', { name: 'Fenêtre et découpage' }).getByRole('button', { name: 'Tout' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('region', { name: 'Fenêtre et découpage' }).getByRole('button', { name: 'Par relevé' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('évolution : états limites (une seule période, aucun plafond, année précédente absente)', async ({ page }) => {
+  const srv = serveurTirelire()
+  srv.ajouter('releve-2026-11.pdf', 11, 2026, 11, 40)
+  for (const c of srv.categories) c.monthly_cap = null
+  await simulerTirelire(page, {}, srv)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/tirelire/evolution')
+  await expect(page.getByText('Une seule période pour l’instant')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Périodes au-dessus du budget' })).toContainText('aucun plafond fixé')
+  await expect(page.getByRole('region', { name: 'Catégories × mois', exact: true }).getByRole('link', { name: /Aucun plafond fixé/ })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Tendance par catégorie' })).toContainText('Pas assez de données')
+  await expect(page.getByRole('region', { name: 'D’une année sur l’autre' })).toContainText('Pas encore de 2025 à comparer')
+  await expect(page.getByRole('region', { name: 'Solde du compte' })).toContainText('Solde le plus haut')
+  const mesures = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+  expect(mesures).toBe(true)
+})
+
+test('captures de l’écran Évolution', async ({ page }) => {
+  const dossier = process.env.TIRELIRE_CAPTURES_EVOLUTION
+  test.skip(!dossier, 'TIRELIRE_CAPTURES_EVOLUTION=<dossier> pour enregistrer les captures')
+  test.setTimeout(240_000)
+  const riche = serveurTirelire(true)
+  garnirDeuxAnnees(riche)
+  const seul = serveurTirelire()
+  seul.ajouter('releve-2026-11.pdf', 11, 2026, 11, 40)
+  for (const c of seul.categories) c.monthly_cap = null
+  const court = serveurTirelire(true)
+  garnir(court, [8, 9])
+  for (const c of court.categories) c.monthly_cap = null
+  const blocs = [['Dépenses par catégorie', 'graphique'], ['Catégories × mois', 'tableau'], ['Tendance par catégorie', 'tendance'], ['Solde du compte', 'solde'], ['D’une année sur l’autre', 'annees']] as const
+  const entier = async (largeur: number, nom: string) => {
+    const avis = page.locator('.plbls-toast button')
+    if (await avis.count()) await avis.first().click()
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
+    const hauteur = await page.locator('.tir-defile').evaluate((e) => e.scrollHeight - e.clientHeight)
+    await page.setViewportSize({ width: largeur, height: (largeur === 390 ? 844 : 900) + Math.max(0, hauteur) })
+    await page.screenshot({ path: `${dossier}/${nom}-${largeur}.png` })
+    await page.setViewportSize({ width: largeur, height: largeur === 390 ? 844 : 900 })
+  }
+  const ouvrir = async (srv: Srv, fenetre: string, mode = 'calendar') => {
+    await page.unrouteAll()
+    await simulerTirelire(page, {}, srv)
+    await page.goto('/#/tirelire/import')
+    await page.evaluate(([f, m]) => { localStorage.setItem('tirelire.fenetre', f); localStorage.setItem('tirelire.mode', m) }, [fenetre, mode])
+    await page.reload()
+    await page.goto('/#/tirelire/evolution')
+    await expect(page.getByRole('region', { name: 'D’une année sur l’autre' })).toBeVisible()
+  }
+  for (const largeur of [390, 1280]) {
+    await page.setViewportSize({ width: largeur, height: largeur === 390 ? 844 : 900 })
+    await ouvrir(riche, '12')
+    await entier(largeur, 'evolution-12')
+    for (const [nom, fichier] of blocs) {
+      const bloc = page.getByRole('region', { name: nom, exact: true })
+      await bloc.scrollIntoViewIfNeeded()
+      await bloc.screenshot({ path: `${dossier}/bloc-${fichier}-${largeur}.png` })
+    }
+    const solde = page.getByRole('slider', { name: 'Parcourir les jours du solde' })
+    await solde.scrollIntoViewIfNeeded()
+    const cadre = (await solde.boundingBox())!
+    await page.mouse.move(cadre.x + cadre.width * 0.4, cadre.y + cadre.height / 2)
+    await expect(page.locator('.tir-bulle')).toBeVisible()
+    await page.getByRole('region', { name: 'Solde du compte' }).screenshot({ path: `${dossier}/bloc-solde-survol-${largeur}.png` })
+    await page.mouse.move(0, 0)
+    const boite = page.getByRole('region', { name: 'Catégories × mois, tableau à faire défiler' })
+    await boite.evaluate((e) => { e.scrollLeft = e.scrollWidth })
+    await page.getByRole('region', { name: 'Catégories × mois', exact: true }).screenshot({ path: `${dossier}/bloc-tableau-defile-${largeur}.png` })
+    await ouvrir(riche, '6')
+    await entier(largeur, 'evolution-6')
+    await ouvrir(riche, 'all')
+    await entier(largeur, 'evolution-tout')
+    await ouvrir(riche, '12', 'statement')
+    await entier(largeur, 'evolution-par-releve')
+    await ouvrir(seul, '12')
+    await entier(largeur, 'limite-une-periode-sans-plafond')
+    await ouvrir(court, '12')
+    await entier(largeur, 'limite-sans-plafond-sans-annee-precedente')
+  }
+  await page.evaluate(() => { localStorage.removeItem('tirelire.fenetre'); localStorage.removeItem('tirelire.mode') })
 })

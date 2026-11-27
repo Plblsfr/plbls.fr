@@ -390,9 +390,9 @@ describe('TirelireSpace', () => {
     ])
   })
 
-  it('Évolution et Habitudes restent en attente, sans chiffre inventé', async () => {
+  it('Habitudes reste en attente, sans chiffre inventé', async () => {
     vi.spyOn(tirelireApi, 'releves').mockResolvedValue([releve(), releve({ id: 10, number: 10, from: '2026-09-30', to: '2026-10-31', operations: 91 })])
-    for (const [section, titre] of [['evolution', 'Évolution'], ['habitudes', 'Habitudes']] as const) {
+    for (const [section, titre] of [['habitudes', 'Habitudes']] as const) {
       const vue = monter(section)
       expect(await vue.findByRole('heading', { name: 'Bientôt disponible' })).toBeInTheDocument()
       expect(vue.getByRole('heading', { name: titre, level: 1 })).toBeInTheDocument()
@@ -401,6 +401,7 @@ describe('TirelireSpace', () => {
       expect(texte(vue.getByRole('link', { name: /^Opérations\s*175/ }))).toContain('175 opérations · du 30 sept. au 26 nov. 2026')
       expect(vue.getByRole('link', { name: /Catégories et règles/ })).toHaveAttribute('href', '#/tirelire/categories')
       expect(vue.getByRole('link', { name: /^Vue du mois/ })).toHaveAttribute('href', '#/tirelire/mois')
+      expect(within(vue.getByRole('region', { name: 'Déjà disponible' })).getByRole('link', { name: /^Évolution/ })).toHaveAttribute('href', '#/tirelire/evolution')
       vue.unmount()
       tirelire.reinitialiser()
     }

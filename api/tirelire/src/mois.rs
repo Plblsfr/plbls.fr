@@ -13,6 +13,7 @@ use crate::{
     bilan::Nature,
     classement,
     etat::AppState,
+    evolution::{self, Fenetre, Mouvement, ReleveSolde},
     garde::Personne,
     http::{bd, identifiant, introuvable, invalide, ok},
     releves::{OPERATION, OPERATIONS},
@@ -23,6 +24,7 @@ use crate::{
 pub struct Demande {
     pub mode: Option<String>,
     pub period: Option<String>,
+    pub window: Option<String>,
 }
 
 type LigneOperation = (
@@ -175,4 +177,98 @@ pub async fn categorie(
         .filter_map(|id| par_id.remove(id))
         .collect();
     Ok(ok(&detail))
+}
+
+fn fenetre(d: &Demande) -> Result<Fenetre, Response> {
+    Fenetre::lire(d.window.as_deref()).ok_or_else(|| invalide("window : 6, 12, 24 ou all"))
+}
+
+pub async fn historique(
+    State(state): State<AppState>,
+    p: Personne,
+    Query(d): Query<Demande>,
+) -> Result<Response, Response> {
+    let mode = mode(&d)?;
+    let fenetre = fenetre(&d)?;
+    classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    let calcul = Calcul::nouveau(&donnees, mode);
+    Ok(ok(&evolution::historique(&calcul, fenetre)))
+}
+
+pub async fn soldes(
+    State(state): State<AppState>,
+    p: Personne,
+    Query(d): Query<Demande>,
+) -> Result<Response, Response> {
+    let mode = mode(&d)?;
+    let fenetre = fenetre(&d)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    let periodes = crate::stats::periodes(mode, &donnees);
+    let plage = fenetre.plage(periodes.len());
+    let bornes = periodes
+        .get(plage.start)
+        .zip(periodes.last())
+        .map(|(a, b)| (a.from, b.known_through));
+    let Some((du, au)) = bornes else {
+        return Ok(ok(&json!({
+            "mode": mode.cle(), "window": fenetre.cle(), "from": null, "to": null, "accounts": []
+        })));
+    };
+    let releves: Vec<(i64, i64, NaiveDate, NaiveDate, i64, i64)> = sqlx::query_as(
+        "SELECT id, compte_id, debut, date_arrete, ancien_solde, nouveau_solde
+         FROM releves WHERE sub = $1 ORDER BY id",
+    )
+    .bind(p.sub())
+    .fetch_all(state.pool())
+    .await
+    .map_err(bd)?;
+    let mouvements: Vec<(i64, NaiveDate, String, i64)> = sqlx::query_as(
+        "SELECT releve_id, date_operation, sens, montant FROM operations WHERE sub = $1 ORDER BY id",
+    )
+    .bind(p.sub())
+    .fetch_all(state.pool())
+    .await
+    .map_err(bd)?;
+    let releves: Vec<ReleveSolde> = releves
+        .into_iter()
+        .map(|(id, compte, debut, fin, ancien, nouveau)| ReleveSolde {
+            id,
+            compte,
+            debut,
+            fin,
+            ancien,
+            nouveau,
+        })
+        .collect();
+    let mouvements: Vec<Mouvement> = mouvements
+        .into_iter()
+        .map(|(releve, jour, sens, montant)| Mouvement {
+            releve,
+            jour,
+            credit: sens == "credit",
+            montant,
+        })
+        .collect();
+    Ok(ok(&json!({
+        "mode": mode.cle(),
+        "window": fenetre.cle(),
+        "from": du,
+        "to": au,
+        "accounts": evolution::soldes(&releves, &mouvements, du, au),
+    })))
+}
+
+pub async fn annees(
+    State(state): State<AppState>,
+    p: Personne,
+    Query(d): Query<Demande>,
+) -> Result<Response, Response> {
+    let mode = mode(&d)?;
+    let cle = cle(&d, mode)?;
+    classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
+    let donnees = charger(state.pool(), p.sub()).await.map_err(bd)?;
+    let calcul = Calcul::nouveau(&donnees, mode);
+    let i = calcul.index(cle).ok_or_else(introuvable)?;
+    Ok(ok(&evolution::annees(&calcul, i)))
 }

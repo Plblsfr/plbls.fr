@@ -18,7 +18,7 @@ npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe se
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 npm run e2e:cinema   # mode cinéma du salon cinéma sur un écran de téléphone (portrait et paysage) : API simulées, serveur de dev
 npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
-npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, accueil, vue du mois et détail d'une catégorie, écran de téléphone, Tirelire arrêté : API simulées
+npm run e2e:tirelire # section Tirelire : permission, premier lancement, import, suppression, opérations (recherche, filtres, export CSV), détail, à classer, catégories et règles, accueil, vue du mois et détail d'une catégorie, évolution, écran de téléphone, Tirelire arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -153,7 +153,19 @@ système de Chromium doivent être présentes).
   - États : une seule période (ni écart ni moyenne, c'est dit), période partiellement couverte, aucune opération classée, aucun plafond,
     période ou catégorie inconnue, statistiques indisponibles (relance). L'état des statistiques (`tirelire.mois`, `tirelire.categorieDuMois`)
     est rechargé après un classement, un import, une suppression ou un changement de catégorie (`tirelire.version`).
-  - `#/tirelire/evolution` et `/habitudes` : `TirelireAttente`, « Bientôt disponible », sans aucun chiffre, avec les liens vers ce qui existe.
+  - `#/tirelire/evolution` : `TirelireEvolution` (`GET /stats/history`, `/stats/balance` et `/stats/years`, chargés ensemble par `tirelire.chargerEvolution`).
+    Fenêtre 6 / 12 / 24 périodes ou tout (mémorisée, `localStorage`, clé `tirelire.fenetre`) et même bascule « Par relevé » / « Mois calendaire » que la vue
+    du mois (`tirelire.mode`). Blocs : barres empilées par catégorie (`TirelireEmpile` : les cinq plus fortes, « Autres », « À classer » en contour, mois
+    incomplet hachuré, ligne du budget ; un seul curseur pour toutes les barres, à la souris, au doigt ou au clavier, et un panneau qui détaille la période
+    visée), tuiles (moyenne, périodes au-dessus du budget, tendance du total), tableau catégories × périodes avec total, moyenne, plafond et nombre de
+    dépassements, tendance par catégorie (mini-courbe `TirelireEtincelle`, sens en toutes lettres, variation chiffrée), solde du compte (`TirelireSolde` :
+    tracé en escalier jour par jour, un tracé par suite de jours couverts, trous hachurés jamais reliés, plus bas et plus haut marqués, tableau des jours
+    où le solde change) et comparaison d'une année sur l'autre (`TirelireAnnees` : deux courbes mensuelles, même mois, cumul sur les mois communs, tableau
+    par catégorie). Tableaux larges : la page ne défile jamais en largeur, c'est la boîte du tableau (`tir-gr-defile`, première colonne figée, atteignable
+    au clavier) qui défile ; à 1280 px le tableau de 12 périodes tient en entier. Un montant au-dessus du plafond porte un ▲ et un fond, jamais la couleur
+    seule. États dits tels quels : une seule période, pas assez de périodes complètes pour une tendance, aucun plafond, année précédente absente ou
+    partielle, jours sans relevé, solde non rapproché. Calculs purs dans `evolution.ts`.
+  - `#/tirelire/habitudes` : `TirelireAttente`, « Bientôt disponible », sans aucun chiffre, avec les liens vers ce qui existe.
   - `#/tirelire/a-classer` : `TirelireClasser`. File `GET /unclassified`, un groupe par commerçant : le premier groupe en grand (libellés bruts,
     choix rapide d'une catégorie), « Passer », puis la liste « Ensuite ». Classer fixe la catégorie de tout le commerçant
     (`PUT /merchants/{id}/category`), ou de la seule opération la plus récente si la case de la règle est décochée ou si l'opération n'a pas de
@@ -212,6 +224,8 @@ téléchargé comparé à celui du serveur), effacement, parcours d'administrati
 (les trois issues, refus au contrôle), suppression, opérations et détail, file à classer (règle, annulation), catégories, règles, fusion et séparation de
 commerçants, filtres et reclassement depuis le détail, recherche, filtres dans l'adresse, pastilles, total de la sélection et fichier CSV téléchargé,
 accueil, vue du mois, détail d'une catégorie (plafond modifié sur place, bascule par relevé, états limites ; `TIRELIRE_CAPTURES_MOIS=<dossier>` en enregistre les captures),
+évolution (graphique, tableau figé qui défile dans sa boîte à 390 px et tient en entier à 1280 px, tendances, solde et ses trous, année sur l'autre, fenêtre et
+mode mémorisés, états limites ; `TIRELIRE_CAPTURES_EVOLUTION=<dossier>` en enregistre les captures),
 écran de 390 px sans débordement, Tirelire arrêté, axe ; `TIRELIRE_CAPTURES=<dossier>` y enregistre
 les captures des écrans de catégorisation, `TIRELIRE_CAPTURES_RECHERCHE=<dossier>` celles de la recherche et des filtres. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. `npm run e2e:cinema` (`playwright.cinema.config.ts`, `e2e/cinema.spec.ts`) vérifie le mode cinéma du salon cinéma

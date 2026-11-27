@@ -1,9 +1,14 @@
 import { enregistrer, filtreActif, lots, messageErreur, SANS_FILTRE, tirelireApi, totauxDe, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle, type Totaux } from './tirelire'
 import type { Releve } from './tirelire'
+import { CLE_FENETRE, lireFenetre, type Evolution, type Fenetre } from './evolution'
 import { CLE_MODE, lireMode, type DetailCategorie, type Mode, type Mois, type ResumePeriode } from './stats'
 
 function modeMemorise(): Mode {
   try { return lireMode(localStorage.getItem(CLE_MODE)) } catch { return 'calendar' }
+}
+
+function fenetreMemorisee(): Fenetre {
+  try { return lireFenetre(localStorage.getItem(CLE_FENETRE)) } catch { return '12' }
 }
 
 export interface Annulable { titre: string; detail: string; commercant: number | null; operation: number | null }
@@ -43,7 +48,11 @@ export class EtatTirelire {
   periodes = $state.raw<ResumePeriode[] | null>(null)
   categorieDuMois = $state.raw<DetailCategorie | null>(null)
   categorieAbsente = $state(false)
+  fenetre = $state<Fenetre>(fenetreMemorisee())
+  evolution = $state.raw<Evolution | null>(null)
+  erreurEvolution = $state('')
   version = $state(0)
+  private tourEvolution = 0
   private tourMois = 0
   private tourCategorie = 0
   private tourPeriodes = 0
@@ -107,6 +116,33 @@ export class EtatTirelire {
     this.periodes = null
     this.categorieDuMois = null
     this.categorieAbsente = false
+    this.tourEvolution++
+    this.evolution = null
+    this.erreurEvolution = ''
+  }
+
+  changerFenetre(fenetre: Fenetre) {
+    if (fenetre === this.fenetre) return
+    this.fenetre = fenetre
+    try { localStorage.setItem(CLE_FENETRE, fenetre) } catch { this.fenetre = fenetre }
+  }
+
+  async chargerEvolution() {
+    const tour = ++this.tourEvolution
+    this.erreurEvolution = ''
+    const [mode, fenetre] = [this.mode, this.fenetre]
+    try {
+      const [historique, soldes, annees] = await Promise.all([
+        this.api.historique(mode, fenetre),
+        this.api.soldes(mode, fenetre),
+        this.api.annees(mode).catch((e: unknown) => { if ((e as { status?: number }).status === 404) return null; throw e }),
+      ])
+      if (tour === this.tourEvolution) this.evolution = { historique, soldes, annees }
+    } catch (e) {
+      if (tour !== this.tourEvolution) return
+      this.evolution = null
+      this.erreurEvolution = messageErreur(e)
+    }
   }
 
   private perimer() { this.version++ }

@@ -1,6 +1,7 @@
 import { ApiError, fichierAt, requestAt } from '../../lib/api'
 import { config } from '../../lib/config'
 import { centimes, dateCourte, euros, signe, type Sens } from './formats'
+import type { Annees, Fenetre, Historique, Soldes } from './evolution'
 import type { DetailCategorie, Mode, Mois, ResumePeriode } from './stats'
 
 export const TIRELIRE_URL = config.tirelireUrl
@@ -199,6 +200,9 @@ export const tirelireApi = {
   periodes: async (mode: Mode) => (await get<{ periods: ResumePeriode[] }>(`/stats/months?mode=${mode}`)).periods,
   mois: (mode: Mode, periode?: string) => get<Mois>(`/stats/month?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
   categorieDuMois: (id: number, mode: Mode, periode?: string) => get<DetailCategorie>(`/stats/month/categories/${id}?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
+  historique: (mode: Mode, fenetre: Fenetre) => get<Historique>(`/stats/history?mode=${mode}&window=${fenetre}`),
+  soldes: (mode: Mode, fenetre: Fenetre) => get<Soldes>(`/stats/balance?mode=${mode}&window=${fenetre}`),
+  annees: (mode: Mode) => get<Annees>(`/stats/years?mode=${mode}`),
   separer: (id: number, cles: string[]) => envoyer<{ merchant: Commercant; created: Commercant[] }>('POST', `/merchants/${id}/split`, { keys: cles }),
 }
 
