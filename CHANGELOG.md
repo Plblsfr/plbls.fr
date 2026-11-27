@@ -4,6 +4,10 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## api 0.94.0 / applis 0.124.1 - 2026-11-27
+
+- [x] Badges d'Entracte : affiche, couleurs et animation. L'affiche du film ou de la série est de nouveau dessinée sur la carte animée, et ses couleurs en sont tirées : elle était lue par un `fetch` d'URL `blob:`, refusé par la CSP (`connect-src`), d'où la carte de repli sans affiche. Avec les animations réduites (système ou réglage d'Estompe), la carte ne se joue plus d'elle-même mais le bouton « Lire l'animation » la lance (le bouton « Rejouer » ne faisait rien dans ce cas). Dans une conversation, le lien du badge n'est plus affiché en clair quand sa carte s'affiche : il reste le texte « Saison 1 terminée : … » et la carte. Non fait : le lien envoyé depuis l'app de bureau garde l'origine `tauri.localhost`. Non vérifié : rendu visuel avec une vraie affiche, app Windows et Android.
+
 ## api 0.94.0 / applis 0.124.0 - 2026-11-27
 
 - [x] Badges animés, envoyés dans les conversations. La carte d'un badge (film, saison ou série terminés) devient une animation dessinée en canevas dans l'app, de 5 à 6,5 s, en cinq styles : ticket de cinéma, Polaroïd qui se développe, pellicule qui défile, générique de fin, amorce 3-2-1. Le style est tiré du titre (une même série garde toujours le même) et les couleurs viennent de son affiche ; l'animation se joue quand la carte devient visible, se rejoue d'un clic et s'arrête sur la dernière image si le système demande moins d'animations. Le partage hors de l'app (feuille de partage, image PNG) est retiré : on envoie le badge dans un message privé ou un salon d'Estompe, où le lien devient une carte animée, vérifiée avec le badge de l'auteur du message (nouvelle route interne d'Entracte `GET /internal/badges/{clé}`). Non fait : la carte dans l'app native, export vidéo. Non vérifié : rendu et fluidité dans l'app (seules les images de l'animation ont été regardées dans Chromium), polices de l'app dans le canevas, téléphone réel, builds Tauri.
