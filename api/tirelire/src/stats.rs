@@ -631,6 +631,14 @@ impl<'a> Calcul<'a> {
         self.agregats[i].bilan.a_classer_debits
     }
 
+    pub fn revenus(&self, i: usize) -> i64 {
+        self.agregats[i].revenus()
+    }
+
+    pub fn epargne(&self, i: usize) -> i64 {
+        self.agregats[i].bilan.epargne
+    }
+
     pub fn montant(&self, i: usize, categorie: i64) -> i64 {
         self.agregats[i].montant(categorie)
     }
@@ -673,7 +681,7 @@ impl<'a> Calcul<'a> {
             .collect()
     }
 
-    fn precedente(&self, i: usize) -> Option<usize> {
+    pub fn precedente(&self, i: usize) -> Option<usize> {
         let j = i.checked_sub(1)?;
         match self.mode {
             Mode::Releve => Some(j),
@@ -683,7 +691,7 @@ impl<'a> Calcul<'a> {
         }
     }
 
-    fn completes_avant(&self, i: usize, n: usize) -> Vec<usize> {
+    pub fn completes_avant(&self, i: usize, n: usize) -> Vec<usize> {
         (0..i)
             .rev()
             .filter(|j| self.periodes[*j].complete)

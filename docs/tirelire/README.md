@@ -5,13 +5,14 @@ Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations,
 règles de classement, les commerçants, la file « à classer », la recherche, les filtres et l'export CSV des opérations, et les
 statistiques par période (accueil, vue du mois, détail d'une catégorie) et le suivi dans le temps (historique par catégorie,
 tendances, solde du compte, comparaison d'une année sur l'autre), les habitudes (commerçants, petits achats répétés, jours et
-semaines, opérations inhabituelles) et les abonnements et charges récurrentes avec leurs alertes.
+semaines, opérations inhabituelles), les abonnements et charges récurrentes avec leurs alertes, et l'aide à la décision (résumé de
+la période, leviers d'économie classés, simulateur).
 
 | Où | Quoi |
 |---|---|
 | [`api/tirelire`](../../api/tirelire/README.md) | API Rust (axum, sqlx), membre du workspace Cargo, base `tirelire` de PostgreSQL |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
-| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, évolution, habitudes, abonnements, import, opérations (recherche, filtres, export), à classer, catégories et règles |
+| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, évolution, habitudes, abonnements, aide à la décision, import, opérations (recherche, filtres, export), à classer, catégories et règles |
 | [`deploy/tirelire/.env.example`](../../deploy/tirelire/.env.example) | secrets, service `tirelire-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 
 ## Permission et cloisonnement
@@ -20,7 +21,7 @@ Déclarée à aegis par manifeste (application `tirelire`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, voir ses statistiques, ses habitudes et ses abonnements, écarter un récurrent ou marquer ses alertes comme vues, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
+| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, voir ses statistiques, ses habitudes, ses abonnements, son résumé et ses simulations, écarter un récurrent ou marquer ses alertes comme vues, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/tirelire/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -363,6 +364,66 @@ fusion ou une séparation de commerçants remet cet état à zéro.
 
 Limites connues : un montant qui varie de plus de 5 % d'une échéance à l'autre (facture d'énergie non mensualisée) n'est pas
 reconnu ; deux abonnements de même montant et de même cadence chez un même commerçant ne sont pas distingués.
+
+## Aide à la décision
+
+`GET /stats/summary` et `POST /stats/simulate` (`decision.rs`, sans accès à la base), avec les périodes, le rattachement et les
+définitions des statistiques. Tout est calculé dans le service par des règles fixes : aucun modèle de langage, aucun appel réseau,
+aucune donnée ne sort. Le service rend des éléments chiffrés ; l'app compose les phrases (`decision.ts`).
+
+### Résumé d'une période
+
+- **Dépenses** : total, écart avec la période précédente et avec la moyenne des 3 dernières périodes complètes, écart au budget ;
+  taux d'épargne et celui de la période précédente.
+- **Hausses et baisses** par catégorie de dépense, par rapport à la période précédente (`previous`) et à l'habitude (`usual`, la
+  moyenne des 3 dernières périodes complètes). Un écart n'est cité que s'il atteint 10 € (`SEUIL_MOYENNE`) et 10 % de sa
+  référence (`SEUIL_MOYENNE_BP`), les seuils de « ce qui dépasse » ; une référence nulle ne demande que les 10 €. Trois
+  catégories au plus par sens (`VARIATIONS_CITEES`), du plus grand écart au plus petit, avec le nombre total.
+- **États** : `history` vaut `first` sans aucune période avant, `insufficient` quand il n'y a ni période précédente complète ni
+  moyenne. Une période précédente incomplète n'est pas comparée (`previous_reason: incomplete`). Sur une période incomplète
+  ou en cours (`partial`), les baisses ne sont pas rendues : un mois pas fini est toujours « en baisse ». `unclassified.distorting`
+  signale que les débits à classer atteignent 10 % des dépenses (`SEUIL_A_CLASSER_BP`) : le résumé est alors faussé.
+
+### Leviers
+
+Les candidats, chacun avec un gain réaliste (revenir à une référence, jamais supprimer la dépense) :
+
+| Type (`kind`) | Candidat | Gain par mois |
+|---|---|---|
+| `over_cap` | catégorie non archivée au-dessus de son plafond (dès 1 €) | le dépassement : revenir au plafond |
+| `over_average` | catégorie variable sans plafond au-dessus de sa moyenne des 3 dernières périodes complètes (10 € et 10 %) | l'excès : revenir à la moyenne |
+| `subscription_changed` | récurrent actif dont le montant a augmenté | l'écart sur un an ÷ 12 : revenir à l'ancien montant |
+| `subscription_new` | récurrent actif signalé nouveau | son coût : s'en passer |
+| `merchant_up` | commerçant dont les dépenses variables montent d'au moins 20 € (`LEVIER_COMMERCANT`) et 50 % (`LEVIER_COMMERCANT_BP`) sur la période précédente complète | la hausse : revenir au niveau précédent |
+| `small_purchases` | petits achats répétés des 3 dernières périodes (`FENETRE_PETITS_ACHATS`), s'ils sont annualisables | la moitié (`LEVIER_PETITS_ACHATS_BP`) de leur coût annualisé ÷ 12 |
+
+Le gain annuel vaut 12 fois le gain mensuel, sauf pour les abonnements (écart ou coût annuel exact) et les petits achats (moitié
+du coût annualisé). Un levier d'abonnement n'est retenu que si le changement (nouveau montant, ou première échéance d'un nouvel
+abonnement) date de 120 jours au plus à la fin de la période (`NOUVEAUTE_JOURS`), récurrents écartés exclus. Un commerçant en
+hausse est écarté quand sa catégorie est déjà un levier : la même dépense ne compte pas deux fois.
+
+**Classement** : gain annuel décroissant ; à égalité, dans l'ordre des types du tableau, puis par nom, puis par identifiant.
+`levers` rend les 3 premiers (`LEVIERS`), `levers_total` le nombre de candidats.
+
+### Simulateur
+
+`POST /stats/simulate` ne garde aucun état : il valide les réglages et rend la base et le résultat.
+
+- **Base** d'une catégorie de dépense : la moyenne de ses montants sur les 3 dernières périodes complètes (`BASE_PERIODES`),
+  période demandée comprise (la plus récente à défaut), arrondie au centime, ramenée à 0 si elle est négative. Sans aucune
+  période complète, la base est la période elle-même et `basis.fragile` le dit. En mode par relevé, « par mois » désigne un
+  relevé. Une catégorie sans dépense sur ces périodes a une base nulle : aucun réglage n'y économise rien.
+- **Réglage** d'une catégorie, fixe ou variable : `percent` (0 à 100) ou `target` (montant visé, de 0 à la base).
+- **Abonnement arrêté** : son coût mensuel est d'abord retiré de la base de sa catégorie (au plus la base), puis le réglage
+  s'applique au reste : économie = reste × `percent` ÷ 100, arrondie au centime le plus proche, ou reste − `target` s'il est positif.
+- **Résultat** : par mois, économies des catégories + coût mensuel des abonnements arrêtés ; par an, 12 × économies des
+  catégories + coût annuel exact des abonnements arrêtés. Effet sur les dépenses, sur le reste à vivre si l'économie n'est pas
+  épargnée, sur l'épargne et le taux d'épargne si elle l'est, et écart au budget.
+
+L'app recalcule pendant le glissement d'un curseur avec la même formule (`simulation.ts`) et redemande le résultat au service
+quand le curseur est lâché. Les deux implémentations passent les mêmes cas, écrits une seule fois
+(`api/tirelire/tests/fixtures/simulation.json`). « Fixer comme plafond » envoie le montant simulé de chaque catégorie réglée à
+`PATCH /categories/{id}` (`monthly_cap`), après confirmation.
 
 ## Recherche, filtres et export
 

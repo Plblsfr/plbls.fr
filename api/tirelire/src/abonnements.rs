@@ -15,7 +15,7 @@ use crate::{
     recurrents::{Etat, Etats, Recurrents, recurrents},
 };
 
-async fn etats(pool: &PgPool, sub: &str) -> Result<Etats, sqlx::Error> {
+pub async fn etats(pool: &PgPool, sub: &str) -> Result<Etats, sqlx::Error> {
     let lignes: Vec<(i64, String, bool, bool, Option<i64>)> = sqlx::query_as(
         "SELECT commercant_id, cle, ecarte, nouveau_vu, montant_vu FROM recurrents WHERE sub = $1",
     )

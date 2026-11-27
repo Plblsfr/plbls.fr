@@ -266,6 +266,18 @@ pub fn table() -> Vec<Entree> {
             Garde::Droit(Droit::Acces),
             patch(abonnements::modifier),
         ),
+        entree(
+            Method::GET,
+            "/stats/summary",
+            Garde::Droit(Droit::Acces),
+            get(mois::resume),
+        ),
+        entree(
+            Method::POST,
+            "/stats/simulate",
+            Garde::Droit(Droit::Acces),
+            post(mois::simuler),
+        ),
     ]
 }
 

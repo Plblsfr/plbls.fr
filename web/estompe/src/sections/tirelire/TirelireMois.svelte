@@ -2,13 +2,15 @@
   import Icon from '../../components/Icon.svelte'
   import { hrefs, router } from '../../lib/route.svelte'
   import { dateCourte, euros, eurosSignes, pluriel } from './formats'
+  import type { Resume } from './decision'
+  import TirelireBref from './TirelireBref.svelte'
   import TirelireCourbe from './TirelireCourbe.svelte'
   import TirelireEcart from './TirelireEcart.svelte'
   import { etatPeriode, eurosRonds, filtresPeriode, MODES, moyenneSur, nomPrecedente, pourcent, titrePeriode, unite, type Ecart, type Mode, type Mois, type Moyenne } from './stats'
   import { NATURES, requeteDe, teinte } from './tirelire'
   import { tirelire } from './tirelire.svelte'
 
-  let { mois }: { mois: Mois } = $props()
+  let { mois, resume = null }: { mois: Mois; resume?: Resume | null } = $props()
 
   const calendaire = $derived(mois.mode === 'calendar')
   const avant = $derived(nomPrecedente(mois.cumulative.previous?.id, mois.mode))
@@ -72,6 +74,8 @@
         <p class="tir-note">Attention : {avant} n’est couvert qu’en partie par tes relevés, la comparaison est indicative.</p>
       {/if}
     </section>
+
+    {#if resume && resume.period.id === mois.period.id && resume.mode === mois.mode}<TirelireBref {resume} extrait />{/if}
 
     {#if mois.periods > 1}
       <section class="tir-g2" aria-label="Écart avec les moyennes">

@@ -29,7 +29,8 @@ routes dans [`openapi.yaml`](../../docs/tirelire/openapi.yaml).
 | `evolution.rs` | suivi dans le temps, sans accès à la base : fenêtre (`Fenetre`), historique par catégorie et totaux (`historique`), tendance de Theil-Sen (`tendance`), solde jour par jour et trous entre relevés (`soldes`), comparaison d'une année sur l'autre (`annees`) |
 | `habitudes.rs` | habitudes sur une fenêtre, sans accès à la base (`habitudes`) : classement des commerçants, petits achats répétés et annualisation, répartition par jour de la semaine et par semaine du mois, opérations inhabituelles (`inhabituelles` : médiane et écart absolu médian) |
 | `recurrents.rs` | paiements récurrents, sans accès à la base : cadences et tolérances (`Cadence`), séries par commerçant (`detecter`), prochaine échéance, arrêt, alertes et totaux (`recurrents`) |
-| `mois.rs` | `GET /stats/months`, `GET /stats/month`, `GET /stats/month/categories/{id}`, `GET /stats/history`, `GET /stats/balance`, `GET /stats/years`, `GET /stats/habits`, `GET /operations/{id}/unusual` : lecture des opérations, des catégories et des relevés de la personne, puis `stats.rs`, `evolution.rs` et `habitudes.rs` |
+| `decision.rs` | aide à la décision, sans accès à la base : base et formule du simulateur (`simuler`, `economie`, `effet`), résumé d'une période en éléments structurés (`resumer`), candidats et classement des leviers (`leviers`) |
+| `mois.rs` | `GET /stats/months`, `GET /stats/month`, `GET /stats/month/categories/{id}`, `GET /stats/history`, `GET /stats/balance`, `GET /stats/years`, `GET /stats/habits`, `GET /operations/{id}/unusual`, `GET /stats/summary`, `POST /stats/simulate` : lecture des opérations, des catégories et des relevés de la personne, puis `stats.rs`, `evolution.rs`, `habitudes.rs` et `decision.rs` |
 | `abonnements.rs` | `GET /stats/recurring`, `PATCH /stats/recurring/{id}` : état par personne (table `recurrents`), puis `recurrents.rs` |
 
 ## Développement
@@ -40,7 +41,8 @@ just tirelire-dev-run   # 127.0.0.1:8096, variables de deploy/dev.env
 ```
 
 Aucun PDF dans le dépôt : les fixtures de `tests/fixtures/*.mots` sont des mots positionnés aux données inventées (format décrit en
-tête de chaque fichier), et les tests d'API fabriquent leurs PDF à partir d'elles (`testutil::pdf`).
+tête de chaque fichier), et les tests d'API fabriquent leurs PDF à partir d'elles (`testutil::pdf`). `tests/fixtures/simulation.json` porte les
+cas de la formule du simulateur, calculés à la main : le test Rust et le test du front (`decision.test.ts`) lisent le même fichier.
 `TIRELIRE_RELEVES_REELS=<dossier hors du dépôt> cargo test -p tirelire releves_reels -- --nocapture` lit chaque PDF du dossier et échoue
 si un relevé est refusé ; `releves_reels_categorises` les importe dans une base jetable et compte ce que donnent la normalisation et les
 règles par défaut ; `releves_reels_statistiques` vérifie sur eux les invariants des statistiques dans les deux modes (somme des catégories et de
@@ -48,6 +50,7 @@ règles par défaut ; `releves_reels_statistiques` vérifie sur eux les invarian
 (historique égal aux dépenses de chaque période pour chaque fenêtre, solde jour par jour égal au nouveau solde de chaque relevé, jours couverts et
 trous qui remplissent la fenêtre, cumul annuel égal à la somme des catégories) ; `releves_reels_habitudes` vérifie ceux des habitudes pour chaque
 mode et chaque fenêtre (dépenses variables égales à celles de `/stats/month`, sommes des jours et des semaines, jours couverts) et la cohérence
-des totaux des récurrents. Ils n'affichent que des nombres (opérations, pages,
+des totaux des récurrents ; `releves_reels_decision` calcule le résumé et une simulation pour chaque période des deux modes (leviers classés,
+économies égales à la somme des lignes). Ils n'affichent que des nombres (opérations, pages,
 écarts, opérations classées et à classer, commerçants distincts, périodes, récurrents et alertes détectés), jamais un libellé ni un montant.
 Sans la variable, ces tests ne font rien.

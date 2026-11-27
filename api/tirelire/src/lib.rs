@@ -7,6 +7,7 @@ pub mod classement;
 pub mod cmb;
 pub mod commercants;
 pub mod config;
+pub mod decision;
 pub mod droits;
 pub mod etat;
 pub mod evolution;
@@ -33,6 +34,8 @@ pub mod stats;
 mod tests_api;
 #[cfg(test)]
 mod tests_categories;
+#[cfg(test)]
+mod tests_decision;
 #[cfg(test)]
 mod tests_evolution;
 #[cfg(test)]

@@ -787,3 +787,98 @@ paths:
         "404": { description: "`not_found` : récurrent inconnu ou d'une autre personne" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }
+  /stats/summary:
+    get:
+      summary: "Résumé d'une période en éléments structurés : hausses, baisses et leviers classés (`tirelire:access`)"
+      description: |
+        Mêmes périodes, même rattachement et mêmes définitions que `/stats/month`. Le service ne rédige rien et n'appelle
+        aucun service tiers : il rend des éléments chiffrés, calculés par des règles fixes, que l'app met en phrases.
+        Un écart de catégorie n'est cité que s'il atteint 10 € et 10 % de sa référence (une référence nulle ne demande que
+        les 10 €). `previous` compare à la période précédente si elle est complète, `usual` à la moyenne des 3 dernières
+        périodes complètes qui précèdent ; sur une période incomplète (`partial`), les baisses ne sont pas rendues.
+      parameters:
+        - { $ref: "#/components/parameters/mode" }
+        - { $ref: "#/components/parameters/period" }
+      responses:
+        "200":
+          description: |
+            `{mode, period: Periode, previous_id, next_id, history, partial, operations,
+            expenses: {total, previous: Ecart | null, usual: Moyenne | null, budget, budget_delta},
+            savings: {total, rate_bp, previous_rate_bp}, unclassified: {amount, operations, share_bp, distorting},
+            previous: Comparaison | null, previous_reason, usual: Comparaison | null, levers: [Levier], levers_total}`.
+            `history` : `first` (aucune période avant celle-ci), `insufficient` (ni période précédente complète ni moyenne) ou
+            `ok` ; `previous_reason` : `none` ou `incomplete` quand `previous` vaut `null` ; `distorting` : les débits à classer
+            atteignent 10 % des dépenses, le résumé est faussé. Comparaison = `{period_id, periods, up: [Variation], up_total,
+            down: [Variation], down_total}` (`period_id` pour la période précédente, `periods` pour la moyenne), 3 variations
+            au plus par sens, du plus grand écart au plus petit, puis par nom ; Variation = `{category_id, name, kind, color,
+            amount, reference_amount, delta, delta_bp}`. Levier = `{rank, kind, category_id, merchant_id, recurring_id, name,
+            amount, reference_amount, periods, count, monthly, yearly}`, `kind` : `over_cap` (revenir au plafond : `monthly` =
+            dépassement), `over_average` (catégorie variable sans plafond, revenir à sa moyenne), `subscription_changed`
+            (revenir à l'ancien montant : `yearly` = écart sur un an), `subscription_new` (coût annuel du nouvel abonnement),
+            `merchant_up` (commerçant en hausse d'au moins 20 € et 50 % sur la période précédente complète, revenir à ce
+            niveau ; écarté si sa catégorie est déjà un levier) ou `small_purchases` (la moitié du coût annualisé des petits
+            achats répétés des 3 dernières périodes ; `count` achats, `name` premier commerçant). Les leviers sont classés par
+            `yearly` décroissant, puis dans l'ordre des types ci-dessus, puis par nom ; `levers` rend les 3 premiers,
+            `levers_total` le nombre de candidats. Un levier d'abonnement n'est rendu que si le changement date de 120 jours
+            au plus à la fin de la période.
+        "400": { $ref: "#/components/responses/400" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : aucun relevé, ou période inconnue" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /stats/simulate:
+    post:
+      summary: "Simuler une baisse de catégories et l'arrêt d'abonnements, sans rien enregistrer (`tirelire:access`)"
+      description: |
+        Corps `{mode?, period?, categories?: [{id, percent} | {id, target}], subscriptions?: [id]}`, tous facultatifs : un
+        corps `{}` rend la base seule. Rien n'est écrit. Base de chaque catégorie de dépense non archivée : moyenne de ses
+        montants sur les 3 dernières périodes complètes jusqu'à `period` comprise (la plus récente à défaut), arrondie au
+        centime, jamais négative ; sans période complète, la période elle-même (`basis.fragile`). `percent` : entier de 0 à
+        100 ; `target` : montant visé en centimes, de 0 à la base. Un abonnement arrêté (`id` d'un récurrent actif, non
+        écarté, du groupe `subscription`) économise son coût ; son coût mensuel est d'abord retiré de la base de sa catégorie :
+        économie = (base − abonnements arrêtés) × `percent` ÷ 100, arrondie au centime le plus proche, ou ce reste − `target`
+        s'il est positif.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                mode: { type: string, enum: [calendar, statement], default: calendar }
+                period: { type: string, description: "`AAAA-MM` en mode `calendar`, date d'arrêté `AAAA-MM-JJ` en mode `statement`" }
+                categories:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [id]
+                    properties:
+                      id: { type: integer }
+                      percent: { type: integer, minimum: 0, maximum: 100 }
+                      target: { type: integer, minimum: 0 }
+                subscriptions: { type: array, maxItems: 100, items: { type: string } }
+      responses:
+        "200":
+          description: |
+            `{mode, period, basis: {method, periods, period_ids, from, to, fragile},
+            reference: {expenses, income, savings, remaining, savings_rate_bp, budget},
+            categories: [{id, name, kind, color, monthly_cap, base, stopped, percent, target, saving, amount}],
+            subscriptions: [{id, name, category_id, cadence, amount, monthly, yearly, stopped}],
+            result: {monthly, yearly, categories, subscriptions, expenses, remaining, savings, savings_rate_bp, budget_delta}}`.
+            `basis.method` : `average` ou `current` ; `reference` : moyennes des mêmes périodes (`remaining` = revenus −
+            dépenses − épargne, `budget` = somme des plafonds). Par catégorie, de la base la plus forte à la plus faible :
+            `stopped` (abonnements arrêtés retirés), `saving` (économie par mois), `amount` (montant simulé, celui que l'app
+            propose comme plafond par `PATCH /categories/{id}`). `result.monthly` = économies des catégories + coût mensuel des
+            abonnements arrêtés ; `yearly` = 12 × économies des catégories + coût annuel exact des abonnements arrêtés ;
+            `expenses` = dépenses de référence − `monthly` ; `remaining` : reste à vivre si l'économie n'est pas épargnée ;
+            `savings` et `savings_rate_bp` : épargne et taux si elle l'est ; `budget_delta` : `expenses` − budget.
+        "400": { description: "`invalid` : corps illisible ou champ inconnu, `percent` hors de 0 à 100, `target` hors de 0 à la base, `percent` et `target` ensemble ou aucun des deux, catégorie citée deux fois, inconnue, archivée, d'une autre nature ou d'une autre personne, abonnement inconnu, arrêté, écarté ou cité deux fois" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : aucun relevé, ou période inconnue" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }

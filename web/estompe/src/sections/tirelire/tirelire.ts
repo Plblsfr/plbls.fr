@@ -1,6 +1,8 @@
 import { ApiError, fichierAt, requestAt } from '../../lib/api'
 import { config } from '../../lib/config'
 import { centimes, dateCourte, euros, signe, type Sens } from './formats'
+import type { Resume } from './decision'
+import { corpsSimulation, type Reglages, type Simulation } from './simulation'
 import type { Annees, Fenetre, Historique, Soldes } from './evolution'
 import type { FenetreHabitudes, Habitudes, Raison, Recurrents } from './habitudes'
 import type { DetailCategorie, Mode, Mois, ResumePeriode } from './stats'
@@ -207,6 +209,8 @@ export const tirelireApi = {
   habitudes: (mode: Mode, fenetre: FenetreHabitudes) => get<Habitudes>(`/stats/habits?mode=${mode}&window=${fenetre}`),
   recurrents: () => get<Recurrents>('/stats/recurring'),
   modifierRecurrent: (id: string, corps: { dismissed?: boolean; seen?: true }) => envoyer<Recurrents>('PATCH', `/stats/recurring/${encodeURIComponent(id)}`, corps),
+  resume: (mode: Mode, periode?: string) => get<Resume>(`/stats/summary?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
+  simuler: (mode: Mode, reglages: Reglages) => envoyer<Simulation>('POST', '/stats/simulate', corpsSimulation(mode, reglages)),
   inhabituelle: async (id: number) => (await get<{ unusual: Raison | null }>(`/operations/${id}/unusual`)).unusual,
   separer: (id: number, cles: string[]) => envoyer<{ merchant: Commercant; created: Commercant[] }>('POST', `/merchants/${id}/split`, { keys: cles }),
 }

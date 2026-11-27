@@ -1,5 +1,7 @@
 import { enregistrer, filtreActif, lots, messageErreur, SANS_FILTRE, tirelireApi, totauxDe, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle, type Totaux } from './tirelire'
 import type { Releve } from './tirelire'
+import type { Resume } from './decision'
+import { SANS_REGLAGE, type Plafond, type Reglages, type Simulation } from './simulation'
 import { CLE_FENETRE, lireFenetre, type Evolution, type Fenetre } from './evolution'
 import { CLE_FENETRE_HABITUDES, lireFenetreHabitudes, type FenetreHabitudes, type Habitudes, type Raison, type Recurrents } from './habitudes'
 import { CLE_MODE, lireMode, type DetailCategorie, type Mode, type Mois, type ResumePeriode } from './stats'
@@ -63,8 +65,15 @@ export class EtatTirelire {
   erreurRecurrents = $state('')
   recurrentOccupe = $state('')
   inhabituelle = $state.raw<{ id: number; raison: Raison | null } | null>(null)
+  resume = $state.raw<Resume | null>(null)
+  resumeAbsent = $state(false)
+  erreurResume = $state('')
+  simulation = $state.raw<Simulation | null>(null)
+  erreurSimulation = $state('')
   version = $state(0)
   private tourHabitudes = 0
+  private tourResume = 0
+  private tourSimulation = 0
   private tourRecurrents = 0
   private tourInhabituelle = 0
   private tourEvolution = 0
@@ -137,7 +146,65 @@ export class EtatTirelire {
     this.tourHabitudes++
     this.habitudes = null
     this.erreurHabitudes = ''
+    this.tourResume++
+    this.tourSimulation++
+    this.resume = null
+    this.resumeAbsent = false
+    this.erreurResume = ''
+    this.simulation = null
+    this.erreurSimulation = ''
     this.oublierRecurrents()
+  }
+
+  async chargerResume(periode?: string) {
+    const tour = ++this.tourResume
+    this.erreurResume = ''
+    this.resumeAbsent = false
+    try {
+      const resume = await this.api.resume(this.mode, periode)
+      if (tour === this.tourResume) this.resume = resume
+    } catch (e) {
+      if (tour !== this.tourResume) return
+      this.resume = null
+      if ((e as { status?: number }).status === 404 || (e as { status?: number }).status === 400) this.resumeAbsent = true
+      else this.erreurResume = messageErreur(e)
+    }
+  }
+
+  async chargerSimulation() {
+    const tour = ++this.tourSimulation
+    this.erreurSimulation = ''
+    try {
+      const simulation = await this.api.simuler(this.mode, SANS_REGLAGE)
+      if (tour === this.tourSimulation) this.simulation = simulation
+    } catch (e) {
+      if (tour !== this.tourSimulation) return
+      this.simulation = null
+      this.erreurSimulation = messageErreur(e)
+    }
+  }
+
+  async simuler(reglages: Reglages): Promise<Simulation | null> {
+    const tour = this.tourSimulation
+    try {
+      const simulation = await this.api.simuler(this.mode, reglages)
+      if (tour !== this.tourSimulation) return null
+      this.erreurSimulation = ''
+      return simulation
+    } catch (e) {
+      if (tour === this.tourSimulation) this.erreurSimulation = messageErreur(e)
+      return null
+    }
+  }
+
+  async fixerPlafonds(plafonds: Plafond[]): Promise<boolean> {
+    const ok = await this.agir(async () => {
+      for (const p of plafonds) await this.api.modifierCategorie(p.id, { monthly_cap: p.cap })
+      return true
+    })
+    this.perimer()
+    await this.chargerReference()
+    return !!ok
   }
 
   private oublierRecurrents() {

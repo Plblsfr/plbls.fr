@@ -174,7 +174,7 @@ pub fn hors_habitude(montant: i64, autres: &[i64], plancher: i64) -> Option<(i64
     (exces >= plancher && loin && ratio).then_some((m, exces))
 }
 
-fn variable(calcul: &Calcul, o: &Operation) -> bool {
+pub fn variable(calcul: &Calcul, o: &Operation) -> bool {
     match calcul.nature(o) {
         Some(Nature::Variable) => true,
         None => !o.credit,
@@ -276,7 +276,7 @@ fn annualise(montant: i64, jours: i64) -> Option<i64> {
         .then(|| division(i128::from(montant) * 365, i128::from(jours)))
 }
 
-fn par_commercant(calcul: &Calcul, plage: std::ops::Range<usize>) -> BTreeMap<i64, (i64, i64)> {
+pub fn par_commercant(calcul: &Calcul, plage: std::ops::Range<usize>) -> BTreeMap<i64, (i64, i64)> {
     let mut res: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
     for i in plage {
         for o in calcul.operations(i).filter(|o| variable(calcul, o)) {
@@ -314,6 +314,61 @@ fn repartition(tranches: Vec<Tranche>) -> Repartition {
             })
             .collect(),
     }
+}
+
+fn petits_achats(calcul: &Calcul, operations: &[&Operation], couverts: i64) -> PetitsAchats {
+    let d = calcul.donnees();
+    let mut petits: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+    for o in operations
+        .iter()
+        .filter(|o| !o.credit && o.montant < SEUIL_PETIT_ACHAT)
+    {
+        if let Some(c) = o.commercant {
+            let e = petits.entry(c).or_default();
+            e.0 += 1;
+            e.1 += o.montant;
+        }
+    }
+    let mut repetes: Vec<PetitCommercant> = petits
+        .into_iter()
+        .filter(|(_, (nombre, _))| *nombre >= PETITS_ACHATS_REPETES)
+        .map(|(id, (nombre, montant))| PetitCommercant {
+            merchant_id: id,
+            name: d.commercants.get(&id).cloned(),
+            count: nombre,
+            amount: montant,
+            yearly: annualise(montant, couverts),
+        })
+        .collect();
+    repetes.sort_by(|x, y| {
+        y.amount
+            .cmp(&x.amount)
+            .then_with(|| x.merchant_id.cmp(&y.merchant_id))
+    });
+    let petit_total: i64 = repetes.iter().map(|p| p.amount).sum();
+    PetitsAchats {
+        threshold: SEUIL_PETIT_ACHAT,
+        min_repeats: PETITS_ACHATS_REPETES,
+        count: repetes.iter().map(|p| p.count).sum(),
+        amount: petit_total,
+        yearly: annualise(petit_total, couverts),
+        covered_days: couverts,
+        min_days: ANNUALISATION_JOURS_MIN,
+        merchants_total: repetes.len(),
+        merchants: repetes
+            .into_iter()
+            .take(COMMERCANTS_DES_PETITS_ACHATS)
+            .collect(),
+    }
+}
+
+pub fn petits_achats_sur(calcul: &Calcul, plage: std::ops::Range<usize>) -> PetitsAchats {
+    let couverts = jours_couverts(calcul, plage.clone()).len() as i64;
+    let operations: Vec<&Operation> = plage
+        .flat_map(|i| calcul.operations(i))
+        .filter(|o| variable(calcul, o))
+        .collect();
+    petits_achats(calcul, &operations, couverts)
 }
 
 pub fn habitudes(calcul: &Calcul, fenetre: Fenetre) -> Habitudes {
@@ -386,48 +441,7 @@ pub fn habitudes(calcul: &Calcul, fenetre: Fenetre) -> Habitudes {
         c.rank_amount <= COMMERCANTS_DU_CLASSEMENT || c.rank_count <= COMMERCANTS_DU_CLASSEMENT
     });
 
-    let mut petits: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
-    for o in operations
-        .iter()
-        .filter(|o| !o.credit && o.montant < SEUIL_PETIT_ACHAT)
-    {
-        if let Some(c) = o.commercant {
-            let e = petits.entry(c).or_default();
-            e.0 += 1;
-            e.1 += o.montant;
-        }
-    }
-    let mut repetes: Vec<PetitCommercant> = petits
-        .into_iter()
-        .filter(|(_, (nombre, _))| *nombre >= PETITS_ACHATS_REPETES)
-        .map(|(id, (nombre, montant))| PetitCommercant {
-            merchant_id: id,
-            name: d.commercants.get(&id).cloned(),
-            count: nombre,
-            amount: montant,
-            yearly: annualise(montant, couverts),
-        })
-        .collect();
-    repetes.sort_by(|x, y| {
-        y.amount
-            .cmp(&x.amount)
-            .then_with(|| x.merchant_id.cmp(&y.merchant_id))
-    });
-    let petit_total: i64 = repetes.iter().map(|p| p.amount).sum();
-    let small = PetitsAchats {
-        threshold: SEUIL_PETIT_ACHAT,
-        min_repeats: PETITS_ACHATS_REPETES,
-        count: repetes.iter().map(|p| p.count).sum(),
-        amount: petit_total,
-        yearly: annualise(petit_total, couverts),
-        covered_days: couverts,
-        min_days: ANNUALISATION_JOURS_MIN,
-        merchants_total: repetes.len(),
-        merchants: repetes
-            .into_iter()
-            .take(COMMERCANTS_DES_PETITS_ACHATS)
-            .collect(),
-    };
+    let small = petits_achats(calcul, &operations, couverts);
 
     let mut semaine_du_jour: Vec<Tranche> = (1..=7)
         .map(|rank| Tranche {
