@@ -3241,4 +3241,56 @@ async fn badges_de_la_personne_avec_titres_et_saisons() {
     );
     sans_fuite(&e, &r.texte(), "/badges");
     assert_eq!(get(&e, "bob", "/badges").await.json(), json!({"items": []}));
+
+    let service = [("authorization", "Bearer jeton-service-estompe")];
+    let interne = |chemin: String| {
+        let e = &e;
+        async move { appel_avec(e, None, "GET", &chemin, None, &service).await }
+    };
+    let r = interne(format!("/internal/badges/season:{serie}:1?sub=sub-alice")).await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    assert_eq!(r.json(), items[0]);
+    let r = interne(format!("/internal/badges/movie:{a}?sub=sub-alice")).await;
+    assert_eq!(r.json()["kind"], "movie");
+    for (chemin, statut) in [
+        (
+            format!("/internal/badges/season:{serie}:1?sub=sub-bob"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            format!("/internal/badges/series:{serie}?sub=sub-alice"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            format!("/internal/badges/season:{serie}:2?sub=sub-alice"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "/internal/badges/movie:x?sub=sub-alice".to_string(),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            format!("/internal/badges/movie:{a}"),
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        assert_eq!(interne(chemin.clone()).await.statut, statut, "{chemin}");
+    }
+    let r = appel_avec(
+        &e,
+        None,
+        "GET",
+        &format!("/internal/badges/movie:{a}?sub=sub-alice"),
+        None,
+        &[("authorization", "Bearer faux")],
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::UNAUTHORIZED);
+    let r = get(
+        &e,
+        "alice",
+        &format!("/internal/badges/movie:{a}?sub=sub-alice"),
+    )
+    .await;
+    assert_ne!(r.statut, StatusCode::OK);
 }

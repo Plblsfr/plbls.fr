@@ -43,9 +43,15 @@ système de Chromium doivent être présentes).
   d'Entracte (`entracteUrl` : `ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps) ; sans elle, ni section Entracte ni
   salon cinéma. La bibliothèque, la fiche et le lecteur (`Film*.svelte`, `films.ts`) servent aussi au salon cinéma.
   Badges (`#/films/badges`, `FilmBadges`) : films, saisons et séries réellement regardés (`GET /badges`), filtrés par genre ; un badge ouvre
-  `FilmBadgeCarte`, qui dessine l'image à partager (`dessinerCarte` de `badges.ts`, canevas de 1080 × 1350 avec l'affiche) et propose
-  « Partager » (`platform.shareImage`, absent : pas de bouton), « Enregistrer l'image » (PNG) et, avec Sablier, « Afficher sur mon
-  profil » (`PUT /sharing`). `FilmBadgeLigne` (titre lu dans Entracte, mis en cache) sert aussi au réglage de partage et au profil.
+  `FilmBadgeCarte` : l'animation (`FilmBadgeAnimee`), l'envoi dans une conversation (`FilmBadgeEnvoi`, seulement en phase `ready` :
+  messages privés et salons texte où l'on peut écrire ; le message porte l'étiquette, le titre et le lien `lienBadge`,
+  `#/films/badge/<clé>`) et, avec Sablier, « Afficher sur mon profil » (`PUT /sharing`). Pas de partage hors de l'app.
+  `#/films/badge/<clé>` ouvre la carte de son propre badge, sinon la fiche du titre. `badges-anim.ts` : les cinq styles
+  (`ticket`, `polaroid`, `pellicule`, `generique`, `amorce`, `dessinerBadge(ctx, style, badge, affiche, palette, polices, t)`, canevas
+  1080 × 1350), `styleDe` (style stable par titre), `paletteDe` (couleurs tirées d'une vignette de l'affiche, teinte du titre sans
+  affiche). `FilmBadgeAnimee` charge l'affiche une fois par titre, attend les polices de l'app, joue l'animation quand la carte est
+  visible (`IntersectionObserver`), propose « Rejouer », et peint la dernière image avec `prefers-reduced-motion`. Dans une
+  conversation, `LinkCard` affiche cette animation pour `entracte_badge` de l'aperçu, et le lien vers la fiche si le lecteur a Entracte. `FilmBadgeLigne` (titre lu dans Entracte, mis en cache) sert aussi au réglage de partage et au profil.
   « Épisode suivant » (lecteur et salon cinéma) paraît dans les deux dernières minutes (`NEXT_BEFORE_END`) et envoie
   `POST /titles/{id}/outro-skipped`, comme « Passer l'intro » envoie `intro-skipped`.
   Sans messagerie, la phase `sections` (`views/SectionsShell.svelte`) affiche Entracte, Sillon ou les deux, sans WebSocket ; la section Stats s'y ajoute

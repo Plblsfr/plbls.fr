@@ -1,4 +1,5 @@
-import { shortDuration, tint } from './films'
+import { hrefs } from '../../lib/route.svelte'
+import { shortDuration } from './films'
 
 export type GenreBadge = 'movie' | 'season' | 'series'
 
@@ -42,18 +43,9 @@ export function sousTitreBadge(b: FilmBadge): string {
   return b.season_title.trim().toLowerCase() === `saison ${b.season}` ? '' : b.season_title
 }
 
-export function texteBadge(b: FilmBadge): string {
-  return `${etiquetteBadge(b)} : ${b.title}${b.kind === 'movie' && b.year ? ` (${b.year})` : ''}, le ${dateBadge(b.obtained_at)}.`
-}
-
 export function afficheBadge(b: FilmBadge): { id: string; image: boolean } {
   if (b.kind === 'season' && b.season_poster) return { id: `${b.title_id}~${b.season}`, image: true }
   return { id: b.title_id, image: b.poster }
-}
-
-export function nomFichierBadge(b: FilmBadge): string {
-  const slug = b.title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'titre'
-  return `badge-${slug}${b.kind === 'season' ? `-saison-${b.season}` : b.kind === 'series' ? '-serie' : ''}.png`
 }
 
 export function couper(texte: string, largeur: number, mesure: (s: string) => number, max = 2): string[] {
@@ -75,85 +67,12 @@ export function couper(texte: string, largeur: number, mesure: (s: string) => nu
   return gardees
 }
 
-export const CARTE = { largeur: 1080, hauteur: 1350 }
+export const lienBadge = (b: Pick<BadgeRef, 'kind' | 'title_id' | 'season'>) => `${location.origin}${location.pathname}${hrefs.films('badge', cleBadge(b))}`
 
-export function dessinerCarte(ctx: CanvasRenderingContext2D, b: FilmBadge, affiche: CanvasImageSource | null, police: string) {
-  const { largeur: L, hauteur: H } = CARTE
-  const t = tint(b.title_id)
-  ctx.fillStyle = t.bg
-  ctx.fillRect(0, 0, L, H)
-  const halo = ctx.createRadialGradient(L / 2, 420, 60, L / 2, 420, 760)
-  halo.addColorStop(0, `${t.ac}55`)
-  halo.addColorStop(1, `${t.bg}00`)
-  ctx.fillStyle = halo
-  ctx.fillRect(0, 0, L, H)
-
-  const aw = 500
-  const ah = 750
-  const ax = (L - aw) / 2
-  const ay = 110
-  ctx.save()
-  ctx.shadowColor = 'rgba(0,0,0,0.45)'
-  ctx.shadowBlur = 50
-  ctx.shadowOffsetY = 20
-  ctx.beginPath()
-  ctx.roundRect(ax, ay, aw, ah, 28)
-  ctx.fillStyle = t.ac
-  ctx.fill()
-  ctx.restore()
-  ctx.save()
-  ctx.beginPath()
-  ctx.roundRect(ax, ay, aw, ah, 28)
-  ctx.clip()
-  if (affiche) {
-    ctx.drawImage(affiche, ax, ay, aw, ah)
-  } else {
-    ctx.fillStyle = t.bg
-    ctx.textAlign = 'center'
-    ctx.font = `700 54px ${police}`
-    couper(b.title, aw - 80, (s) => ctx.measureText(s).width, 4).forEach((l, i, tout) => ctx.fillText(l, L / 2, ay + ah / 2 - ((tout.length - 1) * 64) / 2 + i * 64))
-  }
-  ctx.restore()
-
-  const mx = ax + aw - 10
-  const my = ay + ah - 10
-  ctx.beginPath()
-  ctx.arc(mx, my, 74, 0, Math.PI * 2)
-  ctx.fillStyle = t.ac
-  ctx.fill()
-  ctx.lineWidth = 10
-  ctx.strokeStyle = t.bg
-  ctx.stroke()
-  ctx.beginPath()
-  ctx.moveTo(mx - 30, my + 2)
-  ctx.lineTo(mx - 8, my + 26)
-  ctx.lineTo(mx + 34, my - 22)
-  ctx.lineWidth = 14
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = t.bg
-  ctx.stroke()
-
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'alphabetic'
-  let y = ay + ah + 120
-  ctx.fillStyle = t.ac
-  ctx.font = `700 38px ${police}`
-  ctx.fillText(etiquetteBadge(b).toUpperCase(), L / 2, y)
-  ctx.fillStyle = t.fg
-  ctx.font = `800 66px ${police}`
-  for (const l of couper(b.title, L - 160, (s) => ctx.measureText(s).width)) {
-    y += 80
-    ctx.fillText(l, L / 2, y)
-  }
-  const ligne = [sousTitreBadge(b), detailsBadge(b)].filter(Boolean).join(' · ')
-  ctx.globalAlpha = 0.82
-  ctx.font = `500 34px ${police}`
-  if (ligne) { y += 58; ctx.fillText(couper(ligne, L - 160, (s) => ctx.measureText(s).width, 1)[0], L / 2, y) }
-  y += 52
-  ctx.fillText(`Regardé jusqu’au bout · ${dateBadge(b.obtained_at)}`, L / 2, y)
-  ctx.globalAlpha = 0.6
-  ctx.font = `600 28px ${police}`
-  ctx.fillText('Entracte · plbls.fr', L / 2, H - 50)
-  ctx.globalAlpha = 1
+export function lireCleBadge(cle: string): Pick<BadgeRef, 'kind' | 'title_id' | 'season'> | null {
+  const [genre, id, n, ...reste] = cle.split(':')
+  if (reste.length || !id) return null
+  if (genre === 'season') return /^[1-9]\d{0,2}$/.test(n ?? '') ? { kind: 'season', title_id: id, season: Number(n) } : null
+  if ((genre === 'movie' || genre === 'series') && n === undefined) return { kind: genre, title_id: id, season: null }
+  return null
 }

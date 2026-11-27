@@ -144,7 +144,12 @@ fn sans_carte() -> Response {
     )
 }
 
-async fn auteur(state: &AppState, message: &str, lecteur: &User, url: &str) -> Option<String> {
+pub(crate) async fn auteur(
+    state: &AppState,
+    message: &str,
+    lecteur: &User,
+    url: &str,
+) -> Option<String> {
     let id = id_message(message).ok()?;
     conv_du_message(state, id, &lecteur.id).await.ok()?;
     let (contenu, sub) = sqlx::query_as::<_, (String, String)>(

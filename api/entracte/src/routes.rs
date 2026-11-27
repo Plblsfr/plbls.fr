@@ -428,6 +428,14 @@ pub fn table() -> Vec<(Route, MethodRouter<AppState>)> {
             ),
             get(interne::titre),
         ),
+        r(
+            Method::GET,
+            "/internal/badges/{key}",
+            Garde::Service(
+                "appel de serveur à serveur d'Estompe (carte d'un badge dans une conversation), jeton ENTRACTE_SERVICE_TOKEN",
+            ),
+            get(badges::interne),
+        ),
     ]
 }
 

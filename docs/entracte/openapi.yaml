@@ -624,3 +624,13 @@ paths:
         "401": { description: jeton de service invalide }
         "404": { description: titre inconnu, absent ou sans fichier ; route coupée sans `ENTRACTE_SERVICE_TOKEN` }
         "503": { description: "`aegis_unavailable`" }
+  /internal/badges/{key}:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string }, description: "`movie:<titre>`, `season:<série>:<n>` ou `series:<série>`" }]
+    get:
+      summary: "Badge d'une personne (`?sub=`), pour la carte d'un lien de badge dans une conversation d'Estompe, de serveur à serveur"
+      security: [{ service: [] }]
+      responses:
+        "200": { description: "Même forme qu'un élément de `GET /badges`" }
+        "400": { description: "`invalid` : `sub` absent" }
+        "401": { description: jeton de service invalide }
+        "404": { description: badge inconnu de cette personne, clé illisible ; route coupée sans `ENTRACTE_SERVICE_TOKEN` }

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { platform } from './platform'
-import { installeur, partagerImage } from './browser'
+import { installeur } from './browser'
 
 describe('plateforme web', () => {
   it('se déclare « web » dans un onglet, « pwa » une fois installée', () => {
@@ -18,22 +18,5 @@ describe('plateforme web', () => {
   it("donne une adresse d'installeur propre à chaque version, qu'aucun cache n'a pu garder", () => {
     expect(installeur('Estompe-setup.exe')).toBe(`/updates/Estompe-setup.exe?v=${__APP_VERSION__}`)
     expect(installeur('Estompe.apk')).toMatch(/^\/updates\/Estompe\.apk\?v=\d+\.\d+\.\d+$/)
-  })
-  it('partage une image par la feuille du système, ou dit qu\'il ne peut pas', async () => {
-    const image = new Blob(['x'], { type: 'image/png' })
-    const nav = navigator as unknown as { canShare?: unknown; share?: unknown }
-    nav.canShare = undefined
-    expect(await partagerImage(image, 'b.png', 't')).toBe(false)
-    const share = vi.fn(async () => {})
-    nav.canShare = () => true
-    nav.share = share
-    expect(await partagerImage(image, 'b.png', 'Film terminé')).toBe(true)
-    expect(share).toHaveBeenCalledWith({ files: [expect.any(File)], text: 'Film terminé' })
-    nav.share = vi.fn(async () => { throw new DOMException('non', 'AbortError') })
-    expect(await partagerImage(image, 'b.png', 't')).toBe(true)
-    nav.share = vi.fn(async () => { throw new DOMException('non', 'NotAllowedError') })
-    expect(await partagerImage(image, 'b.png', 't')).toBe(false)
-    nav.canShare = () => false
-    expect(await partagerImage(image, 'b.png', 't')).toBe(false)
   })
 })
