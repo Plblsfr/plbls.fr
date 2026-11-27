@@ -48,6 +48,16 @@ pub enum Genre {
 }
 
 impl Genre {
+    pub const TOUS: [Genre; 7] = [
+        Genre::Carte,
+        Genre::Prelevement,
+        Genre::Virement,
+        Genre::VirementInstantane,
+        Genre::EcheancePret,
+        Genre::Cotisation,
+        Genre::Autre,
+    ];
+
     pub fn cle(self) -> &'static str {
         match self {
             Genre::Carte => "carte",

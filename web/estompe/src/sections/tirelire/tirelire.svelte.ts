@@ -1,5 +1,22 @@
-import { lots, messageErreur, SANS_FILTRE, tirelireApi, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle } from './tirelire'
+import { enregistrer, filtreActif, lots, messageErreur, SANS_FILTRE, tirelireApi, totauxDe, type Categorie, type ClientTirelire, type Commercant, type Compteur, type FileAClasser, type Filtres, type Groupe, type Issue, type Operation, type Portee, type Regle, type SaisieCategorie, type SaisieRegle, type Totaux } from './tirelire'
 import type { Releve } from './tirelire'
+import type { Resume } from './decision'
+import { SANS_REGLAGE, type Plafond, type Reglages, type Simulation } from './simulation'
+import { CLE_FENETRE, lireFenetre, type Evolution, type Fenetre } from './evolution'
+import { CLE_FENETRE_HABITUDES, lireFenetreHabitudes, type FenetreHabitudes, type Habitudes, type Raison, type Recurrents } from './habitudes'
+import { CLE_MODE, lireMode, type DetailCategorie, type Mode, type Mois, type ResumePeriode } from './stats'
+
+function modeMemorise(): Mode {
+  try { return lireMode(localStorage.getItem(CLE_MODE)) } catch { return 'calendar' }
+}
+
+function fenetreMemorisee(): Fenetre {
+  try { return lireFenetre(localStorage.getItem(CLE_FENETRE)) } catch { return '12' }
+}
+
+function fenetreHabitudesMemorisee(): FenetreHabitudes {
+  try { return lireFenetreHabitudes(localStorage.getItem(CLE_FENETRE_HABITUDES)) } catch { return '3' }
+}
 
 export interface Annulable { titre: string; detail: string; commercant: number | null; operation: number | null }
 
@@ -9,6 +26,10 @@ export class EtatTirelire {
   filtres = $state.raw<Filtres>(SANS_FILTRE)
   operations = $state.raw<Operation[] | null>(null)
   total = $state(0)
+  totaux = $state.raw<Totaux | null>(null)
+  exportEnCours = $state(false)
+  erreurExport = $state('')
+  exporte = $state('')
   suiteEnCours = $state(false)
   erreurOperations = $state('')
   envoi = $state(false)
@@ -27,6 +48,38 @@ export class EtatTirelire {
   classeesIci = $state(0)
   passes = $state.raw<string[]>([])
   enTete = $state('')
+  mode = $state<Mode>(modeMemorise())
+  mois = $state.raw<Mois | null>(null)
+  moisAbsent = $state(false)
+  erreurMois = $state('')
+  periodes = $state.raw<ResumePeriode[] | null>(null)
+  categorieDuMois = $state.raw<DetailCategorie | null>(null)
+  categorieAbsente = $state(false)
+  fenetre = $state<Fenetre>(fenetreMemorisee())
+  evolution = $state.raw<Evolution | null>(null)
+  erreurEvolution = $state('')
+  fenetreHabitudes = $state<FenetreHabitudes>(fenetreHabitudesMemorisee())
+  habitudes = $state.raw<Habitudes | null>(null)
+  erreurHabitudes = $state('')
+  recurrents = $state.raw<Recurrents | null>(null)
+  erreurRecurrents = $state('')
+  recurrentOccupe = $state('')
+  inhabituelle = $state.raw<{ id: number; raison: Raison | null } | null>(null)
+  resume = $state.raw<Resume | null>(null)
+  resumeAbsent = $state(false)
+  erreurResume = $state('')
+  simulation = $state.raw<Simulation | null>(null)
+  erreurSimulation = $state('')
+  version = $state(0)
+  private tourHabitudes = 0
+  private tourResume = 0
+  private tourSimulation = 0
+  private tourRecurrents = 0
+  private tourInhabituelle = 0
+  private tourEvolution = 0
+  private tourMois = 0
+  private tourCategorie = 0
+  private tourPeriodes = 0
   private recherche = ''
   private tourReference = 0
   private tourDetail = 0
@@ -36,7 +89,7 @@ export class EtatTirelire {
 
   constructor(private api: ClientTirelire = tirelireApi) {}
 
-  get filtre() { const f = this.filtres; return f.releve !== null || !!f.du || !!f.au || f.categorie !== null || f.commercant !== null || f.aClasser }
+  get filtre() { return filtreActif(this.filtres) }
   get aClasser() { return this.compteur?.operations ?? 0 }
   get reste() { return Math.max(0, this.total - (this.operations?.length ?? 0)) }
 
@@ -48,6 +101,10 @@ export class EtatTirelire {
     this.filtres = SANS_FILTRE
     this.operations = null
     this.total = 0
+    this.totaux = null
+    this.exportEnCours = false
+    this.erreurExport = ''
+    this.exporte = ''
     this.suiteEnCours = false
     this.erreurOperations = ''
     this.envoi = false
@@ -70,6 +127,231 @@ export class EtatTirelire {
     this.passes = []
     this.enTete = ''
     this.recherche = ''
+    this.oublierStats()
+  }
+
+  private oublierStats() {
+    this.tourMois++
+    this.tourCategorie++
+    this.tourPeriodes++
+    this.mois = null
+    this.moisAbsent = false
+    this.erreurMois = ''
+    this.periodes = null
+    this.categorieDuMois = null
+    this.categorieAbsente = false
+    this.tourEvolution++
+    this.evolution = null
+    this.erreurEvolution = ''
+    this.tourHabitudes++
+    this.habitudes = null
+    this.erreurHabitudes = ''
+    this.tourResume++
+    this.tourSimulation++
+    this.resume = null
+    this.resumeAbsent = false
+    this.erreurResume = ''
+    this.simulation = null
+    this.erreurSimulation = ''
+    this.oublierRecurrents()
+  }
+
+  async chargerResume(periode?: string) {
+    const tour = ++this.tourResume
+    this.erreurResume = ''
+    this.resumeAbsent = false
+    try {
+      const resume = await this.api.resume(this.mode, periode)
+      if (tour === this.tourResume) this.resume = resume
+    } catch (e) {
+      if (tour !== this.tourResume) return
+      this.resume = null
+      if ((e as { status?: number }).status === 404 || (e as { status?: number }).status === 400) this.resumeAbsent = true
+      else this.erreurResume = messageErreur(e)
+    }
+  }
+
+  async chargerSimulation() {
+    const tour = ++this.tourSimulation
+    this.erreurSimulation = ''
+    try {
+      const simulation = await this.api.simuler(this.mode, SANS_REGLAGE)
+      if (tour === this.tourSimulation) this.simulation = simulation
+    } catch (e) {
+      if (tour !== this.tourSimulation) return
+      this.simulation = null
+      this.erreurSimulation = messageErreur(e)
+    }
+  }
+
+  async simuler(reglages: Reglages): Promise<Simulation | null> {
+    const tour = this.tourSimulation
+    try {
+      const simulation = await this.api.simuler(this.mode, reglages)
+      if (tour !== this.tourSimulation) return null
+      this.erreurSimulation = ''
+      return simulation
+    } catch (e) {
+      if (tour === this.tourSimulation) this.erreurSimulation = messageErreur(e)
+      return null
+    }
+  }
+
+  async fixerPlafonds(plafonds: Plafond[]): Promise<boolean> {
+    const ok = await this.agir(async () => {
+      for (const p of plafonds) await this.api.modifierCategorie(p.id, { monthly_cap: p.cap })
+      return true
+    })
+    this.perimer()
+    await this.chargerReference()
+    return !!ok
+  }
+
+  private oublierRecurrents() {
+    this.tourRecurrents++
+    this.tourInhabituelle++
+    this.recurrents = null
+    this.erreurRecurrents = ''
+    this.recurrentOccupe = ''
+    this.inhabituelle = null
+  }
+
+  changerFenetreHabitudes(fenetre: FenetreHabitudes) {
+    if (fenetre === this.fenetreHabitudes) return
+    this.fenetreHabitudes = fenetre
+    try { localStorage.setItem(CLE_FENETRE_HABITUDES, fenetre) } catch { this.fenetreHabitudes = fenetre }
+  }
+
+  async chargerHabitudes() {
+    const tour = ++this.tourHabitudes
+    this.erreurHabitudes = ''
+    try {
+      const habitudes = await this.api.habitudes(this.mode, this.fenetreHabitudes)
+      if (tour === this.tourHabitudes) this.habitudes = habitudes
+    } catch (e) {
+      if (tour !== this.tourHabitudes) return
+      this.habitudes = null
+      this.erreurHabitudes = messageErreur(e)
+    }
+  }
+
+  async chargerRecurrents() {
+    const tour = ++this.tourRecurrents
+    this.erreurRecurrents = ''
+    try {
+      const recurrents = await this.api.recurrents()
+      if (tour === this.tourRecurrents) this.recurrents = recurrents
+    } catch (e) {
+      if (tour !== this.tourRecurrents) return
+      this.recurrents = null
+      this.erreurRecurrents = messageErreur(e)
+    }
+  }
+
+  async modifierRecurrent(id: string, corps: { dismissed?: boolean; seen?: true }): Promise<boolean> {
+    if (this.recurrentOccupe) return false
+    const tour = ++this.tourRecurrents
+    this.recurrentOccupe = id
+    this.erreurRecurrents = ''
+    try {
+      const recurrents = await this.api.modifierRecurrent(id, corps)
+      if (tour === this.tourRecurrents) this.recurrents = recurrents
+      return true
+    } catch (e) {
+      if (tour === this.tourRecurrents) this.erreurRecurrents = messageErreur(e)
+      return false
+    } finally {
+      this.recurrentOccupe = ''
+    }
+  }
+
+  async chargerInhabituelle(id: number) {
+    const tour = ++this.tourInhabituelle
+    if (this.inhabituelle?.id !== id) this.inhabituelle = null
+    try {
+      const raison = await this.api.inhabituelle(id)
+      if (tour === this.tourInhabituelle) this.inhabituelle = { id, raison }
+    } catch {
+      if (tour === this.tourInhabituelle) this.inhabituelle = null
+    }
+  }
+
+  changerFenetre(fenetre: Fenetre) {
+    if (fenetre === this.fenetre) return
+    this.fenetre = fenetre
+    try { localStorage.setItem(CLE_FENETRE, fenetre) } catch { this.fenetre = fenetre }
+  }
+
+  async chargerEvolution() {
+    const tour = ++this.tourEvolution
+    this.erreurEvolution = ''
+    const [mode, fenetre] = [this.mode, this.fenetre]
+    try {
+      const [historique, soldes, annees] = await Promise.all([
+        this.api.historique(mode, fenetre),
+        this.api.soldes(mode, fenetre),
+        this.api.annees(mode).catch((e: unknown) => { if ((e as { status?: number }).status === 404) return null; throw e }),
+      ])
+      if (tour === this.tourEvolution) this.evolution = { historique, soldes, annees }
+    } catch (e) {
+      if (tour !== this.tourEvolution) return
+      this.evolution = null
+      this.erreurEvolution = messageErreur(e)
+    }
+  }
+
+  private perimer() {
+    this.version++
+    this.tourInhabituelle++
+    this.inhabituelle = null
+  }
+
+  changerMode(mode: Mode) {
+    if (mode === this.mode) return
+    this.mode = mode
+    try { localStorage.setItem(CLE_MODE, mode) } catch { this.mode = mode }
+    this.oublierStats()
+  }
+
+  async chargerMois(periode?: string) {
+    const tour = ++this.tourMois
+    this.erreurMois = ''
+    this.moisAbsent = false
+    try {
+      const mois = await this.api.mois(this.mode, periode)
+      if (tour === this.tourMois) this.mois = mois
+    } catch (e) {
+      if (tour !== this.tourMois) return
+      this.mois = null
+      if ((e as { status?: number }).status === 404 || (e as { status?: number }).status === 400) this.moisAbsent = true
+      else this.erreurMois = messageErreur(e)
+    }
+  }
+
+  async chargerPeriodes() {
+    const tour = ++this.tourPeriodes
+    try {
+      const periodes = await this.api.periodes(this.mode)
+      if (tour === this.tourPeriodes) this.periodes = periodes
+    } catch {
+      if (tour === this.tourPeriodes) this.periodes = null
+    }
+  }
+
+  async chargerCategorieDuMois(id: number, periode?: string) {
+    const tour = ++this.tourCategorie
+    this.erreurMois = ''
+    this.categorieAbsente = false
+    if (this.categorieDuMois && this.categorieDuMois.category.id !== id) this.categorieDuMois = null
+    try {
+      const detail = await this.api.categorieDuMois(id, this.mode, periode)
+      if (tour === this.tourCategorie) this.categorieDuMois = detail
+    } catch (e) {
+      if (tour !== this.tourCategorie) return
+      this.categorieDuMois = null
+      if ((e as { status?: number }).status === 404 || (e as { status?: number }).status === 400) this.categorieAbsente = true
+      else this.erreurMois = messageErreur(e)
+    }
   }
 
   async ouvrir() {
@@ -145,6 +427,7 @@ export class EtatTirelire {
 
   private async apresClassement(file = false) {
     this.operations = null
+    this.perimer()
     const avecFile = file || !!this.file
     await Promise.all([this.chargerReference(!avecFile), avecFile ? this.chargerFile() : null, this.regles ? this.chargerRegles() : null, this.commercants ? this.chargerCommercants() : null])
   }
@@ -207,6 +490,7 @@ export class EtatTirelire {
   async enregistrerCategorie(id: number | null, c: Partial<SaisieCategorie & { archived: boolean }>): Promise<boolean> {
     const r = await this.agir(() => (id === null ? this.api.creerCategorie(c as SaisieCategorie) : this.api.modifierCategorie(id, c)))
     if (!r) return false
+    this.perimer()
     await this.chargerReference()
     return true
   }
@@ -274,16 +558,37 @@ export class EtatTirelire {
 
   effacerFiltres() { return this.filtrer(SANS_FILTRE) }
 
+  async exporter(): Promise<boolean> {
+    if (this.exportEnCours) return false
+    this.exportEnCours = true
+    this.erreurExport = ''
+    this.exporte = ''
+    try {
+      const f = await this.api.exporter(this.filtres)
+      enregistrer(f.blob, f.nom)
+      this.exporte = f.nom
+      return true
+    } catch (e) {
+      this.erreurExport = messageErreur(e)
+      return false
+    } finally {
+      this.exportEnCours = false
+    }
+  }
+
   async chargerOperations() {
     const tour = ++this.tourOperations
     this.erreurOperations = ''
     this.suiteEnCours = false
     this.operations = null
+    this.erreurExport = ''
+    this.exporte = ''
     try {
       const page = await this.api.operations(this.filtres, 0)
       if (tour !== this.tourOperations) return
       this.operations = page.operations
       this.total = page.total
+      this.totaux = totauxDe(page)
     } catch (e) {
       if (tour === this.tourOperations) this.erreurOperations = messageErreur(e)
     }
@@ -300,6 +605,7 @@ export class EtatTirelire {
       const connues = new Set(this.operations.map((o) => o.id))
       this.operations = [...this.operations, ...page.operations.filter((o) => !connues.has(o.id))]
       this.total = page.operations.length ? page.total : this.operations.length
+      if (page.operations.length) this.totaux = totauxDe(page)
     } catch (e) {
       if (tour === this.tourOperations) this.erreurOperations = messageErreur(e)
     } finally {
@@ -332,6 +638,8 @@ export class EtatTirelire {
     this.operations = null
     this.file = null
     this.commercants = null
+    this.oublierStats()
+    this.perimer()
     await Promise.all([this.chargerReleves(), this.chargerReference()])
   }
 
@@ -388,6 +696,8 @@ export class EtatTirelire {
     this.file = null
     this.commercants = null
     this.detail = null
+    this.oublierStats()
+    this.perimer()
     await Promise.all([this.chargerReleves(), this.chargerReference()])
     return true
   }

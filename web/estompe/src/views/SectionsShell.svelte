@@ -51,7 +51,7 @@
     {#if stats}
       <SablierSpace section={route.name === 'stats' ? route.section : undefined} id={route.name === 'stats' ? route.id : undefined} detail={route.name === 'stats' ? route.detail : undefined} onmenu={() => (nav = true)} />
     {:else if comptes}
-      <TirelireSpace section={route.name === 'tirelire' ? route.section : undefined} id={route.name === 'tirelire' ? route.id : undefined} onmenu={() => (nav = true)} />
+      <TirelireSpace section={route.name === 'tirelire' ? route.section : undefined} id={route.name === 'tirelire' ? route.id : undefined} requete={route.name === 'tirelire' ? route.requete : undefined} onmenu={() => (nav = true)} />
     {:else if musique}
       <SillonSpace section={route.name === 'musique' ? route.section : undefined} id={route.name === 'musique' ? route.id : undefined} onmenu={() => (nav = true)} />
     {:else if films}

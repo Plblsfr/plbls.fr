@@ -1,6 +1,11 @@
-import { ApiError, requestAt } from '../../lib/api'
+import { ApiError, fichierAt, requestAt } from '../../lib/api'
 import { config } from '../../lib/config'
-import { signe, type Sens } from './formats'
+import { centimes, dateCourte, euros, signe, type Sens } from './formats'
+import type { Resume } from './decision'
+import { corpsSimulation, type Reglages, type Simulation } from './simulation'
+import type { Annees, Fenetre, Historique, Soldes } from './evolution'
+import type { FenetreHabitudes, Habitudes, Raison, Recurrents } from './habitudes'
+import type { DetailCategorie, Mode, Mois, ResumePeriode } from './stats'
 
 export const TIRELIRE_URL = config.tirelireUrl
 export const tirelireOn = () => !!TIRELIRE_URL
@@ -90,9 +95,12 @@ export interface FileAClasser extends Compteur { groups: Groupe[] }
 export interface SaisieCategorie { name: string; kind: Nature; monthly_cap: number | null }
 export interface SaisieRegle { keywords: string[]; category_id: number }
 
-export interface PageOperations { operations: Operation[]; total: number; limit: number; offset: number }
-export interface Filtres { releve: number | null; du: string; au: string; categorie: number | null; commercant: number | null; aClasser: boolean }
-export const SANS_FILTRE: Filtres = { releve: null, du: '', au: '', categorie: null, commercant: null, aClasser: false }
+export interface PageOperations { operations: Operation[]; total: number; total_debits?: number; total_credits?: number; limit: number; offset: number }
+export interface Filtres { releve: number | null; du: string; au: string; categorie: number | null; commercant: number | null; aClasser: boolean; q: string; min: number | null; max: number | null; sens: Sens | null; type: TypeOperation | null; parAchat: boolean }
+export const SANS_FILTRE: Filtres = { releve: null, du: '', au: '', categorie: null, commercant: null, aClasser: false, q: '', min: null, max: null, sens: null, type: null, parAchat: false }
+export const RECHERCHE_MAX = 100
+export const MOTS_MAX = 8
+export const DELAI_RECHERCHE = 300
 export const filtres = (f: Partial<Filtres> = {}): Filtres => ({ ...SANS_FILTRE, ...f })
 
 export type CodeRefus = 'not_a_pdf' | 'unreadable_pdf' | 'too_large' | 'unknown_format' | 'conflict' | 'checks_failed'
@@ -108,7 +116,9 @@ export type Issue = ResultatImport | { file: string; status: 'failed'; message: 
 const get = <T>(chemin: string) => requestAt<T>(TIRELIRE_URL, 'GET', chemin)
 const envoyer = <T>(methode: string, chemin: string, corps?: unknown) => requestAt<T>(TIRELIRE_URL, methode, chemin, corps)
 
-export function requeteOperations(f: Filtres, offset = 0, limit = PAGE): string {
+export const recherche = (saisie: string) => saisie.trim().split(/\s+/).filter(Boolean).slice(0, MOTS_MAX).join(' ').slice(0, RECHERCHE_MAX).trim()
+
+export function parametres(f: Filtres): URLSearchParams {
   const q = new URLSearchParams()
   if (f.releve !== null) q.set('statement', String(f.releve))
   if (f.du) q.set('from', f.du)
@@ -116,10 +126,51 @@ export function requeteOperations(f: Filtres, offset = 0, limit = PAGE): string 
   if (f.categorie !== null) q.set('category', String(f.categorie))
   if (f.commercant !== null) q.set('merchant', String(f.commercant))
   if (f.aClasser) q.set('unclassified', 'true')
+  if (recherche(f.q)) q.set('q', recherche(f.q))
+  if (f.min !== null) q.set('min', String(f.min))
+  if (f.max !== null) q.set('max', String(f.max))
+  if (f.sens) q.set('direction', f.sens)
+  if (f.type) q.set('type', f.type)
+  if (f.parAchat && (f.du || f.au)) q.set('date', 'purchase')
+  return q
+}
+
+export function requeteOperations(f: Filtres, offset = 0, limit = PAGE): string {
+  const q = parametres(f)
   q.set('limit', String(limit))
   q.set('offset', String(offset))
   return `/operations?${q}`
 }
+
+export function requeteExport(f: Filtres): string {
+  const q = parametres(f).toString()
+  return `/operations/export.csv${q ? `?${q}` : ''}`
+}
+
+export const requeteDe = (f: Filtres) => parametres(f).toString()
+export const memesFiltres = (a: Filtres, b: Filtres) => requeteDe(a) === requeteDe(b)
+export const filtreActif = (f: Filtres) => requeteDe(f) !== ''
+
+const JOUR_ISO = /^\d{4}-\d{2}-\d{2}$/
+
+export function filtresDe(requete: string): Filtres {
+  const q = new URLSearchParams(requete)
+  const entier = (cle: string) => { const v = q.get(cle) ?? ''; return /^\d{1,15}$/.test(v) ? Number(v) : null }
+  const jour = (cle: string) => { const v = q.get(cle) ?? ''; return JOUR_ISO.test(v) && !Number.isNaN(Date.parse(v)) ? v : '' }
+  const sens = q.get('direction')
+  const type = q.get('type') ?? ''
+  const f = filtres({
+    releve: entier('statement'), du: jour('from'), au: jour('to'), categorie: entier('category'), commercant: entier('merchant'), aClasser: q.get('unclassified') === 'true',
+    q: recherche(q.get('q') ?? ''), min: entier('min'), max: entier('max'), sens: sens === 'debit' || sens === 'credit' ? sens : null, type: Object.hasOwn(TYPES, type) ? (type as TypeOperation) : null, parAchat: q.get('date') === 'purchase',
+  })
+  if (f.aClasser) f.categorie = null
+  if (f.du && f.au && f.du > f.au) f.au = ''
+  if (f.min !== null && f.max !== null && f.min > f.max) f.max = null
+  if (!f.du && !f.au) f.parAchat = false
+  return f
+}
+
+export const nomExport = (f: Filtres) => `tirelire-operations${f.du && f.au ? `-${f.du}_${f.au}` : f.du ? `-depuis-${f.du}` : f.au ? `-jusqu-au-${f.au}` : ''}.csv`
 
 export const tirelireApi = {
   me: () => requestAt<TirelireMe>(TIRELIRE_URL, 'GET', '/me', undefined, { discret: true }),
@@ -132,6 +183,7 @@ export const tirelireApi = {
   },
   supprimer: (id: number) => requestAt<void>(TIRELIRE_URL, 'DELETE', `/statements/${id}`),
   operations: (f: Filtres, offset = 0, limit = PAGE) => get<PageOperations>(requeteOperations(f, offset, limit)),
+  exporter: (f: Filtres) => fichierAt(TIRELIRE_URL, requeteExport(f), nomExport(f)),
   operation: async (id: number) => (await get<{ operation: Operation }>(`/operations/${id}`)).operation,
   classerOperation: (id: number, categorie: number | null, portee: Portee) => envoyer<{ operation: Operation; reclassified: number }>('PUT', `/operations/${id}/category`, { category_id: categorie, scope: portee }),
   aClasser: () => get<FileAClasser>('/unclassified'),
@@ -148,6 +200,18 @@ export const tirelireApi = {
   commercant: async (id: number) => (await get<{ merchant: Commercant }>(`/merchants/${id}`)).merchant,
   classerCommercant: (id: number, categorie: number | null) => envoyer<{ merchant: Commercant; reclassified: number }>('PUT', `/merchants/${id}/category`, { category_id: categorie }),
   fusionner: (id: number, autres: number[]) => envoyer<{ merchant: Commercant; reclassified: number }>('POST', `/merchants/${id}/merge`, { merchant_ids: autres }),
+  periodes: async (mode: Mode) => (await get<{ periods: ResumePeriode[] }>(`/stats/months?mode=${mode}`)).periods,
+  mois: (mode: Mode, periode?: string) => get<Mois>(`/stats/month?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
+  categorieDuMois: (id: number, mode: Mode, periode?: string) => get<DetailCategorie>(`/stats/month/categories/${id}?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
+  historique: (mode: Mode, fenetre: Fenetre) => get<Historique>(`/stats/history?mode=${mode}&window=${fenetre}`),
+  soldes: (mode: Mode, fenetre: Fenetre) => get<Soldes>(`/stats/balance?mode=${mode}&window=${fenetre}`),
+  annees: (mode: Mode) => get<Annees>(`/stats/years?mode=${mode}`),
+  habitudes: (mode: Mode, fenetre: FenetreHabitudes) => get<Habitudes>(`/stats/habits?mode=${mode}&window=${fenetre}`),
+  recurrents: () => get<Recurrents>('/stats/recurring'),
+  modifierRecurrent: (id: string, corps: { dismissed?: boolean; seen?: true }) => envoyer<Recurrents>('PATCH', `/stats/recurring/${encodeURIComponent(id)}`, corps),
+  resume: (mode: Mode, periode?: string) => get<Resume>(`/stats/summary?mode=${mode}${periode ? `&period=${encodeURIComponent(periode)}` : ''}`),
+  simuler: (mode: Mode, reglages: Reglages) => envoyer<Simulation>('POST', '/stats/simulate', corpsSimulation(mode, reglages)),
+  inhabituelle: async (id: number) => (await get<{ unusual: Raison | null }>(`/operations/${id}/unusual`)).unusual,
   separer: (id: number, cles: string[]) => envoyer<{ merchant: Commercant; created: Commercant[] }>('POST', `/merchants/${id}/split`, { keys: cles }),
 }
 
@@ -277,8 +341,45 @@ export function totaux(operations: Operation[]): Totaux {
 
 export function totauxConnus(f: Filtres, releves: Releve[], operations: Operation[], total: number): Totaux | null {
   if (operations.length >= total) return totaux(operations)
-  const r = f.releve !== null && !f.du && !f.au && f.categorie === null && f.commercant === null && !f.aClasser ? releves.find((x) => x.id === f.releve) : undefined
+  const r = f.releve !== null && memesFiltres(f, filtres({ releve: f.releve })) ? releves.find((x) => x.id === f.releve) : undefined
   return r ? { debits: r.total_debits, credits: r.total_credits } : null
+}
+
+export const totauxDe = (p: PageOperations): Totaux | null => (typeof p.total_debits === 'number' && typeof p.total_credits === 'number' ? { debits: p.total_debits, credits: p.total_credits } : null)
+
+export interface Pastille { cle: string; texte: string; label: string; sans: Partial<Filtres> }
+
+export function pastilles(f: Filtres, noms: { releves: Releve[]; categories: Categorie[]; commercants: Commercant[] }): Pastille[] {
+  const res: Pastille[] = []
+  const ajouter = (cle: string, texte: string, sans: Partial<Filtres>) => res.push({ cle, texte, label: `Retirer le filtre ${texte}`, sans })
+  if (recherche(f.q)) ajouter('q', `« ${recherche(f.q)} »`, { q: '' })
+  if (f.releve !== null) { const r = noms.releves.find((x) => x.id === f.releve); ajouter('releve', r ? nomReleve(r) : 'Un relevé', { releve: null }) }
+  if (f.du) ajouter('du', `Depuis le ${dateCourte(f.du)}`, { du: '' })
+  if (f.au) ajouter('au', `Jusqu’au ${dateCourte(f.au)}`, { au: '' })
+  if (f.parAchat && (f.du || f.au)) ajouter('achat', 'Par date d’achat', { parAchat: false })
+  if (f.aClasser) ajouter('categorie', 'À classer', { aClasser: false })
+  else if (f.categorie !== null) ajouter('categorie', noms.categories.find((c) => c.id === f.categorie)?.name ?? 'Une catégorie', { categorie: null })
+  if (f.commercant !== null) ajouter('commercant', noms.commercants.find((c) => c.id === f.commercant)?.name ?? 'Un commerçant', { commercant: null })
+  if (f.min !== null) ajouter('min', `Au moins ${euros(f.min)}`, { min: null })
+  if (f.max !== null) ajouter('max', `Au plus ${euros(f.max)}`, { max: null })
+  if (f.sens) ajouter('sens', f.sens === 'debit' ? 'Débits' : 'Crédits', { sens: null })
+  if (f.type) ajouter('type', TYPES[f.type], { type: null })
+  return res
+}
+
+export type SaisieMontant = { ok: true; valeur: number | null } | { ok: false }
+export const montantSaisi = (saisie: string): SaisieMontant => {
+  if (!saisie.trim()) return { ok: true, valeur: null }
+  const c = centimes(saisie)
+  return c === null ? { ok: false } : { ok: true, valeur: c }
+}
+
+export function enregistrer(blob: Blob, nom: string) {
+  const lien = document.createElement('a')
+  lien.href = URL.createObjectURL(blob)
+  lien.download = nom
+  lien.click()
+  URL.revokeObjectURL(lien.href)
 }
 
 export interface Bilan { importes: number; deja: number; refuses: number; operations: number }

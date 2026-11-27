@@ -8,11 +8,12 @@ use axum::{
 };
 
 use crate::{
-    categories, commercants,
+    abonnements, categories, commercants,
     droits::Droit,
     etat::AppState,
+    export,
     garde::{self, Garde},
-    import, interne, regles, releves,
+    import, interne, mois, regles, releves,
 };
 
 pub struct Route {
@@ -93,9 +94,21 @@ pub fn table() -> Vec<Entree> {
         ),
         entree(
             Method::GET,
+            "/operations/export.csv",
+            Garde::Droit(Droit::Acces),
+            get(export::exporter),
+        ),
+        entree(
+            Method::GET,
             "/operations/{id}",
             Garde::Droit(Droit::Acces),
             get(releves::operation),
+        ),
+        entree(
+            Method::GET,
+            "/operations/{id}/unusual",
+            Garde::Droit(Droit::Acces),
+            get(mois::inhabituelle),
         ),
         entree(
             Method::PUT,
@@ -198,6 +211,72 @@ pub fn table() -> Vec<Entree> {
             "/merchants/{id}/split",
             Garde::Droit(Droit::Acces),
             post(commercants::separer),
+        ),
+        entree(
+            Method::GET,
+            "/stats/months",
+            Garde::Droit(Droit::Acces),
+            get(mois::lister),
+        ),
+        entree(
+            Method::GET,
+            "/stats/month",
+            Garde::Droit(Droit::Acces),
+            get(mois::lire),
+        ),
+        entree(
+            Method::GET,
+            "/stats/month/categories/{id}",
+            Garde::Droit(Droit::Acces),
+            get(mois::categorie),
+        ),
+        entree(
+            Method::GET,
+            "/stats/history",
+            Garde::Droit(Droit::Acces),
+            get(mois::historique),
+        ),
+        entree(
+            Method::GET,
+            "/stats/balance",
+            Garde::Droit(Droit::Acces),
+            get(mois::soldes),
+        ),
+        entree(
+            Method::GET,
+            "/stats/years",
+            Garde::Droit(Droit::Acces),
+            get(mois::annees),
+        ),
+        entree(
+            Method::GET,
+            "/stats/habits",
+            Garde::Droit(Droit::Acces),
+            get(mois::habitudes),
+        ),
+        entree(
+            Method::GET,
+            "/stats/recurring",
+            Garde::Droit(Droit::Acces),
+            get(abonnements::lire),
+        ),
+        entree(
+            Method::PATCH,
+            "/stats/recurring/{id}",
+            Garde::Droit(Droit::Acces),
+            patch(abonnements::modifier),
+        ),
+        entree(
+            Method::GET,
+            "/stats/summary",
+            Garde::Droit(Droit::Acces),
+            get(mois::resume),
+        ),
+        entree(
+            Method::POST,
+            "/stats/simulate",
+            Garde::Droit(Droit::Acces),
+            post(mois::simuler),
         ),
     ]
 }

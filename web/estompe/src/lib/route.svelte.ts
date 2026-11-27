@@ -1,4 +1,4 @@
-/** Routeur minimal sur le hash : #/ · #/s/<serveur>/<salon>[/<message>] · #/dm/<id>[/<message>] · #/join/<code> · #/admin/<section> · #/films · #/musique · #/regie/<section> · #/stats[/<sous-section>[/<id>[/<détail>]]] · #/tirelire[/<onglet>[/<id>]] · #/<espace de la plateforme>/<section>  */
+/** Routeur minimal sur le hash : #/ · #/s/<serveur>/<salon>[/<message>] · #/dm/<id>[/<message>] · #/join/<code> · #/admin/<section> · #/films · #/musique · #/regie/<section> · #/stats[/<sous-section>[/<id>[/<détail>]]] · #/tirelire[/<onglet>[/<id>]][?<filtres>] · #/<espace de la plateforme>/<section>  */
 import { platform, platformReady } from './platform'
 
 
@@ -12,11 +12,13 @@ export type Route =
   | { name: 'musique'; section?: string; id?: string }
   | { name: 'regie'; section?: string }
   | { name: 'stats'; section?: string; id?: string; detail?: string }
-  | { name: 'tirelire'; section?: string; id?: string }
+  | { name: 'tirelire'; section?: string; id?: string; requete?: string }
   | { name: 'space'; space: string; section?: string }
 
 export function parseHash(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
+  const [chemin, ...suite] = hash.replace(/^#\/?/, '').split('?')
+  const requete = suite.join('?')
+  const parts = chemin.split('/').filter(Boolean).map(decodeURIComponent)
   if (parts[0] === 's' && parts[1]) return { name: 'channel', serverId: parts[1], channelId: parts[2], messageId: parts[3] }
   if (parts[0] === 'dm' && parts[1]) return { name: 'dm', id: parts[1], messageId: parts[2] }
   if (parts[0] === 'join' && parts[1]) return { name: 'join', code: parts[1] }
@@ -25,7 +27,7 @@ export function parseHash(hash: string): Route {
   if (parts[0] === 'musique') return { name: 'musique', section: parts[1], id: parts[2] }
   if (parts[0] === 'regie') return { name: 'regie', section: parts[1] }
   if (parts[0] === 'stats') return { name: 'stats', section: parts[1], id: parts[2], detail: parts[3] }
-  if (parts[0] === 'tirelire') return { name: 'tirelire', section: parts[1], id: parts[2] }
+  if (parts[0] === 'tirelire') return { name: 'tirelire', section: parts[1], id: parts[2], ...(requete ? { requete } : {}) }
   if (parts[0] && platformReady() && platform.spaces.some((s) => s.id === parts[0])) return { name: 'space', space: parts[0], section: parts[1] }
   return { name: 'home' }
 }
@@ -39,7 +41,7 @@ export const hrefs = {
   musique: (section?: string, id?: string) => `#/musique${section ? '/' + section : ''}${id ? '/' + encodeURIComponent(id) : ''}`,
   regie: (section?: string) => `#/regie${section ? '/' + section : ''}`,
   stats: (section?: string, id?: string | number, detail?: string | number) => `#/stats${section ? '/' + section : ''}${id !== undefined && id !== '' ? '/' + encodeURIComponent(id) : ''}${detail !== undefined && detail !== '' ? '/' + encodeURIComponent(detail) : ''}`,
-  tirelire: (section?: string, id?: string | number) => `#/tirelire${section ? '/' + section : ''}${id !== undefined && id !== '' ? '/' + encodeURIComponent(id) : ''}`,
+  tirelire: (section?: string, id?: string | number, requete = '') => `#/tirelire${section ? '/' + section : ''}${id !== undefined && id !== '' ? '/' + encodeURIComponent(id) : ''}${requete ? '?' + requete : ''}`,
   space: (space: string, section?: string) => `#/${space}${section ? '/' + section : ''}`,
   join: (code: string) => `#/join/${encodeURIComponent(code)}`,
 }
@@ -52,6 +54,10 @@ class Router {
   go(href: string) {
     if (location.hash === href) this.current = parseHash(href)
     else location.hash = href
+  }
+  remplacer(href: string) {
+    if (location.hash !== href) history.replaceState(history.state, '', href)
+    this.current = parseHash(href)
   }
 }
 

@@ -3,7 +3,6 @@ use axum::{
     extract::{Path, Query, State},
     response::Response,
 };
-use chrono::NaiveDate;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::{PgConnection, PgPool};
@@ -16,6 +15,7 @@ use crate::{
     garde::Personne,
     http::{bd, corps, identifiant, introuvable, invalide, ok, sans_contenu},
     import::BANQUE,
+    selection::{Filtre, ORDRE, OU, Selection, entier, lier},
 };
 
 pub const LIMITE_DEFAUT: i64 = 50;
@@ -136,52 +136,12 @@ pub const OPERATION: &str = "jsonb_build_object(
 
 pub const OPERATIONS: &str = "operations o LEFT JOIN commercants m ON m.id = o.commercant_id";
 
-#[derive(Debug, Default, Deserialize)]
-pub struct Filtre {
-    pub statement: Option<String>,
-    pub from: Option<String>,
-    pub to: Option<String>,
-    pub category: Option<String>,
-    pub merchant: Option<String>,
-    pub unclassified: Option<String>,
-    pub limit: Option<String>,
-    pub offset: Option<String>,
-}
-
-fn entier(valeur: &Option<String>, message: &str) -> Result<Option<i64>, Response> {
-    valeur
-        .as_deref()
-        .map(|v| v.parse::<i64>().ok().filter(|n| *n >= 0))
-        .map(|n| n.ok_or_else(|| invalide(message)))
-        .transpose()
-}
-
-fn jour(valeur: &Option<String>, message: &str) -> Result<Option<NaiveDate>, Response> {
-    valeur
-        .as_deref()
-        .map(|v| NaiveDate::parse_from_str(v, "%Y-%m-%d").map_err(|_| invalide(message)))
-        .transpose()
-}
-
-fn booleen(valeur: &Option<String>, message: &str) -> Result<bool, Response> {
-    match valeur.as_deref() {
-        None | Some("false" | "0") => Ok(false),
-        Some("true" | "1") => Ok(true),
-        Some(_) => Err(invalide(message)),
-    }
-}
-
 pub async fn operations(
     State(state): State<AppState>,
     p: Personne,
     Query(f): Query<Filtre>,
 ) -> Result<Response, Response> {
-    let releve = entier(&f.statement, "statement : identifiant d'un relevé")?;
-    let du = jour(&f.from, "from : date AAAA-MM-JJ")?;
-    let au = jour(&f.to, "to : date AAAA-MM-JJ")?;
-    let categorie = entier(&f.category, "category : identifiant d'une catégorie")?;
-    let commercant = entier(&f.merchant, "merchant : identifiant d'un commerçant")?;
-    let a_classer = booleen(&f.unclassified, "unclassified : true ou false")?;
+    let selection = Selection::lire(&f)?;
     let limite = entier(&f.limit, "limit : entier de 1 à 200")?.map_or(Ok(LIMITE_DEFAUT), |n| {
         (1..=LIMITE_MAX)
             .contains(&n)
@@ -190,35 +150,15 @@ pub async fn operations(
     })?;
     let debut = entier(&f.offset, "offset : entier positif")?.unwrap_or(0);
     classement::pret(state.pool(), p.sub()).await.map_err(bd)?;
-    const OU: &str = "o.sub = $1 AND ($2::bigint IS NULL OR o.releve_id = $2)
-        AND ($3::date IS NULL OR o.date_operation >= $3) AND ($4::date IS NULL OR o.date_operation <= $4)
-        AND ($5::bigint IS NULL OR o.categorie_id = $5) AND ($6::bigint IS NULL OR o.commercant_id = $6)
-        AND (NOT $7 OR o.categorie_id IS NULL)";
-    let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "SELECT count(*) FROM operations o WHERE {OU}"
-    )))
-    .bind(p.sub())
-    .bind(releve)
-    .bind(du)
-    .bind(au)
-    .bind(categorie)
-    .bind(commercant)
-    .bind(a_classer)
-    .fetch_one(state.pool())
-    .await
-    .map_err(bd)?;
-    let lignes: Vec<Value> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "SELECT {OPERATION} FROM {OPERATIONS} WHERE {OU}
-         ORDER BY o.date_operation DESC, o.releve_id DESC, o.rang DESC
-         LIMIT $8 OFFSET $9"
-    )))
-    .bind(p.sub())
-    .bind(releve)
-    .bind(du)
-    .bind(au)
-    .bind(categorie)
-    .bind(commercant)
-    .bind(a_classer)
+    let resume = selection.resumer(state.pool(), p.sub()).await.map_err(bd)?;
+    let lignes: Vec<Value> = lier!(
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT {OPERATION} FROM {OPERATIONS} WHERE {} ORDER BY {ORDRE} LIMIT $14 OFFSET $15",
+            *OU
+        ))),
+        p.sub(),
+        &selection
+    )
     .bind(limite)
     .bind(debut)
     .fetch_all(state.pool())
@@ -226,7 +166,9 @@ pub async fn operations(
     .map_err(bd)?;
     Ok(ok(&json!({
         "operations": lignes,
-        "total": total,
+        "total": resume.total,
+        "total_debits": resume.debits,
+        "total_credits": resume.credits,
         "limit": limite,
         "offset": debut,
     })))
