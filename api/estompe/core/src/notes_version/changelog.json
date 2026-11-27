@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.124.1",
+    "date": "2026-11-27",
+    "new": [],
+    "fixes": [
+      "Badges animés : l'affiche et les couleurs du film ou de la série apparaissent sur la carte, le lien n'encombre plus le message, et si vos animations sont réduites, un bouton lance l'animation."
+    ]
+  },
+  {
     "version": "0.124.0",
     "date": "2026-11-27",
     "new": [
