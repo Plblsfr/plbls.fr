@@ -136,8 +136,8 @@ describe('états de la détection des intros', () => {
 describe('rubriques', () => {
   const n = { movies: 12, series: 3, pending: 2 }
   it('quatre rubriques sans permission, « Mes demandes » et « Administration » selon les droits', () => {
-    expect(rubriques(undefined, n).map((r) => r.label)).toEqual(['Accueil', 'Films', 'Séries', 'Historique'])
-    expect(rubriques({ access: true, request: true, admin: false }, n).map((r) => r.id)).toEqual([undefined, 'movies', 'series', 'seen', 'requests'])
+    expect(rubriques(undefined, n).map((r) => r.label)).toEqual(['Accueil', 'Films', 'Séries', 'Historique', 'Badges'])
+    expect(rubriques({ access: true, request: true, admin: false }, n).map((r) => r.id)).toEqual([undefined, 'movies', 'series', 'seen', 'badges', 'requests'])
     const admin = rubriques({ access: true, request: false, admin: true }, n).at(-1)!
     expect(admin).toMatchObject({ id: 'admin', count: 2, alerte: true })
     expect(rubriques({ access: true, request: false, admin: true }, { ...n, pending: 0 }).at(-1)!.alerte).toBe(false)

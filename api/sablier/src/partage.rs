@@ -15,6 +15,7 @@ use sqlx::PgPool;
 
 use crate::{
     agregats,
+    badges::{self, Badge},
     catalogue::{self, Domaine, PREMIER_JOUR, Stat, Unite},
     droits::Droits,
     etat::AppState,
@@ -46,6 +47,7 @@ pub struct TropheePartage {
 pub struct Reglages {
     pub stats: Vec<StatPartagee>,
     pub trophies: Vec<TropheePartage>,
+    pub badges: Vec<Badge>,
 }
 
 async fn stats_partagees(pool: &PgPool, sub: &str) -> Result<HashSet<String>, sqlx::Error> {
@@ -83,6 +85,7 @@ pub async fn lire(pool: &PgPool, sub: &str, droits: &Droits) -> Result<Reglages,
                 shared: e.partage,
             })
             .collect(),
+        badges: badges::reglages(pool, sub, droits).await?,
     })
 }
 
@@ -99,6 +102,8 @@ struct Modification {
     stats: HashMap<String, bool>,
     #[serde(default)]
     trophies: HashMap<String, bool>,
+    #[serde(default)]
+    badges: HashMap<String, bool>,
 }
 
 pub async fn modifier(
@@ -109,7 +114,7 @@ pub async fn modifier(
     let (pool, sub) = (state.pool(), p.sub());
     let m: Modification = corps(
         &octets,
-        "corps : stats {clé: booléen}, trophies {identifiant: booléen}",
+        "corps : stats {clé: booléen}, trophies {identifiant: booléen}, badges {clé: booléen}",
     )?;
     if let Some(inconnue) = m
         .stats
@@ -134,7 +139,26 @@ pub async fn modifier(
             _ => return Err(invalide(&format!("trophies : {id} n'est pas débloqué"))),
         }
     }
+    if !m.badges.is_empty() {
+        let obtenus: HashSet<String> = if catalogue::Domaine::Entracte.accessible(&p.droits) {
+            badges::existants(pool, sub)
+                .await
+                .map_err(bd)?
+                .into_iter()
+                .collect()
+        } else {
+            HashSet::new()
+        };
+        if let Some(cle) = m.badges.keys().find(|c| !obtenus.contains(*c)) {
+            return Err(invalide(&format!("badges : {cle} n'est pas obtenu")));
+        }
+    }
     let mut tx = pool.begin().await.map_err(bd)?;
+    for (cle, partage) in &m.badges {
+        badges::partager(&mut tx, sub, cle, *partage)
+            .await
+            .map_err(bd)?;
+    }
     for (stat, partage) in &m.stats {
         let requete = if *partage {
             "INSERT INTO partages_stats (sub, stat) VALUES ($1, $2) ON CONFLICT DO NOTHING"
@@ -181,6 +205,7 @@ pub struct Profil {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_day: Option<NaiveDate>,
     pub trophies: Vec<Public>,
+    pub badges: Vec<Badge>,
 }
 
 async fn valeurs(
@@ -232,6 +257,7 @@ pub async fn profil(
             .filter(|e| e.partage)
             .filter_map(|e| e.public(debut_des_temps(), fin_des_temps()))
             .collect(),
+        badges: badges::publics(pool, cible, lecteur).await?,
     })
 }
 
@@ -288,6 +314,7 @@ pub async fn voir_profil(
 mod tests {
     use axum::http::StatusCode;
     use chrono::Days;
+    use commun::evenements::GenreBadge;
 
     use super::*;
     use crate::{
@@ -367,7 +394,7 @@ mod tests {
     }
 
     fn vide() -> Value {
-        json!({"month": [], "total": [], "trophies": []})
+        json!({"month": [], "total": [], "trophies": [], "badges": []})
     }
 
     #[tokio::test]
@@ -407,6 +434,7 @@ mod tests {
                 "total": [messages(640)],
                 "first_day": avant,
                 "trophies": trophee,
+                "badges": [],
             })
         );
         for prive in [
@@ -424,6 +452,7 @@ mod tests {
             "total": [regarde(7300), messages(640)],
             "first_day": avant,
             "trophies": trophee,
+            "badges": [],
         });
         assert_eq!(e.get("emma", PROFIL).await.json(), avec_entracte);
         for (qui, motif) in [
@@ -478,7 +507,7 @@ mod tests {
         .await;
         assert_eq!(
             e.get("alice", PROFIL).await.json(),
-            json!({"month": [], "total": [], "first_day": avant, "trophies": []})
+            json!({"month": [], "total": [], "first_day": avant, "trophies": [], "badges": []})
         );
         assert_eq!(
             e.get("emma", PROFIL).await.json()["month"],
@@ -608,5 +637,75 @@ mod tests {
         let r = e.get("alice", "/sharing").await.json();
         assert!(partagees(&r, "stats", "key").is_empty());
         assert_eq!(r["trophies"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn badges_partages_un_par_un_et_servis_a_qui_a_entracte() {
+        let estompe = faux_estompe().await;
+        let Some(e) = env_avec_estompe(&estompe).await else {
+            return;
+        };
+        let pool = e.state.pool();
+        let date = |j: u32| {
+            chrono::NaiveDate::from_ymd_opt(2026, 3, j)
+                .unwrap()
+                .and_hms_opt(20, 0, 0)
+                .unwrap()
+                .and_utc()
+        };
+        let mut tx = pool.begin().await.unwrap();
+        for (genre, titre, saison, j) in [
+            (GenreBadge::Film, "f1", None, 1),
+            (GenreBadge::Saison, "s1", Some(2), 2),
+            (GenreBadge::Serie, "s1", None, 3),
+            (GenreBadge::Saison, "s1", Some(0), 4),
+            (GenreBadge::Film, "f1", None, 5),
+        ] {
+            badges::enregistrer(&mut tx, DIANE, genre, titre, saison, date(j))
+                .await
+                .unwrap();
+        }
+        tx.commit().await.unwrap();
+        let r = e.get("diane", "/sharing").await.json();
+        assert_eq!(
+            r["badges"],
+            json!([
+                {"key": "series:s1", "kind": "series", "title_id": "s1", "season": null, "obtained_at": date(3), "shared": false},
+                {"key": "season:s1:2", "kind": "season", "title_id": "s1", "season": 2, "obtained_at": date(2), "shared": false},
+                {"key": "movie:f1", "kind": "movie", "title_id": "f1", "season": null, "obtained_at": date(1), "shared": false},
+            ])
+        );
+        assert_eq!(e.get("alice", "/sharing").await.json()["badges"], json!([]));
+        for faux in [
+            json!({"badges": {"movie:f2": true}}),
+            json!({"badges": {"season:s1:3": true}}),
+            json!({"badges": {"movie:f1": true, "inconnu": true}}),
+            json!({"badges": {"movie:f1": "oui"}}),
+        ] {
+            let r = e
+                .appel(Some("diane"), "PUT", "/sharing", Some(faux.clone()))
+                .await;
+            assert_eq!(r.statut, StatusCode::BAD_REQUEST, "{faux}");
+        }
+        assert_eq!(e.get("emma", PROFIL).await.json()["badges"], json!([]));
+        partager(
+            &e,
+            json!({"badges": {"movie:f1": true, "season:s1:2": true}}),
+        )
+        .await;
+        partager(&e, json!({"badges": {"season:s1:2": false}})).await;
+        let attendu = json!([{"key": "movie:f1", "kind": "movie", "title_id": "f1", "season": null, "obtained_at": date(1)}]);
+        assert_eq!(e.get("emma", PROFIL).await.json()["badges"], attendu);
+        assert_eq!(e.get("diane", PROFIL).await.json()["badges"], attendu);
+        assert_eq!(
+            e.get("alice", PROFIL).await.json()["badges"],
+            json!([]),
+            "sans entracte:access"
+        );
+        assert_eq!(
+            e.get("bruno", PROFIL).await.json()["badges"],
+            json!([]),
+            "profil non visible"
+        );
     }
 }

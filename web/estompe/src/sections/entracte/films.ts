@@ -346,7 +346,7 @@ export function pickEpisode(episodes: FilmItem[]): FilmItem | undefined {
   return episodes.find((e) => e.progress && !e.progress.seen && e.progress.position > 0) ?? episodes.find((e) => !e.progress?.seen) ?? episodes[0]
 }
 
-export const NEXT_BEFORE_END = 30
+export const NEXT_BEFORE_END = 120
 
 export const nearEnd = (position: number, duration: number) => duration > 0 && position >= duration - NEXT_BEFORE_END
 

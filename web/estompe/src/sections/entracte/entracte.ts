@@ -128,7 +128,7 @@ export function seasonsLabel(r: Pick<EntracteRequest, 'kind' | 'seasons'>): stri
   return r.seasons.length === 1 ? `Saison ${r.seasons[0]}` : `Saisons ${r.seasons.join(', ')}`
 }
 
-export type RubriqueIcon = 'maison' | 'film' | 'tele' | 'ok' | 'bulle' | 'bouclier'
+export type RubriqueIcon = 'maison' | 'film' | 'tele' | 'ok' | 'bulle' | 'bouclier' | 'medaille'
 export interface Rubrique { id: string | undefined; label: string; icon: RubriqueIcon; count: number; alerte: boolean }
 
 /** Rubriques d'Entracte selon les permissions : « Reprendre » vit dans l'accueil, la recherche dans l'en-tête. */
@@ -138,6 +138,7 @@ export function rubriques(droits: EntracteMe['permissions'] | undefined, n: { mo
     { id: 'movies', label: 'Films', icon: 'film', count: n.movies, alerte: false },
     { id: 'series', label: 'Séries', icon: 'tele', count: n.series, alerte: false },
     { id: 'seen', label: 'Historique', icon: 'ok', count: 0, alerte: false },
+    { id: 'badges', label: 'Badges', icon: 'medaille', count: 0, alerte: false },
   ]
   if (droits?.request) liste.push({ id: 'requests', label: 'Mes demandes', icon: 'bulle', count: 0, alerte: false })
   if (droits?.admin) liste.push({ id: 'admin', label: 'Administration', icon: 'bouclier', count: n.pending, alerte: n.pending > 0 })

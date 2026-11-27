@@ -115,6 +115,13 @@ pub async fn appliquer(
         Donnees::EntracteIntroPassee { .. } if !e.importe => {
             agregats::ajouter(tx, sub, jour, INTROS_PASSEES, "", 1).await?;
         }
+        Donnees::EntracteBadge {
+            genre,
+            titre,
+            saison,
+        } => {
+            crate::badges::enregistrer(tx, sub, *genre, titre, *saison, e.date).await?;
+        }
         Donnees::EstompeCinemaTemps { secondes } => {
             agregats::ajouter(tx, sub, jour, CINEMA_SECONDES, "", i64::from(*secondes)).await?;
         }

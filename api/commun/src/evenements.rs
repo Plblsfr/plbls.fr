@@ -31,6 +31,33 @@ pub enum Genre {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum GenreBadge {
+    Film,
+    Saison,
+    Serie,
+}
+
+impl GenreBadge {
+    pub fn nom(self) -> &'static str {
+        match self {
+            GenreBadge::Film => "film",
+            GenreBadge::Saison => "saison",
+            GenreBadge::Serie => "serie",
+        }
+    }
+
+    pub fn lire(nom: &str) -> Option<Self> {
+        match nom {
+            "film" => Some(GenreBadge::Film),
+            "saison" => Some(GenreBadge::Saison),
+            "serie" => Some(GenreBadge::Serie),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Sens {
     Donnee,
     Recue,
@@ -58,6 +85,12 @@ pub enum Donnees {
     EntracteAbandon { titre: String, genre: Genre },
     #[serde(rename = "entracte.intro_passee")]
     EntracteIntroPassee { titre: String },
+    #[serde(rename = "entracte.badge")]
+    EntracteBadge {
+        genre: GenreBadge,
+        titre: String,
+        saison: Option<u32>,
+    },
     #[serde(rename = "sillon.ecoute")]
     SillonEcoute {
         piste: String,
@@ -107,6 +140,7 @@ impl Donnees {
             Donnees::EntracteSerieTerminee { .. } => "entracte.serie_terminee",
             Donnees::EntracteAbandon { .. } => "entracte.abandon",
             Donnees::EntracteIntroPassee { .. } => "entracte.intro_passee",
+            Donnees::EntracteBadge { .. } => "entracte.badge",
             Donnees::SillonEcoute { .. } => "sillon.ecoute",
             Donnees::EstompeMessage { .. } => "estompe.message",
             Donnees::EstompeFichier { .. } => "estompe.fichier",
@@ -125,7 +159,8 @@ impl Donnees {
             | Donnees::EntracteVu { .. }
             | Donnees::EntracteSerieTerminee { .. }
             | Donnees::EntracteAbandon { .. }
-            | Donnees::EntracteIntroPassee { .. } => Source::Entracte,
+            | Donnees::EntracteIntroPassee { .. }
+            | Donnees::EntracteBadge { .. } => Source::Entracte,
             Donnees::SillonEcoute { .. } => Source::Sillon,
             Donnees::EstompeMessage { .. }
             | Donnees::EstompeFichier { .. }
@@ -297,6 +332,11 @@ mod tests {
                 genre: Genre::Film,
             },
             Donnees::EntracteIntroPassee { titre: t() },
+            Donnees::EntracteBadge {
+                genre: GenreBadge::Saison,
+                titre: t(),
+                saison: Some(2),
+            },
             Donnees::SillonEcoute {
                 piste: t(),
                 secondes: 2,
@@ -344,6 +384,7 @@ mod tests {
                 "entracte.serie_terminee",
                 "entracte.abandon",
                 "entracte.intro_passee",
+                "entracte.badge",
                 "sillon.ecoute",
                 "estompe.message",
                 "estompe.fichier",
@@ -380,6 +421,19 @@ mod tests {
             genre: Genre::Film,
         };
         assert_eq!(d.contenu(), json!({"titre": "t", "genre": "film"}));
+        let d = Donnees::EntracteBadge {
+            genre: GenreBadge::Serie,
+            titre: "s".into(),
+            saison: None,
+        };
+        assert_eq!(
+            d.contenu(),
+            json!({"genre": "serie", "titre": "s", "saison": null})
+        );
+        for g in [GenreBadge::Film, GenreBadge::Saison, GenreBadge::Serie] {
+            assert_eq!(GenreBadge::lire(g.nom()), Some(g));
+        }
+        assert_eq!(GenreBadge::lire("episode"), None);
     }
 
     #[test]

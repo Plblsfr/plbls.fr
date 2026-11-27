@@ -424,11 +424,15 @@ describe('FilmPlayer : épisode suivant', () => {
   }
   const bouton = (vue: ReturnType<typeof monter>['vue']) => vue.queryByRole('button', { name: 'Épisode suivant' })
 
-  it('apparaît dans les trente dernières secondes et ouvre l’épisode suivant dans le même lecteur', async () => {
+  it('apparaît dans les deux dernières minutes, signale la fin passée et ouvre l’épisode suivant dans le même lecteur', async () => {
     const { vue, adapter, avancer } = await ouvert({ 1: [episode(1), episode(2)] }, 100)
+    const fin = vi.spyOn(filmsApi, 'outroSkipped').mockResolvedValue()
     expect(bouton(vue)).toBeNull()
-    await avancer(2975)
+    await avancer(2870)
+    expect(bouton(vue)).toBeNull()
+    await avancer(2880)
     await fireEvent.click(bouton(vue)!)
+    expect(fin).toHaveBeenCalledWith('e1')
     expect(location.hash).toBe('#/films/watch/e2')
     await vue.rerender({ id: 'e2' })
     await vi.waitFor(() => expect(adapter.load).toHaveBeenLastCalledWith('e2', 0, true))

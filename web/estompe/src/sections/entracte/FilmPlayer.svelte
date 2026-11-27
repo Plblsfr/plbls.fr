@@ -55,7 +55,11 @@
     void requestAt<void>(filmsApi.base, 'POST', `/titles/${encodeURIComponent(id)}/intro-skipped`).catch(() => {})
   }
   const nextDue = $derived(!!next && !error && (st === 'ended' || nearEnd(position, duration)))
-  const playNext = () => { if (next) router.go(hrefs.films('watch', next.id)) }
+  const playNext = () => {
+    if (!next) return
+    void filmsApi.outroSkipped(id).catch(() => {})
+    router.go(hrefs.films('watch', next.id))
+  }
   const findNext = async (it: FilmDetail): Promise<FilmItem | null> => {
     if (it.kind !== 'episode' || !it.series_id || it.season == null) return null
     const seasons = (await filmsApi.seasons(it.series_id)).items

@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod agregats;
+pub mod badges;
 pub mod battement;
 pub mod catalogue;
 pub mod config;

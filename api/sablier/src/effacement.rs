@@ -21,6 +21,7 @@ pub fn tables_personnelles() -> &'static [&'static str] {
         "recaps",
         "partages_stats",
         "partages_trophees",
+        "badges",
         "personnes",
     ]
 }
@@ -147,7 +148,10 @@ mod tests {
             .iter()
             .find(|(chemin, _, _)| chemin.starts_with("/profiles/"))
             .unwrap();
-        assert_eq!(profil.2, json!({"month": [], "total": [], "trophies": []}));
+        assert_eq!(
+            profil.2,
+            json!({"month": [], "total": [], "trophies": [], "badges": []})
+        );
         assert_eq!(e.lignes_de("sub-bruno").await, lignes_de_bruno);
         assert_eq!(e.lectures("bruno").await, bruno);
         let journal: i64 =

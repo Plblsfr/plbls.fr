@@ -5,10 +5,11 @@
   import { openProfile } from '../../lib/profile.svelte'
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
-  import type { Domaine, StatPartagee } from './sablier'
+  import type { ChoixPartage, Domaine, StatPartagee } from './sablier'
   import SablierDonnees from './SablierDonnees.svelte'
   import SablierErreur from './SablierErreur.svelte'
   import SablierMedaille from './SablierMedaille.svelte'
+  import FilmBadgeLigne from '../entracte/FilmBadgeLigne.svelte'
   import { sablier } from './sablier.svelte'
 
   const APERCU = 6
@@ -26,8 +27,12 @@
   const trophees = $derived(sablier.partage?.trophies ?? [])
   const visibles = $derived(tous ? trophees : trophees.slice(0, APERCU))
   const affiches = $derived(trophees.filter((t) => t.shared).length)
+  let tousBadges = $state(false)
+  const badges = $derived(sablier.partage?.badges ?? [])
+  const badgesVisibles = $derived(tousBadges ? badges : badges.slice(0, APERCU))
+  const badgesAffiches = $derived(badges.filter((b) => b.shared).length)
 
-  async function regler(cle: string, choix: { stats?: Record<string, boolean>; trophies?: Record<string, boolean> }, champ: HTMLInputElement) {
+  async function regler(cle: string, choix: ChoixPartage, champ: HTMLInputElement) {
     envoi = cle
     try {
       await sablier.partager(choix)
@@ -97,6 +102,28 @@
           {/if}
         {/if}
       </section>
+      {#if sablier.partage.badges}
+        <section class="sab-sec" aria-label="Badges d’Entracte affichés sur le profil">
+          <div class="sab-tete">
+            <h2 class="sab-h2">Badges d’Entracte sur mon profil</h2>
+            <p class="sab-note">{badges.length ? `${badgesAffiches} ${badgesAffiches >= 2 ? 'affichés' : 'affiché'} sur ${badges.length}. Un nouveau badge est privé ; vu seulement par qui a aussi accès à Entracte.` : 'Aucun badge pour l’instant : termine un film, une saison ou une série dans Entracte.'}</p>
+          </div>
+          {#if badges.length}
+            <div class="sab-card sab-card--serre">
+              {#each badgesVisibles as b (b.key)}
+                <label class="sab-reg plbls-toggle">
+                  <FilmBadgeLigne badge={b} />
+                  <input class="plbls-toggle__input" type="checkbox" role="switch" aria-label="Afficher sur mon profil" checked={b.shared} disabled={envoi === b.key} onchange={(e) => void regler(b.key, { badges: { [b.key]: e.currentTarget.checked } }, e.currentTarget)} />
+                  <span class="plbls-toggle__piste"></span>
+                </label>
+              {/each}
+            </div>
+            {#if badges.length > APERCU && !tousBadges}
+              <div class="sab-ligne"><button class="plbls-button plbls-button--contour plbls-button--compact" type="button" onclick={() => (tousBadges = true)}>Les {badges.length - APERCU} autres</button></div>
+            {/if}
+          {/if}
+        </section>
+      {/if}
       <SablierDonnees />
     {/if}
   </div>

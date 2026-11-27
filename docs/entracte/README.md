@@ -57,6 +57,27 @@ fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la se
 Dans l'app, l'historique est une liste par jour (« Aujourd'hui », « Hier », puis la date) : les épisodes d'une même série vus le même
 jour tiennent sur une ligne (`S1 · E5 à E8 · 4 épisodes`), qui ouvre la fiche de la série ; il se charge par pages de 100 titres.
 
+## Badges
+
+Un badge dit qu'un film, une saison ou une série a été **réellement regardé**, pas seulement marqué vu (`GET /badges`, rubrique
+« Badges » de l'app). Code et tests : `api/entracte/src/badges.rs`.
+
+- **Temps réel par titre** : chaque rapport de position ajoute à `progression.secondes_vues` le temps crédité comme pour Sablier (voir
+  « Temps regardé » plus bas : avancer à la main ne compte pas), plafonné à la durée. Deux sauts comptent comme regardés, une fois
+  chacun par personne et par titre : « Passer l'intro » (`POST /titles/{id}/intro-skipped`) crédite le reste de l'intro si la dernière
+  position connue y est, ou au plus 20 s avant, et « Épisode suivant » (`POST /titles/{id}/outro-skipped`) crédite le reste du titre si
+  la dernière position est à 180 s au plus de la fin, puis place la position à la fin (le titre devient vu).
+- **Regardé** : un titre l'est dès que `secondes_vues` atteint 90 % de la durée (table `regardes`, une ligne par personne et par titre,
+  jamais retirée). Revoir un passage compte : le cumul porte sur toutes les lectures du titre.
+- **Badges** (table `badges`, jamais retirés) : un film regardé ; une saison (hors saison 0, les épisodes spéciaux) dont tous les épisodes
+  sont regardés, le nombre attendu étant le plus grand de celui de TMDB (`saisons.episodes`) et des épisodes connus d'Entracte ; une
+  série dont toutes les saisons ont leur badge. Daté du dernier titre regardé qui le complète. Une saison qui gagne des épisodes plus
+  tard garde son badge.
+- **Historique** : la migration `0004_badges` reprend tous les titres déjà vus (`vus`) comme regardés, à leur date. L'attribution
+  tourne au démarrage puis toutes les heures (épisodes retirés, saisons renseignées après coup) et après chaque titre regardé.
+- **Partage** : chaque nouveau badge part à Sablier (`entracte.badge`), qui le garde privé jusqu'à ce que la personne l'affiche sur son
+  profil. L'app en fait aussi une image à partager (feuille de partage du système, ou fichier PNG).
+
 ## Statistiques (Sablier)
 
 Entracte émet des évènements vers [Sablier](../sablier/README.md) par la file commune (`commun::emission::Emetteur`, variables
@@ -71,6 +92,7 @@ identifiants publics d'Entracte (titre, série), jamais de chemin de fichier ni 
 | `entracte.serie_terminee` `{serie}` | quand un épisode devient vu et que tous les épisodes connus de la série (présents ou absents) sont alors vus par la personne |
 | `entracte.abandon` `{titre, genre}` | titre commencé, jamais vu, sans rapport de position depuis 30 jours ; daté de la fin de ces 30 jours |
 | `entracte.intro_passee` `{titre}` | clic sur « Passer l'intro » (`POST /titles/{id}/intro-skipped`, titre dont l'intro est connue) |
+| `entracte.badge` `{genre, titre, saison}` | badge obtenu (voir [Badges](#badges)) : `genre` `film`, `saison` ou `serie`, `titre` le film ou la série, `saison` le numéro ou `null` ; identifiant stable `badge:entracte:<sub>:<genre>:<titre>:<saison ou ->`, daté de l'obtention ; marqué `importe` quand il vient de l'attribution périodique |
 
 - **Temps regardé** : mesuré par le serveur, jamais déclaré par le client. Entre deux rapports consécutifs d'une personne sur un titre,
   Entracte crédite le plus petit du temps d'horloge écoulé et de l'avancée de la position. Position inchangée (pause, mise en mémoire
@@ -94,9 +116,10 @@ identifiants publics d'Entracte (titre, série), jamais de chemin de fichier ni 
 | titre vu | `entracte.lecture` (`secondes` = durée du titre) et `entracte.vu` | date du « vu » |
 | titre commencé, jamais vu | `entracte.lecture` (`secondes` = position atteinte) | dernier rapport de position |
 | série dont tous les épisodes connus sont vus | `entracte.serie_terminee` | dernier épisode vu |
+| badge (table `badges`, après une attribution) | `entracte.badge` | obtention |
 
 Identifiants déterministes : `import:entracte:lecture:<sub>:<titre>`, `import:entracte:vu:<sub>:<titre>`,
-`import:entracte:serie_terminee:<sub>:<série>`. La commande peut être relancée : Sablier ignore un identifiant déjà reçu. Elle n'émet ni
+`import:entracte:serie_terminee:<sub>:<série>`, et pour un badge le même identifiant qu'en direct. La commande peut être relancée : Sablier ignore un identifiant déjà reçu. Elle n'émet ni
 abandon ni intro passée, attend l'accusé de Redis pour chaque évènement et s'arrête à la première erreur (`SABLIER_REDIS_URL` absent,
 Redis injoignable) avec un code de sortie 1. Une lecture faite après la mise en service de l'émission est déjà comptée en direct :
 relancer l'import plus tard ne la recompte pas si son titre était déjà dans l'import précédent, mais un titre commencé depuis y
@@ -111,7 +134,9 @@ En local (variables de `deploy/dev.env` chargées) : `cargo run -p entracte -- i
 ## Intros
 
 Le lecteur propose « Passer l'intro » (bouton, ou touche S) tant que la position est dans `[debut, fin)` ; un clic saute à `fin`
-et le signale à Entracte (`POST /titles/{id}/intro-skipped`, échec ignoré) pour les [statistiques](#statistiques-sablier).
+et le signale à Entracte (`POST /titles/{id}/intro-skipped`, échec ignoré) pour les [statistiques](#statistiques-sablier) et les
+[badges](#badges). « Épisode suivant » apparaît dans les deux dernières minutes d'un épisode (le générique de fin n'est pas détecté) et
+le signale de même (`POST /titles/{id}/outro-skipped`).
 Les bornes viennent d'une comparaison audio entre les épisodes d'une même saison : les fichiers n'ont pas besoin de chapitres.
 Seules les séries sont concernées (ni films, ni génériques de fin, ni saisie manuelle). Dans le salon cinéma d'Estompe, le bouton
 (ou la touche S) est proposé à qui peut piloter la lecture et déplace la séance de tous les participants à `fin`.

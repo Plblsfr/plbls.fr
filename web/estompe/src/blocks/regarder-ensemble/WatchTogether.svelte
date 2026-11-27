@@ -52,7 +52,10 @@
   $effect(() => { if (s) { s.rev; s.video; player?.apply() } })
   $effect(() => { s?.provider; s?.video; player?.setVolume(muted ? 0 : vol) })
   const pct = (v: number, max: number) => `${max ? Math.min(100, (v / max) * 100) : 0}%`
-  const stop = () => void api.watchAction(channelId, 'ended', { rev: s!.rev }, kind).catch(fail)
+  const stop = () => {
+    if (s?.provider === 'film' && player && nearEnd(player.position, player.duration)) void filmsApi.outroSkipped(s.video).catch(() => {})
+    void api.watchAction(channelId, 'ended', { rev: s!.rev }, kind).catch(fail)
+  }
   const toggle = () => player?.command({ action: s!.playing ? 'pause' : 'play', position: player.position })
   const intro = $derived(s?.provider === 'film' ? (player?.tracks?.intro ?? null) : null)
   const skippable = $derived(!!player && canDrive && !player.error && !player.loading && inIntro(player.position, intro))

@@ -207,6 +207,19 @@ impl AppState {
                 }
             });
         }
+        let etat = self.clone();
+        tokio::spawn(async move {
+            let mut t = tokio::time::interval(crate::badges::PERIODE);
+            loop {
+                t.tick().await;
+                match crate::badges::attribuer(etat.pool(), None).await {
+                    Ok(liste) => liste
+                        .iter()
+                        .for_each(|b| etat.emetteur().emettre(b.evenement(true))),
+                    Err(e) => tracing::warn!("badges non attribués : {e}"),
+                }
+            }
+        });
         tokio::spawn(crate::intros::travailleur(self.clone()));
         let etat = self.clone();
         let periode = self.config().periode_synchro;
