@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError } from '../../lib/api'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { ApiError, filmsApi } from '../../lib/api'
+import type { FilmDetail } from '../entracte/films'
 import { partage } from './essais'
 import SablierPartage from './SablierPartage.svelte'
 import SablierProfil from './SablierProfil.svelte'
@@ -113,5 +114,36 @@ describe('partage sur le profil', () => {
     expect(bloc(profil)!.textContent).toContain('Depuis le 3 mars 2024.')
     expect(bloc(profil)!.textContent).toContain('Signature')
     expect(profil.queryByRole('group', { name: 'Période des stats' })).toBeNull()
+  })
+
+  it('un badge d’Entracte rendu public part en PUT et s’affiche sur le profil avec le titre lu dans Entracte', async () => {
+    const base = filmsApi.base
+    filmsApi.base = 'https://entracte.test'
+    onTestFinished(() => { filmsApi.base = base })
+    vi.spyOn(filmsApi, 'item').mockImplementation(async (id: string) => ({ id, title: id === 'f1' ? 'Le Grand Film' : 'La Série', poster: false }) as FilmDetail)
+    const badges = [
+      { key: 'season:s1:2', kind: 'season' as const, title_id: 's1', season: 2, obtained_at: '2026-03-02T20:00:00Z', shared: false },
+      { key: 'movie:f1', kind: 'movie' as const, title_id: 'f1', season: null, obtained_at: '2026-03-01T20:00:00Z', shared: false },
+    ]
+    const etat: Partage = { ...partage(), badges }
+    const partager = vi.spyOn(sablierApi, 'partager').mockImplementation(async (choix: ChoixPartage) => {
+      for (const b of badges) if (choix.badges && b.key in choix.badges) b.shared = choix.badges[b.key]
+      return structuredClone(etat)
+    })
+    vi.spyOn(sablierApi, 'partage').mockImplementation(async () => structuredClone(etat))
+    vi.spyOn(sablierApi, 'profil').mockImplementation(async () => ({ month: [], total: [], trophies: [], badges: badges.filter((b) => b.shared).map(({ shared: _s, ...b }) => b) }))
+    const vue = render(SablierPartage)
+    await waitFor(() => expect(vue.getAllByText('Le Grand Film').length).toBeGreaterThan(0))
+    expect(vue.getByText('0 affiché sur 2. Un nouveau badge est privé ; vu seulement par qui a aussi accès à Entracte.')).toBeInTheDocument()
+    const reglages = vue.getAllByRole('switch', { name: 'Afficher sur mon profil' })
+    expect(reglages).toHaveLength(2)
+    await fireEvent.click(reglages[1])
+    await waitFor(() => expect(partager).toHaveBeenCalledWith({ badges: { 'movie:f1': true } }))
+    const profil = render(SablierProfil, { id: 'u-moi' })
+    await waitFor(() => expect(bloc(profil)).not.toBeNull())
+    expect(profil.getByText('Badges d’Entracte')).toBeInTheDocument()
+    await waitFor(() => expect(bloc(profil)!.textContent).toContain('Le Grand Film'))
+    expect(bloc(profil)!.textContent).toContain('Film terminé · 1 mars 2026')
+    expect(bloc(profil)!.textContent).not.toContain('Saison 2')
   })
 })

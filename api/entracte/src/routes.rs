@@ -7,11 +7,11 @@ use axum::{
 };
 
 use crate::{
-    bibliotheque, demandes,
+    badges, bibliotheque, demandes,
     droits::Droit::{Acces, Admin, Demande},
     etat::AppState,
     garde::{self, Garde},
-    gestion, interne, intros, lecture, progression, push, sablier,
+    gestion, interne, intros, lecture, progression, push,
 };
 
 pub struct Route {
@@ -108,7 +108,19 @@ pub fn table() -> Vec<(Route, MethodRouter<AppState>)> {
             Method::POST,
             "/titles/{id}/intro-skipped",
             Garde::Droit(Acces),
-            post(sablier::intro_passee),
+            post(badges::intro_sautee),
+        ),
+        r(
+            Method::POST,
+            "/titles/{id}/outro-skipped",
+            Garde::Droit(Acces),
+            post(badges::fin_sautee),
+        ),
+        r(
+            Method::GET,
+            "/badges",
+            Garde::Droit(Acces),
+            get(badges::liste),
         ),
         r(
             Method::POST,

@@ -3,6 +3,7 @@
   import { jourLong, jourMoyen, majuscule, nomMois, valeur } from './formats'
   import { sablierApi, type Profil, type ValeurPublique } from './sablier'
   import SablierMedaille from './SablierMedaille.svelte'
+  import FilmBadgeLigne from '../entracte/FilmBadgeLigne.svelte'
 
   let { id, mien = false, onregler }: { id: string; mien?: boolean; onregler?: () => void } = $props()
   let profil = $state.raw<Profil | null>(null)
@@ -19,7 +20,8 @@
   const aujourdhui = new Date()
   const moisCourant = majuscule(nomMois(`${aujourdhui.getFullYear()}-${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-01`))
   const stats = $derived(!!profil && (profil.month.length > 0 || profil.total.length > 0 || !!profil.first_day))
-  const visible = $derived(!!profil && (stats || profil.trophies.length > 0))
+  const badges = $derived(profil?.badges ?? [])
+  const visible = $derived(!!profil && (stats || profil.trophies.length > 0 || badges.length > 0))
   const onglet = $derived<'mois' | 'total'>(profil && !profil.month.length ? 'total' : profil && !profil.total.length && !profil.first_day ? 'mois' : choix)
   const liste = $derived<ValeurPublique[]>(profil ? (onglet === 'mois' ? profil.month : profil.total) : [])
   const libelle = (v: ValeurPublique) => (v.domain === 'entracte' ? `${v.label} · Entracte` : v.domain === 'sillon' ? `${v.label} · Sillon` : v.label)
@@ -55,6 +57,14 @@
           {#each profil.trophies as t, n (n)}
             <li><SablierMedaille icone={t.icon} taille="m" /><div class="sab-col sab-grow" style:gap="2px"><p class="sab-h3">{t.name}</p><p class="sab-note">{t.tier >= 2 ? `Palier ${t.tier} · ` : ''}{jourMoyen(t.unlocked_at)}</p></div></li>
           {/each}
+        </ul>
+      </section>
+    {/if}
+    {#if badges.length}
+      <section class="sab-sec" aria-label="Badges d’Entracte">
+        <h3 class="sab-h3">Badges d’Entracte</h3>
+        <ul>
+          {#each badges as b (b.key)}<li><FilmBadgeLigne badge={b} /></li>{/each}
         </ul>
       </section>
     {/if}

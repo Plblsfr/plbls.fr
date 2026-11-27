@@ -19,7 +19,7 @@ Déclarées à aegis par manifeste (application `sablier`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses séries, ses récaps, ses réglages de partage, la liste des admins qui ont consulté ses stats (`GET /views`), l'export (`GET /export`) et l'effacement (`DELETE /data`) de ses données, et les stats et trophées publics d'une autre personne (`GET /profiles/{user}`) |
+| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses badges d'Entracte, ses séries, ses récaps, ses réglages de partage, la liste des admins qui ont consulté ses stats (`GET /views`), l'export (`GET /export`) et l'effacement (`DELETE /data`) de ses données, et les stats et trophées publics d'une autre personne (`GET /profiles/{user}`) |
 | `sablier:admin` | configuration des trophées (`/admin/trophies`, `/admin/catalogue`), statistiques, trophées et récaps de n'importe qui (`/admin/people/{sub}/…`), totaux globaux (`/admin/totals`), journal des consultations (`/admin/audit`), effacement des données d'une personne |
 
 La personne visée n'est un paramètre que sur les routes `sablier:admin` (`/admin/people/{sub}/…`) : les routes `sablier:access` lisent
@@ -63,6 +63,7 @@ Les identifiants des données sont des identifiants publics opaques (chaînes), 
 | `entracte.serie_terminee` | `serie` |
 | `entracte.abandon` | `titre`, `genre` |
 | `entracte.intro_passee` | `titre` |
+| `entracte.badge` | `genre` (`film`, `saison`, `serie`), `titre` (film ou série), `saison` (ou `null`) : badge de visionnage obtenu |
 | `sillon.ecoute` | `piste`, `secondes`, `comptee` |
 | `estompe.message` | `serveur`, `salon` (ou `null`), `prive` |
 | `estompe.fichier` | `serveur`, `salon`, `prive`, `nombre` |
@@ -109,6 +110,7 @@ démarre sans consommer ; Redis en panne : nouvel essai toutes les 5 s, battemen
 | `a_evaluer` | personnes dont les trophées sont à réévaluer |
 | `recaps` | récaps figés : personne, genre (`mois`, `annee`), période (`2026-10`, `2026`), contenu JSON, `vu_le` |
 | `partages_stats`, `partages_trophees` | ce que chaque personne a rendu public (une ligne = partagé) |
+| `badges` | badges de visionnage reçus d'Entracte : genre, titre, saison (0 hors saison), date d'obtention, `partage` |
 | `personnes` | annuaire tenu par Sablier, utilisé en repli de celui d'aegis : nom et dernier passage de chaque personne vue connectée (`nom`, `vu_le`) |
 | `consultations` | journal des consultations et des effacements faits par les admins : `admin_sub`, `admin_nom`, `cible_sub`, `action`, `date` |
 
@@ -314,13 +316,15 @@ l'année le 1er janvier. Au premier lancement, seuls le mois précédent et l'an
 ## Partage et profil
 
 Tout est privé par défaut. `GET /sharing` rend les réglages de la personne, stat par stat (stats partageables du catalogue, pour les
-domaines auxquels elle a accès) et trophée par trophée (trophées débloqués et actifs) ; `PUT /sharing` les modifie (envoi partiel ; une
-stat non partageable ou un trophée non débloqué est refusé, et rien n'est modifié).
+domaines auxquels elle a accès), trophée par trophée (trophées débloqués et actifs) et badge par badge (`badges` :
+`{key, kind: movie|season|series, title_id, season, obtained_at, shared}`, du plus récent au plus ancien, avec `entracte:access`
+seulement) ; `PUT /sharing` les modifie (envoi partiel, `badges` : `{clé: booléen}` avec la clé `movie:<titre>`, `season:<série>:<n>` ou
+`series:<série>` ; une stat non partageable, un trophée non débloqué ou un badge non obtenu est refusé, et rien n'est modifié).
 
 `GET /profiles/{user}` est la seule route `sablier:access` qui vise une autre personne. `{user}` est l'identifiant de la personne dans
 Estompe (uuid), le seul que le front connaisse ; une autre forme : `400 invalid`. Elle ne sert que ce que la cible a partagé :
 ses stats sur le mois en cours et au total (valeurs nulles omises), son premier jour si `usage.first_day` est partagée, ses trophées
-partagés. Trois contrôles s'appliquent :
+partagés et ses badges partagés (`badges`, sans `shared` ; Sablier ne connaît que les identifiants, le front lit les titres dans Entracte). Trois contrôles s'appliquent :
 
 1. une stat ou un trophée non partagé n'est jamais servi ;
 2. une stat ou un trophée d'Entracte ou de Sillon n'est servi que si le **lecteur** a `entracte:access` ou `sillon:access` ;
@@ -399,7 +403,8 @@ Le journal n'est pas une donnée de la personne consultée : il n'est ni purgé 
 
 `GET /export` (`sablier:access`) rend un fichier JSON (`Content-Disposition: attachment; filename="sablier-export-AAAA-MM-JJ.json"`)
 avec tout ce que Sablier garde de la personne de la session : agrégats par jour (`aggregates`, sous leurs noms de stockage), trophées
-débloqués (`trophies`, un par palier), récaps figés (`recaps`), réglages de partage (`sharing`), évènements bruts encore conservés
+débloqués (`trophies`, un par palier), récaps figés (`recaps`), réglages de partage (`sharing`), badges d'Entracte avec leur partage
+(`badges`), évènements bruts encore conservés
 (`events`), consultations par les admins (`views`) et état de la collecte (`name`, `last_seen`, `last_heartbeat`, `entracte_session`,
 `pending_evaluation`). Chaque table de `tables_personnelles()` a sa section (`export::sections()`, vérifié par un test), et l'export ne
 contient aucune donnée d'une autre personne.
@@ -412,7 +417,8 @@ refuser (JSON incomplet).
 
 `DELETE /data` (`sablier:access`) avec le corps `{"confirm": "EFFACER"}` supprime définitivement, en une transaction
 (`effacement::effacer`), toutes les lignes de la personne dans les tables de `tables_personnelles()` : évènements bruts, agrégats,
-trophées débloqués, récaps, réglages de partage, session Entracte en cours, dernier battement, ligne d'annuaire. Toute autre valeur de
+trophées débloqués, récaps, réglages de partage, badges, session Entracte en cours, dernier battement, ligne d'annuaire. Entracte garde
+ses propres badges : seuls ceux obtenus ensuite reviennent dans Sablier (ou tous, en relançant `entracte importer-sablier`). Toute autre valeur de
 `confirm` : 400, rien n'est effacé. `DELETE /admin/people/{sub}/data` (`sablier:admin`, même corps) fait la même chose pour une autre
 personne.
 

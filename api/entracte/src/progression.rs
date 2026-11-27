@@ -11,6 +11,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::{
+    badges,
     bibliotheque::{COLONNES, jointures, public, uuid},
     etat::AppState,
     garde::Personne,
@@ -43,18 +44,22 @@ pub async fn enregistrer(
     titre: Uuid,
     position: f64,
     duree: f64,
+    regarde: f64,
 ) -> Result<bool, sqlx::Error> {
     let termine = position >= duree * SEUIL_VU;
     sqlx::query(
-        "INSERT INTO progression (sub, titre_id, position, duree, termine) VALUES ($1, $2, $3, $4, $5)
+        "INSERT INTO progression (sub, titre_id, position, duree, termine, secondes_vues)
+         VALUES ($1, $2, $3, $4, $5, LEAST($4, $6))
          ON CONFLICT (sub, titre_id) DO UPDATE SET position = EXCLUDED.position, duree = EXCLUDED.duree,
-           termine = EXCLUDED.termine, maj = now()",
+           termine = EXCLUDED.termine, secondes_vues = LEAST(EXCLUDED.duree, progression.secondes_vues + $6),
+           maj = now()",
     )
     .bind(sub)
     .bind(titre)
     .bind(position)
     .bind(duree)
     .bind(termine)
+    .bind(regarde)
     .execute(pool)
     .await?;
     if !termine {
@@ -70,6 +75,7 @@ pub async fn enregistrer(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn rapporter(
     pool: &PgPool,
     lectures: &Lectures,
@@ -78,13 +84,22 @@ pub async fn rapporter(
     position: f64,
     duree: f64,
     maintenant: Instant,
+    saute: f64,
 ) -> Result<Option<Vec<Evenement>>, sqlx::Error> {
     let Some(titre) = sablier::titre(pool, id).await? else {
         return Ok(None);
     };
-    let vu = enregistrer(pool, sub, id, position, duree).await?;
-    let mut evenements = Vec::new();
     let secondes = lectures.crediter(sub, id, position, maintenant);
+    let vu = enregistrer(
+        pool,
+        sub,
+        id,
+        position,
+        duree,
+        f64::from(secondes).max(saute),
+    )
+    .await?;
+    let mut evenements = Vec::new();
     if secondes > 0 {
         evenements.push(Evenement::nouveau(sub, titre.lecture(secondes)));
     }
@@ -101,6 +116,12 @@ pub async fn rapporter(
             ));
         }
     }
+    evenements.extend(
+        badges::regarder(pool, sub, id)
+            .await?
+            .iter()
+            .map(|b| b.evenement(false)),
+    );
     Ok(Some(evenements))
 }
 
@@ -125,6 +146,7 @@ pub async fn progression(
         position,
         duree,
         Instant::now(),
+        0.0,
     )
     .await
     .map_err(bd)?

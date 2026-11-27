@@ -1,7 +1,7 @@
 /** Navigateur et PWA : tout ce que le frontend utilise de la plateforme, sans code natif. */
 import type { Platform } from '../../src/lib/platform'
 import { reseauDuNavigateur } from '../../src/lib/reseau'
-import { isStandalone } from './browser'
+import { isStandalone, partagerImage } from './browser'
 import Downloads from './Downloads.svelte'
 import { notifications } from './notifications'
 import UpdateSettings from './UpdateSettings.svelte'
@@ -39,6 +39,7 @@ export const platform: Platform = {
   openFromNotification: () => false,
   cancelNotification() {},
   network: reseauDuNavigateur,
+  shareImage: typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? partagerImage : undefined,
   reportShortcut: true,
   micHelp: ' Autorisez-le dans les réglages du navigateur ou du système (sur Mac : Réglages Système › Confidentialité et sécurité › Microphone).',
   label: () => (isStandalone() ? 'PWA' : 'navigateur'),

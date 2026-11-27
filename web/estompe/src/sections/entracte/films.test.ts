@@ -82,8 +82,8 @@ describe('progression', () => {
     expect(seasonAfter(saisons, 3)).toBeUndefined()
   })
   it('fin d’un titre : les trente dernières secondes', () => {
-    expect(nearEnd(2969, 3000)).toBe(false)
-    expect(nearEnd(2970, 3000)).toBe(true)
+    expect(nearEnd(2879, 3000)).toBe(false)
+    expect(nearEnd(2880, 3000)).toBe(true)
     expect(nearEnd(10, 0)).toBe(false)
   })
 })

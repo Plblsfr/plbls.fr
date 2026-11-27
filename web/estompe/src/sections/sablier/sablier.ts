@@ -1,4 +1,5 @@
 import { fichierAt, requestAt } from '../../lib/api'
+import type { GenreBadge } from '../entracte/badges'
 import { config } from '../../lib/config'
 
 export const SABLIER_URL = config.sablierUrl
@@ -143,11 +144,13 @@ export interface Recap {
 
 export interface StatPartagee { key: string; label: string; domain: Domaine; shared: boolean }
 export interface TropheePartage { id: number; name: string; icon: string; shared: boolean }
-export interface Partage { stats: StatPartagee[]; trophies: TropheePartage[] }
-export interface ChoixPartage { stats?: Record<string, boolean>; trophies?: Record<string, boolean> }
+export interface BadgePublic { key: string; kind: GenreBadge; title_id: string; season: number | null; obtained_at: string }
+export interface BadgePartage extends BadgePublic { shared: boolean }
+export interface Partage { stats: StatPartagee[]; trophies: TropheePartage[]; badges?: BadgePartage[] }
+export interface ChoixPartage { stats?: Record<string, boolean>; trophies?: Record<string, boolean>; badges?: Record<string, boolean> }
 
 export interface ValeurPublique { key: string; label: string; domain: Domaine; unit: Unite; value: number }
-export interface Profil { month: ValeurPublique[]; total: ValeurPublique[]; first_day?: string; trophies: TropheePublic[] }
+export interface Profil { month: ValeurPublique[]; total: ValeurPublique[]; first_day?: string; trophies: TropheePublic[]; badges?: BadgePublic[] }
 
 export interface Vue { date: string; admin_name: string; action: 'consultation' | 'effacement' }
 

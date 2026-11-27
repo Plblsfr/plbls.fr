@@ -42,6 +42,12 @@ système de Chromium doivent être présentes).
   `SectionsShell`, ni WebSocket ni route de la messagerie), les deux affichent l'onglet Entracte dans la messagerie. `filmsApi` lit l'API
   d'Entracte (`entracteUrl` : `ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps) ; sans elle, ni section Entracte ni
   salon cinéma. La bibliothèque, la fiche et le lecteur (`Film*.svelte`, `films.ts`) servent aussi au salon cinéma.
+  Badges (`#/films/badges`, `FilmBadges`) : films, saisons et séries réellement regardés (`GET /badges`), filtrés par genre ; un badge ouvre
+  `FilmBadgeCarte`, qui dessine l'image à partager (`dessinerCarte` de `badges.ts`, canevas de 1080 × 1350 avec l'affiche) et propose
+  « Partager » (`platform.shareImage`, absent : pas de bouton), « Enregistrer l'image » (PNG) et, avec Sablier, « Afficher sur mon
+  profil » (`PUT /sharing`). `FilmBadgeLigne` (titre lu dans Entracte, mis en cache) sert aussi au réglage de partage et au profil.
+  « Épisode suivant » (lecteur et salon cinéma) paraît dans les deux dernières minutes (`NEXT_BEFORE_END`) et envoie
+  `POST /titles/{id}/outro-skipped`, comme « Passer l'intro » envoie `intro-skipped`.
   Sans messagerie, la phase `sections` (`views/SectionsShell.svelte`) affiche Entracte, Sillon ou les deux, sans WebSocket ; la section Stats s'y ajoute
   avec `sablier:access`, mais ne suffit pas à ouvrir cette phase.
 - `src/sections/regie` : section Régie (administration des médias, API à part, [`docs/regie`](../../docs/regie/README.md)), affichée dans la
@@ -89,7 +95,7 @@ système de Chromium doivent être présentes).
     débloqué ou récap disponible à l'ouverture, dans `Modal`). `SablierSeries` et `SablierTrophees` ne servent plus qu'à `SablierPersonne`.
   - `#/stats/recaps` : `SablierRecaps`, liste des récaps ; `#/stats/recaps/<id>` : `SablierRecap`, le récap en histoire, plein écran
     (flèches, Début, Fin, Échap ; moitiés gauche et droite ; balayage).
-  - `#/stats/partage` : `SablierPartage`, réglage de partage stat par stat et trophée par trophée (`PUT /sharing` à chaque bascule), puis
+  - `#/stats/partage` : `SablierPartage`, réglage de partage stat par stat, trophée par trophée et badge d'Entracte par badge (`PUT /sharing` à chaque bascule), puis
     `SablierDonnees` : export (`GET /export` lu en blob par `fichierAt` de `lib/api.ts`, enregistré sous le nom de `Content-Disposition`
     par un lien `download`, comme les autres exports de l'app), effacement (`DELETE /data`, après la confirmation partagée `ConfirmModal`
     où il faut écrire EFFACER ; l'état de la section est ensuite remis à zéro et la section rouverte), journal « qui a consulté mes
@@ -102,7 +108,7 @@ système de Chromium doivent être présentes).
     `trophees` (`SablierAdminTrophees` : liste, activation), `trophees/nouveau` et `trophees/<id>` (`SablierTropheeEdition`). L'effacement
     des données d'une personne passe par la même confirmation EFFACER (`effacement.ts`).
   - Profil : `SablierProfil` dans `ProfileModal`, si Sablier est configuré et que le lecteur a `sablier:access` ; il rend ce que
-    `GET /profiles/{user}` sert pour l'identifiant Estompe de la personne (le sien compris, donc aussi depuis un message privé), et rien
+    `GET /profiles/{user}` sert pour l'identifiant Estompe de la personne, badges d'Entracte compris (le sien aussi, donc depuis un message privé), et rien
     si c'est vide ou en échec. Le front ne connaît le `sub` d'aucune autre personne.
   - Logique pure, testée à part : `formats.ts` (durées, nombres, jours), `periodes.ts` (bornes et navigation : ni avant `first_day`, ni après
     la période en cours), `stats.ts` (ce qu'une carte affiche : une stat nulle n'a pas de ligne, `{access: false}` donne la carte courte au

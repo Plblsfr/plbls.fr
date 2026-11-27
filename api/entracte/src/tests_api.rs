@@ -1843,6 +1843,9 @@ async fn reponses_identiques_sans_redis_ou_avec_redis_arrete() {
         ("POST", format!("/titles/{e1}/intro-skipped"), None),
         ("POST", format!("/titles/{a}/intro-skipped"), None),
         ("POST", "/titles/inconnu/intro-skipped".to_string(), None),
+        ("POST", format!("/titles/{a}/outro-skipped"), None),
+        ("POST", format!("/titles/{serie}/outro-skipped"), None),
+        ("GET", "/badges".to_string(), None),
     ];
     let mut passes = Vec::new();
     for app in [&e.app, &arrete] {
@@ -1868,7 +1871,11 @@ async fn reponses_identiques_sans_redis_ou_avec_redis_arrete() {
         .iter()
         .map(|r| r.0.as_u16())
         .collect();
-    assert_eq!(statuts, [204, 204, 204, 204, 404, 400, 204, 404, 404]);
+    assert_eq!(
+        statuts,
+        [204, 204, 204, 204, 404, 400, 204, 404, 404, 204, 404, 200]
+    );
+    assert_eq!(passes[0].0[11].1, r#"{"items":[]}"#);
     assert_eq!(passes[0].0, passes[1].0);
     assert!(
         passes[1].1 < passes[0].1 + Duration::from_secs(1),
@@ -3169,4 +3176,69 @@ async fn admin_pilote_radarr_et_sonarr() {
         ),
         (json!("refusee"), json!("Doublon"))
     );
+}
+
+#[tokio::test]
+async fn badges_de_la_personne_avec_titres_et_saisons() {
+    let Some(e) = env().await else { return };
+    synchro(&e).await;
+    let a = id_de(&e, "Film A").await;
+    let serie = id_de(&e, "La Série").await;
+    sqlx::query(
+        "INSERT INTO regardes (sub, titre_id, regarde_le)
+         SELECT 'sub-alice', id, '2026-03-01T20:00:00Z'::timestamptz FROM titres WHERE id = $1::uuid
+         UNION ALL SELECT 'sub-alice', id, '2026-03-02T20:00:00Z'::timestamptz FROM titres WHERE serie_id = $2::uuid AND saison = 1",
+    )
+    .bind(&a)
+    .bind(&serie)
+    .execute(e.state.pool())
+    .await
+    .unwrap();
+    let nouveaux = crate::badges::attribuer(e.state.pool(), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        nouveaux
+            .iter()
+            .map(|b| (b.genre, b.saison))
+            .collect::<Vec<_>>(),
+        [
+            (commun::evenements::GenreBadge::Film, None),
+            (commun::evenements::GenreBadge::Saison, Some(1))
+        ],
+        "la saison 2, connue de TMDB et absente de la bibliothèque, manque à la série"
+    );
+    let r = get(&e, "alice", "/badges").await;
+    assert_eq!(r.statut, StatusCode::OK);
+    let items = r.json()["items"].as_array().unwrap().clone();
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        (
+            items[0]["kind"].clone(),
+            items[0]["title_id"].clone(),
+            items[0]["season"].clone(),
+            items[0]["title"].clone(),
+            items[0]["episodes"].clone(),
+            items[0]["obtained_at"].clone()
+        ),
+        (
+            json!("season"),
+            json!(serie),
+            json!(1),
+            json!("La Série"),
+            json!(2),
+            json!("2026-03-02T20:00:00.000Z")
+        )
+    );
+    assert_eq!(
+        (
+            items[1]["kind"].clone(),
+            items[1]["title_id"].clone(),
+            items[1]["season"].clone(),
+            items[1]["episodes"].clone()
+        ),
+        (json!("movie"), json!(a), json!(null), json!(null))
+    );
+    sans_fuite(&e, &r.texte(), "/badges");
+    assert_eq!(get(&e, "bob", "/badges").await.json(), json!({"items": []}));
 }

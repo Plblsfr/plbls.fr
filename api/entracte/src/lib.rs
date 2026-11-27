@@ -2,6 +2,7 @@
 
 pub mod arr;
 pub mod arr_gestion;
+pub mod badges;
 pub mod bibliotheque;
 pub mod catalogue;
 pub mod config;

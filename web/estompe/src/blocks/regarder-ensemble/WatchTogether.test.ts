@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api } from '../../lib/api'
+import { api, filmsApi } from '../../lib/api'
 import { app } from '../../lib/store.svelte'
 import { tick } from 'svelte'
 import { providers, type Adapter, type Handlers } from './providers'
@@ -86,6 +86,7 @@ describe('salon cinéma : recharger le lecteur', () => {
   it('à la fin d’un épisode, « Épisode suivant » passe la séance au titre suivant de la file', async () => {
     vi.spyOn(api, 'watchReady').mockResolvedValue(undefined as never)
     const action = vi.spyOn(api, 'watchAction').mockResolvedValue(undefined as never)
+    const fin = vi.spyOn(filmsApi, 'outroSkipped').mockResolvedValue()
     const { load, pret, temps } = seance({ queue: suite })
     const vue = render(WatchTogether, { channelId: 'c1', people: [], kind: 'cinema' })
     await vi.waitFor(() => expect(load).toHaveBeenCalled())
@@ -97,6 +98,7 @@ describe('salon cinéma : recharger le lecteur', () => {
     await vi.waitFor(() => expect(bouton()?.textContent).toContain('Épisode suivant'))
     await fireEvent.click(bouton()!)
     expect(action).toHaveBeenCalledWith('c1', 'ended', { rev: 3 }, 'cinema')
+    expect(fin).toHaveBeenCalledTimes(1)
     vue.unmount()
   })
 

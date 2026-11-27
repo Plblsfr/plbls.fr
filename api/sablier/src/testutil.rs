@@ -503,6 +503,11 @@ impl Env {
                 serie: None,
                 secondes: 600,
             },
+            Donnees::EntracteBadge {
+                genre: commun::evenements::GenreBadge::Film,
+                titre: format!("titre-{sub}"),
+                saison: None,
+            },
         ];
         for (i, donnees) in evenements.into_iter().enumerate() {
             let id = format!("{sub}-evt-{i}");

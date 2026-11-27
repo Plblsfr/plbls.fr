@@ -3,6 +3,7 @@
   import FilmDetail from './FilmDetail.svelte'
   import FilmPlayer from './FilmPlayer.svelte'
   import FilmHistory from './FilmHistory.svelte'
+  import FilmBadges from './FilmBadges.svelte'
   import FilmsLibrary from './FilmsLibrary.svelte'
   import EntracteSearch from './EntracteSearch.svelte'
   import EntracteAdmin from './EntracteAdmin.svelte'
@@ -56,6 +57,8 @@
     <EntracteAdmin />
   {:else if section === 'seen'}
     <FilmHistory />
+  {:else if section === 'badges'}
+    <FilmBadges />
   {:else}
     <FilmsLibrary {section} />
   {/if}

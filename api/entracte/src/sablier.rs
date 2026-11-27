@@ -5,10 +5,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{
-    extract::{Path, State},
-    response::Response,
-};
 use chrono::{DateTime, Utc};
 use commun::{
     emission::{Emetteur, VARIABLE_URL},
@@ -17,13 +13,7 @@ use commun::{
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use uuid::Uuid;
 
-use crate::{
-    bibliotheque::uuid,
-    etat::AppState,
-    garde::Personne,
-    http::{bd, introuvable, sans_contenu},
-    progression::DUREE_MAX,
-};
+use crate::progression::DUREE_MAX;
 
 pub const COMMANDE: &str = "importer-sablier";
 pub const TRANCHE_MAX: Duration = Duration::from_secs(45);
@@ -158,35 +148,12 @@ pub async fn abandons(pool: &PgPool, jours: i32) -> Result<Vec<Evenement>, sqlx:
         .collect())
 }
 
-pub async fn intro_passee(
-    State(state): State<AppState>,
-    p: Personne,
-    Path(id): Path<String>,
-) -> Result<Response, Response> {
-    let id = uuid(&id)?;
-    let connue: bool =
-        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM intros WHERE titre_id = $1)")
-            .bind(id)
-            .fetch_one(state.pool())
-            .await
-            .map_err(bd)?;
-    if !connue {
-        return Err(introuvable());
-    }
-    state.emetteur().emettre(Evenement::nouveau(
-        p.sub(),
-        Donnees::EntracteIntroPassee {
-            titre: id.to_string(),
-        },
-    ));
-    Ok(sans_contenu())
-}
-
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Rapport {
     pub lectures: usize,
     pub vus: usize,
     pub series: usize,
+    pub badges: usize,
 }
 
 impl Rapport {
@@ -196,6 +163,7 @@ impl Rapport {
             lectures: compte("entracte.lecture"),
             vus: compte("entracte.vu"),
             series: compte("entracte.serie_terminee"),
+            badges: compte("entracte.badge"),
         }
     }
 }
@@ -204,8 +172,8 @@ impl fmt::Display for Rapport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "Import vers Sablier : {} lectures, {} titres vus, {} séries terminées.",
-            self.lectures, self.vus, self.series
+            "Import vers Sablier : {} lectures, {} titres vus, {} séries terminées, {} badges.",
+            self.lectures, self.vus, self.series, self.badges
         )
     }
 }
@@ -271,6 +239,18 @@ pub async fn historique(pool: &PgPool) -> Result<Vec<Evenement>, sqlx::Error> {
             },
         ));
     }
+    crate::badges::attribuer(pool, None).await?;
+    let badges = sqlx::query(
+        "SELECT sub, genre, titre_id, saison, obtenu_le FROM badges ORDER BY sub, obtenu_le, genre, titre_id, saison",
+    )
+    .fetch_all(pool)
+    .await?;
+    evenements.extend(
+        badges
+            .iter()
+            .filter_map(crate::badges::Badge::lu)
+            .map(|b| b.evenement(true)),
+    );
     Ok(evenements)
 }
 
@@ -493,6 +473,7 @@ mod tests {
                 position,
                 duree,
                 debut + Duration::from_secs(horloge),
+                0.0,
             )
             .await
             .unwrap()
@@ -573,7 +554,8 @@ mod tests {
                 b.serie,
                 1.0,
                 10.0,
-                Instant::now()
+                Instant::now(),
+                0.0
             )
             .await
             .unwrap()
@@ -651,6 +633,7 @@ mod tests {
             40.0,
             100.0,
             Instant::now(),
+            0.0,
         )
         .await
         .unwrap();
@@ -767,12 +750,13 @@ mod tests {
             Rapport {
                 lectures: 4,
                 vus: 3,
-                series: 1
+                series: 1,
+                badges: 0
             }
         );
         assert_eq!(
             rapport.to_string(),
-            "Import vers Sablier : 4 lectures, 3 titres vus, 1 séries terminées.\n"
+            "Import vers Sablier : 4 lectures, 3 titres vus, 1 séries terminées, 0 badges.\n"
         );
     }
 

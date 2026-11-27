@@ -2,6 +2,7 @@ import { config } from './config'
 import { debug } from './debuglog.svelte'
 import type { DrawOp, DrawView } from '../blocks/draw2gether/draw'
 import type { FilmDetail, FilmItem, FilmPlayback, FilmReject, PlaybackRequest } from '../sections/entracte/films'
+import type { FilmBadge } from '../sections/entracte/badges'
 import { releaseQuery, type ArrBlocked, type ArrError, type ArrHistory, type ArrImportFile, type ArrMissing, type ArrQueueItem, type ArrRelease, type ArrService, type ArrSheet, type ArrTitle, type ReleaseTarget } from '../sections/entracte/arr'
 import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, IntroAdmin, IntroMode, RequestKind, RequestableSeries, SearchResult, SendChoice, SendOptions } from '../sections/entracte/entracte'
 import type {
@@ -403,6 +404,8 @@ export const filmsApi = {
     return imageAt(ENTRACTE_URL, `/titles/${enc(id)}/image?type=${type === 'fond' ? 'backdrop' : 'poster'}&w=${width(w)}`)
   },
   progress: (id: string, position: number, duration: number) => esend<void>('PUT', `/titles/${enc(id)}/progress`, { position, duration }),
+  outroSkipped: (id: string) => esend<void>('POST', `/titles/${enc(id)}/outro-skipped`),
+  badges: () => eget<{ items: FilmBadge[] }>('/badges'),
   playback: (id: string, b: PlaybackRequest) => esend<FilmPlayback>('POST', `/titles/${enc(id)}/playback`, {
     audio: b.audio, quality: b.quality ?? 'original', start: b.start ?? 0, support: b.direct && b.support ? b.support : { containers: [], video: [], audio: [] },
   }),

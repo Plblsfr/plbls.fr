@@ -29,6 +29,7 @@ pub fn sections() -> &'static [(&'static str, &'static str)] {
         ("recaps", "/recaps"),
         ("partages_stats", "/sharing/stats"),
         ("partages_trophees", "/sharing/trophies"),
+        ("badges", "/badges"),
         ("personnes", "/name"),
     ]
 }
@@ -106,6 +107,12 @@ pub async fn tete(
                 FROM partages_trophees p JOIN trophees t ON t.id = p.trophee WHERE p.sub = $1",
             ).await?,
         },
+        "badges": tableau(pool, sub,
+            "SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                'kind', genre, 'title_id', titre, 'season', NULLIF(saison, 0), 'obtained_at', obtenu_le, 'shared', partage
+            ) ORDER BY obtenu_le, genre, titre, saison), '[]'::jsonb)
+            FROM badges WHERE sub = $1",
+        ).await?,
         "views": journal::vues(pool, sub, i64::MAX).await?,
     }))
 }
