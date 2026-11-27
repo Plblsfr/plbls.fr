@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.124.0",
+    "date": "2026-11-27",
+    "new": [
+      "Badges de visionnage : Entracte décerne un badge par film, saison et série que vous avez vraiment regardés. Ils se retrouvent dans la rubrique Badges et peuvent s'afficher sur votre profil (réglage dans Partage et données).",
+      "Badges animés : envoyez un badge dans une conversation ou un salon, il s'affiche en carte animée.",
+      "Entracte : le bouton Épisode suivant apparaît deux minutes avant la fin au lieu de trente secondes."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.122.0",
     "date": "2026-11-27",
     "new": [
