@@ -2,14 +2,14 @@
 
 Suivi des comptes bancaires de plbls.fr. Ce document décrit ce qui existe aujourd'hui : l'import des relevés de compte PDF du Crédit
 Mutuel de Bretagne (CMB), la liste des comptes, des relevés et des opérations, la suppression d'un relevé, les catégories, les
-règles de classement, les commerçants, la file « à classer », la recherche, les filtres et l'export CSV des opérations. Les statistiques
-(mois, évolution, habitudes) n'existent pas encore.
+règles de classement, les commerçants, la file « à classer », la recherche, les filtres et l'export CSV des opérations, et les
+statistiques par période (accueil, vue du mois, détail d'une catégorie). L'évolution sur l'année et les habitudes n'existent pas encore.
 
 | Où | Quoi |
 |---|---|
 | [`api/tirelire`](../../api/tirelire/README.md) | API Rust (axum, sqlx), membre du workspace Cargo, base `tirelire` de PostgreSQL |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
-| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : import, opérations (recherche, filtres, export), à classer, catégories et règles |
+| [`web/estompe/src/sections/tirelire`](../../web/estompe/README.md) | section de l'app Estompe (`#/tirelire`) : accueil, vue du mois, détail d'une catégorie, import, opérations (recherche, filtres, export), à classer, catégories et règles |
 | [`deploy/tirelire/.env.example`](../../deploy/tirelire/.env.example) | secrets, service `tirelire-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 
 ## Permission et cloisonnement
@@ -18,7 +18,7 @@ Déclarée à aegis par manifeste (application `tirelire`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
+| `tirelire:access` | importer ses relevés, voir, chercher et exporter ses comptes, ses relevés et ses opérations, voir ses statistiques, supprimer un relevé, gérer ses catégories, ses règles et ses commerçants |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/tirelire/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -157,9 +157,78 @@ normalisées et classées à l'accès suivant.
 
 ### Totaux
 
-`bilan.rs` (`bilan`, `calculer`) additionne une période par catégorie : un crédit classé dans une catégorie de dépense (un
+`bilan.rs` (`bilan`) additionne une liste d'opérations par catégorie : un crédit classé dans une catégorie de dépense (un
 remboursement) diminue le total de cette catégorie ; l'épargne, les revenus et les transferts neutres sont comptés à part, hors
-dépenses. Aucune route ne l'expose encore.
+dépenses. Les statistiques s'appuient dessus.
+
+## Statistiques
+
+`GET /stats/months` (périodes disponibles et leurs totaux), `GET /stats/month` (tout ce qu'affichent l'accueil et la vue du mois, en un
+appel) et `GET /stats/month/categories/{id}` (détail d'une catégorie). Tout est calculé par le service (`stats.rs`, sans accès à la
+base ; `mois.rs` lit les opérations, les catégories et les relevés de la personne), en centimes entiers ; l'app ne fait qu'afficher.
+Les rapports sont des entiers en points de base (1 % = 100), arrondis au plus proche, absents (`null`) quand le dénominateur est nul
+ou négatif ; une moyenne est arrondie au centime le plus proche.
+
+### Périodes et rattachement
+
+`mode=calendar` (défaut) ou `mode=statement` ; `period` désigne la période (`AAAA-MM`, ou la date d'arrêté `AAAA-MM-JJ`), la plus
+récente à défaut.
+
+- **Date de rattachement** d'une opération : sa date d'achat pour un paiement par carte, sinon sa date d'opération. Un achat du 30
+  décembre débité le 2 janvier compte en décembre.
+- **Mois calendaire** : une opération appartient au mois de sa date de rattachement. Les périodes disponibles sont les mois couverts
+  par un relevé (du lendemain de la date de l'ancien solde à la date d'arrêté) ou qui portent une opération. Un mois est `complete`
+  quand les relevés importés le couvrent du premier au dernier jour, sans trou ; il est `open` (en cours) quand il dépasse la date
+  d'arrêté du dernier relevé importé : `known_through` est alors cette date, jamais la date du jour, puisque les données viennent
+  de relevés. Un mois ni complet ni en cours est partiel (par exemple le premier mois d'un relevé qui commence le 8).
+- **Par relevé** : une période par date d'arrêté, de la date de l'ancien solde (`from`) à la date d'arrêté (`to`), toujours
+  complète. Une opération appartient à la période du relevé qui la porte ; sur la courbe, elle est placée au jour de sa date de
+  rattachement, ramené dans la période (un achat antérieur au relevé compte au premier jour). Plusieurs comptes arrêtés le même jour
+  forment une seule période.
+- **Période précédente** : le mois calendaire qui précède s'il est disponible, ou le relevé précédent. **Moyennes** : sur les 3 et
+  les 12 dernières périodes complètes qui précèdent, ou sur celles qui existent, avec leur nombre (`periods`) ; aucune : `null`.
+
+`GET /operations` et l'export acceptent `date=purchase` : `from` et `to` portent alors sur la date de rattachement, ce qui rend la
+liste filtrée identique aux opérations comptées par les statistiques d'un mois calendaire. En mode par relevé, le filtre `statement` suffit.
+
+### Définitions
+
+| Grandeur | Calcul |
+|---|---|
+| Dépenses | débits moins crédits (remboursements) des catégories `fixe` et `variable`, plus les débits à classer, comptés sur une ligne « À classer » distincte pour que le total reste juste |
+| Revenus | crédits moins débits des catégories `revenu`, plus les crédits à classer (`income.unclassified`, à part) |
+| Épargne | versements moins retraits des catégories `epargne` |
+| Neutre | exclu de tout |
+| Reste à vivre | revenus − dépenses − épargne |
+| Taux d'épargne | épargne ÷ revenus ; absent si les revenus sont nuls ou négatifs |
+| Part fixe, variable, à classer | chacune ÷ dépenses |
+| Budget | somme des plafonds mensuels des catégories de dépense non archivées ; absent si aucune n'a de plafond. `uncapped` : dépenses hors catégories plafonnées (catégories sans plafond et « à classer ») |
+| Par catégorie | montant, part des dépenses, écart avec la période précédente, avec la moyenne des 3 et des 12 dernières périodes complètes, avec le plafond (`cap_delta`, `cap_bp`), montants des 12 dernières périodes (`trend`) |
+
+Invariant vérifié par les tests, relevés réels compris : la somme des catégories et de « À classer » égale les dépenses, dans les deux modes.
+
+### Ce qui dépasse
+
+Une catégorie de dépense est signalée par rapport à son plafond s'il existe (`reference: cap`), dès 1 € d'écart
+(`SEUIL_PLAFOND`) ; sinon par rapport à sa moyenne des 3 dernières périodes complètes (`reference: average`, avec le nombre de
+périodes), si l'écart atteint 10 € (`SEUIL_MOYENNE`) et 10 % (`SEUIL_MOYENNE_BP`) et que cette moyenne est strictement positive : une
+catégorie sans historique n'est pas un dépassement. La liste est classée par écart en centimes ; `rank_amount` et `rank_percent`
+donnent les deux classements (un écart sans pourcentage, plafond à zéro, passe en dernier du second).
+
+### Cumul et projection
+
+`cumulative.current` : dépenses cumulées jour par jour (jusqu'au dernier jour connu pour une période en cours). `previous` et
+`average` (cumul moyen des 12 dernières périodes complètes au plus) sont ramenées à la durée de la période : au-delà de leur propre
+durée, et au dernier jour, elles portent leur total.
+
+La projection n'existe que pour un mois calendaire en cours, couvert depuis son premier jour et connu sur 5 jours au moins
+(`PROJECTION_JOURS_MIN`) ; sinon `projection_reason` dit pourquoi (`complete`, `partial`, `too_early`). Il n'y en a jamais en mode
+par relevé : un relevé est toujours complet. Méthode :
+
+- dépenses variables et à classer : montant atteint × jours de la période ÷ jours connus (le rythme des jours connus est prolongé) ;
+- charges fixes : chaque catégorie fixe est portée à son montant habituel (moyenne des 3 dernières périodes complètes) si elle
+  ne l'a pas encore atteint, sinon gardée à son montant ; elles ne sont pas mises au prorata, un loyer ne se répète pas ;
+- `fixed_pending` : charges fixes habituelles pas encore passées ; `budget_delta` : projection moins budget.
 
 ## Recherche, filtres et export
 

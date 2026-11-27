@@ -116,25 +116,31 @@ test('opérations : groupes par jour, suite, filtres par relevé et par période
   await expect(liste(page)).toBeVisible()
 })
 
-test('onglets sans données : état honnête, sans chiffre', async ({ page }) => {
+test('Évolution et Habitudes en attente, sans chiffre ; Accueil et Mois chiffrés', async ({ page }) => {
   await simulerTirelire(page, {}, serveurTirelire(true))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/#/tirelire')
-  for (const [onglet, titre] of [['Mois', 'Vue du mois'], ['Évolution', 'Évolution'], ['Habitudes', 'Habitudes'], ['Accueil', 'Accueil']]) {
+  for (const [onglet, titre] of [['Évolution', 'Évolution'], ['Habitudes', 'Habitudes']]) {
     await onglets(page).getByRole('link', { name: onglet }).click()
     await expect(page.getByRole('heading', { name: titre, level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Bientôt disponible' })).toBeVisible()
     await expect(onglets(page).getByRole('link', { name: onglet })).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByRole('region', { name: 'Pas encore disponible' })).not.toContainText('€')
-    await expect(page.locator('.tir-bandeau')).toHaveCount(onglet === 'Accueil' ? 1 : 0)
-    if (onglet !== 'Accueil') await expect(page.locator('.tir')).not.toContainText('€')
+    await expect(page.locator('.tir')).not.toContainText('€')
+    await expect(page.locator('.tir-bandeau')).toHaveCount(0)
   }
+  await onglets(page).getByRole('link', { name: 'Mois' }).click()
+  await expect(page.getByRole('heading', { name: 'Vue du mois', level: 1 })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Par catégorie' })).toContainText('€')
+  await expect(page.locator('.tir-bandeau')).toHaveCount(0)
+  await onglets(page).getByRole('link', { name: 'Accueil' }).click()
+  await expect(page.getByRole('heading', { name: 'Novembre 2026', level: 1 })).toBeVisible()
+  await expect(page.locator('.tir-bandeau')).toHaveCount(1)
 })
 
 test('téléphone (390 px) : barre d’onglets, cibles de 44 px, rien ne déborde ; bureau : menu latéral', async ({ page }) => {
   await simulerTirelire(page, {}, serveurTirelire(true))
   await page.setViewportSize({ width: 390, height: 844 })
-  for (const chemin of ['/#/tirelire', '/#/tirelire/operations', '/#/tirelire/operations?statement=110&from=2026-10-01&to=2026-10-26&category=2&q=boulangerie+du+pont&min=500&max=6000&direction=debit&type=carte', '/#/tirelire/import', '/#/tirelire/a-classer', '/#/tirelire/categories', '/#/tirelire/categories/regles', '/#/tirelire/categories/commercants', '/#/tirelire/operations/104']) {
+  for (const chemin of ['/#/tirelire', '/#/tirelire/mois', '/#/tirelire/mois/2026-10', '/#/tirelire/categorie/2?periode=2026-11', '/#/tirelire/categorie/3', '/#/tirelire/mois/2020-01', '/#/tirelire/operations', '/#/tirelire/operations?statement=110&from=2026-10-01&to=2026-10-26&category=2&q=boulangerie+du+pont&min=500&max=6000&direction=debit&type=carte', '/#/tirelire/import', '/#/tirelire/a-classer', '/#/tirelire/categories', '/#/tirelire/categories/regles', '/#/tirelire/categories/commercants', '/#/tirelire/operations/104']) {
     await page.goto(chemin)
     await expect(page.locator('.tir-corps > *').first()).toBeVisible()
     await expect(page.locator('.tir-fait')).toHaveCount(0)
@@ -163,7 +169,7 @@ test('Tirelire tombe en cours de route : message et relance, le reste de l’app
   await expect(page.getByRole('alert')).toContainText('Tirelire est injoignable.')
   srv.arrete = false
   await page.getByRole('button', { name: 'Réessayer' }).click()
-  await expect(page.getByRole('heading', { name: 'Bientôt disponible' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Ce qui dépasse' })).toBeVisible()
 })
 
 test('accessibilité : aucune violation axe sur les écrans de la section', async ({ page }) => {
@@ -175,11 +181,11 @@ test('accessibilité : aucune violation axe sur les écrans de la section', asyn
   await expect(page.getByRole('heading', { name: '3 fichiers traités' })).toBeVisible()
   const verifier = async (ou: string) => {
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
-    const res = await new AxeBuilder({ page }).include('#main').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+    const res = await new AxeBuilder({ page }).include('#main').exclude('.conn-banner').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
     expect(res.violations.map((v) => `${ou} · ${v.id} : ${v.nodes.map((n) => `${n.target.join(' ')} ${n.failureSummary}`).join(', ')}`)).toEqual([])
   }
   await verifier('import')
-  for (const [chemin, attente] of [['/#/tirelire', 'Pas encore disponible'], ['/#/tirelire/operations', 'Liste des opérations']]) {
+  for (const [chemin, attente] of [['/#/tirelire', 'Ce qui dépasse'], ['/#/tirelire/mois', 'Par catégorie'], ['/#/tirelire/mois/2026-10', 'Par catégorie'], ['/#/tirelire/categorie/2?periode=2026-11', 'Historique'], ['/#/tirelire/evolution', 'Pas encore disponible'], ['/#/tirelire/operations', 'Liste des opérations']]) {
     await page.goto(chemin)
     await expect(page.getByRole('region', { name: attente })).toBeVisible()
     await verifier(chemin)
@@ -254,7 +260,7 @@ test('à classer : bandeau sur l’accueil, règle pour tout le commerçant, ann
   await expect(page.getByRole('heading', { name: 'Tout est classé' })).toBeVisible()
   await expect(menu.getByRole('link', { name: /À classer/ }).locator('.pip')).toHaveCount(0)
   await page.goto('/#/tirelire')
-  await expect(page.getByRole('heading', { name: 'Bientôt disponible' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Ce qui dépasse' })).toBeVisible()
   await expect(page.locator('.tir-bandeau')).toHaveCount(0)
 })
 
@@ -500,5 +506,186 @@ test('captures des écrans de catégorisation', async ({ page }) => {
     await page.goto(`/#/tirelire/operations/${srv.operations.find((o) => o.category_source === 'commercant')!.id}`)
     await expect(page.getByRole('region', { name: 'Catégorie', exact: true })).toBeVisible()
     await prendre('operation-detail')
+  }
+})
+
+type Srv = ReturnType<typeof serveurTirelire>
+
+function ajouterOperation(srv: Srv, releve: number, date: string, label: string, amount: number, direction: 'debit' | 'credit' = 'debit') {
+  srv.operations.push({ id: srv.prochain++, statement_id: releve, account_id: 1, date, value_date: date, purchase_date: null, section: 'VIREMENTS EMIS ET PRELEVEMENTS', type: 'prelevement', label, details: [], merchant: null, amount, direction, merchant_id: null, merchant_name: null, category_id: null, category_source: null, rule_id: null, cle: label.replace(/^PRLV /, ''), exception: false })
+}
+
+function garnir(srv: Srv, mois: number[]) {
+  for (const m of mois) srv.ajouter(`releve-2026-${String(m).padStart(2, '0')}.pdf`, m, 2026, m, 38 + m * 2)
+  for (const r of srv.releves) {
+    const m = String(r.to).slice(0, 7)
+    ajouterOperation(srv, Number(r.id), `${m}-05`, 'PRLV LOYER RESIDENCE EXEMPLE', 78_000)
+    ajouterOperation(srv, Number(r.id), `${m}-06`, 'PRLV VIREMENT VERS LIVRET', 20_000 + (Number(r.id) % 3) * 2500)
+  }
+  srv.operations.sort((a, b) => String(b.date).localeCompare(String(a.date)) || Number(a.id) - Number(b.id))
+  srv.regles.push({ id: 50, key: null, keywords: ['LOYER'], type: null, section: null, category_id: 1 }, { id: 51, key: null, keywords: ['LIVRET'], type: null, section: null, category_id: 8 }, { id: 52, key: null, keywords: ['STREAMO'], type: null, section: null, category_id: 9 })
+  srv.rejouer()
+  for (const [nom, categorie] of [['Marche Colline Villeneuve', 2], ['Cafe Tamis Villeneuve', 3], ['Bistrot Lune Saint Eloi', 3]] as const) srv.commercants.find((c) => c.name === nom)!.category_id = categorie
+  srv.rejouer()
+}
+
+test('statistiques : accueil, dépassement, plafond modifié sur place, vue du mois, bascule par relevé et opérations filtrées', async ({ page }) => {
+  const srv = serveurTirelire(true)
+  garnir(srv, [7, 8, 9])
+  await simulerTirelire(page, {}, srv)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/tirelire')
+  await expect(page.getByRole('heading', { name: 'Novembre 2026', level: 1 })).toBeVisible()
+  await expect(page.getByText('Jour 26 sur 30 · données jusqu’au 26 nov. 2026')).toBeVisible()
+  const budget = page.getByRole('region', { name: 'Budget du mois' })
+  await expect(budget.getByRole('img', { name: /du budget consommé/ })).toBeVisible()
+  await expect(budget.getByRole('group', { name: 'Projection de fin de mois' })).toContainText('Au rythme des 26 premiers jours')
+  const depasse = page.getByRole('region', { name: 'Ce qui dépasse' })
+  const cartes = depasse.getByRole('listitem')
+  await expect(cartes.filter({ hasText: 'Restaurants' })).toHaveCount(1)
+  const enEuros = await cartes.locator('.tir-h3').allInnerTexts()
+  await depasse.getByRole('button', { name: 'Classé en %' }).click()
+  await expect(depasse.getByRole('button', { name: 'Classé en %' })).toHaveAttribute('aria-pressed', 'true')
+  expect((await cartes.locator('.tir-h3').allInnerTexts()).map((t) => t.replace(/^\d+\. /, '')).sort()).toEqual(enEuros.map((t) => t.replace(/^\d+\. /, '')).sort())
+  await cartes.filter({ hasText: 'Restaurants' }).getByRole('link').click()
+  await expect(page).toHaveURL(/#\/tirelire\/categorie\/3\?periode=2026-11$/)
+  await expect(page.getByRole('heading', { name: 'Restaurants', level: 1 })).toBeVisible()
+  await expect(onglets(page).getByRole('link', { name: 'Mois' })).toHaveAttribute('aria-current', 'page')
+  const montant = page.getByRole('region', { name: 'Montant de la période' })
+  await expect(montant).toContainText('au-dessus du plafond')
+  await expect(page.getByRole('region', { name: 'Historique' })).toContainText('Plafond dépassé')
+  const plafond = page.getByRole('form', { name: 'Plafond mensuel' })
+  await expect(plafond.getByLabel('Plafond mensuel en euros')).toHaveValue('150')
+  await plafond.getByLabel('Plafond mensuel en euros').fill('900')
+  await plafond.getByRole('button', { name: 'Enregistrer le plafond' }).click()
+  await expect(plafond.getByRole('status')).toContainText('Plafond enregistré : 900,00 € par mois.')
+  expect(srv.categories.find((c) => c.id === 3)!.monthly_cap).toBe(90_000)
+  await expect(montant).toContainText('de marge')
+  await expect(montant).not.toContainText('au-dessus du plafond')
+  const operations = page.getByRole('region', { name: 'Opérations' })
+  const total = Number(/(\d+) sur la période/.exec(await operations.innerText())![1])
+  await operations.getByRole('link', { name: /^Voir/ }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/operations\?from=2026-11-01&to=2026-11-30&category=3&date=purchase$/)
+  await expect(page.getByRole('list', { name: 'Filtres actifs' })).toContainText('Par date d’achat')
+  await expect(resume(page)).toContainText(`Opérations${total}`)
+  await page.goto('/#/tirelire')
+  await expect(page.getByRole('region', { name: 'Ce qui dépasse' }).getByRole('listitem').filter({ hasText: 'Restaurants' })).toHaveCount(0)
+
+  await page.getByRole('link', { name: /Voir le mois en détail/ }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/mois\/2026-11$/)
+  const periode = page.getByRole('region', { name: 'Période', exact: true })
+  await expect(periode.getByLabel('Choisir la période')).toHaveValue('2026-11')
+  await expect(page.getByRole('region', { name: 'Dépenses cumulées' }).getByRole('list', { name: 'Légende' })).toContainText('Projection ·')
+  await periode.getByRole('link', { name: 'Période précédente' }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/mois\/2026-10$/)
+  await expect(periode).toContainText('mois complet')
+  await expect(page.getByRole('region', { name: 'Dépenses cumulées' }).getByRole('list', { name: 'Légende' })).not.toContainText('Projection')
+  const table = page.getByRole('region', { name: 'Par catégorie' }).getByRole('table')
+  await expect(table.getByRole('row').filter({ hasText: 'Logement' })).toContainText('780,00 €')
+  await expect(table.getByRole('row').filter({ hasText: 'Total' })).toBeVisible()
+  await periode.getByRole('button', { name: 'Par relevé' }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/mois$/)
+  await expect(periode.getByLabel('Choisir la période')).toHaveValue('2026-11-26')
+  await expect(periode).toContainText('25 jours')
+  await expect(page.getByText('Dépenses du relevé')).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('tirelire.mode'))).toBe('statement')
+  await page.getByRole('region', { name: 'Par catégorie' }).getByRole('link', { name: 'Opérations', exact: true }).click()
+  await expect(page).toHaveURL(/#\/tirelire\/operations\?statement=111$/)
+  await page.reload()
+  await page.goto('/#/tirelire/mois')
+  await expect(page.getByRole('region', { name: 'Période', exact: true }).getByRole('button', { name: 'Par relevé' })).toHaveAttribute('aria-pressed', 'true')
+  expect(srv.appels.filter((a) => a.chemin === '/stats/month').at(-1)!.requete).toBe('?mode=statement')
+})
+
+test('statistiques : états limites (une seule période, aucun plafond, rien de classé)', async ({ page }) => {
+  const srv = serveurTirelire()
+  srv.ajouter('releve-2026-11.pdf', 11, 2026, 11, 40)
+  for (const c of srv.categories) c.monthly_cap = null
+  srv.regles = []
+  srv.rejouer()
+  await simulerTirelire(page, {}, srv)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/tirelire')
+  const budget = page.getByRole('region', { name: 'Budget du mois' })
+  await expect(budget.getByRole('link', { name: /Fixe des plafonds/ })).toBeVisible()
+  await expect(budget.getByRole('img')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Ce qui dépasse' })).toContainText('Rien à comparer pour l’instant')
+  await page.goto('/#/tirelire/mois')
+  await expect(page.getByRole('region', { name: 'Dépenses de la période' })).toContainText('Une seule période disponible')
+  await expect(page.getByRole('region', { name: 'Par catégorie' })).toContainText('tout est dans « À classer »')
+  await expect(page.getByRole('region', { name: 'Période', exact: true }).getByRole('link')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Écart avec les moyennes' })).toHaveCount(0)
+})
+
+test('captures de l’accueil, de la vue du mois et du détail d’une catégorie', async ({ page }) => {
+  const dossier = process.env.TIRELIRE_CAPTURES_MOIS
+  test.skip(!dossier, 'TIRELIRE_CAPTURES_MOIS=<dossier> pour enregistrer les captures')
+  test.setTimeout(180_000)
+  const riche = serveurTirelire(true)
+  garnir(riche, [5, 6, 7, 8, 9])
+  const seul = serveurTirelire()
+  seul.ajouter('releve-2026-11.pdf', 11, 2026, 11, 40)
+  for (const c of seul.categories) c.monthly_cap = null
+  const brut = serveurTirelire()
+  brut.ajouter('releve-2026-11.pdf', 11, 2026, 11, 40)
+  brut.regles = []
+  brut.rejouer()
+  const prendre = async (largeur: number, nom: string) => {
+    const avis = page.locator('.plbls-toast button')
+    if (await avis.count()) await avis.first().click()
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
+    const hauteur = await page.locator('.tir-defile').evaluate((e) => e.scrollHeight - e.clientHeight)
+    await page.setViewportSize({ width: largeur, height: (largeur === 390 ? 844 : 900) + Math.max(0, hauteur) })
+    await page.screenshot({ path: `${dossier}/${nom}-${largeur}.png` })
+    await page.setViewportSize({ width: largeur, height: largeur === 390 ? 844 : 900 })
+  }
+  for (const largeur of [390, 1280]) {
+    await page.setViewportSize({ width: largeur, height: largeur === 390 ? 844 : 900 })
+    await page.unrouteAll()
+    await simulerTirelire(page, {}, riche)
+    await page.goto('/#/tirelire')
+    await page.evaluate(() => localStorage.removeItem('tirelire.mode'))
+    await page.reload()
+    await expect(page.getByRole('region', { name: 'Ce qui dépasse' })).toBeVisible()
+    await prendre(largeur, 'accueil')
+    await page.goto('/#/tirelire/mois')
+    await expect(page.getByRole('region', { name: 'Par catégorie' })).toBeVisible()
+    await prendre(largeur, 'mois')
+    const courbe = page.getByRole('slider', { name: 'Parcourir les jours de la courbe' })
+    await courbe.scrollIntoViewIfNeeded()
+    const cadre = (await courbe.boundingBox())!
+    await page.mouse.move(cadre.x + cadre.width * 0.45, cadre.y + cadre.height / 2)
+    await expect(page.locator('.tir-bulle')).toBeVisible()
+    await page.screenshot({ path: `${dossier}/mois-survol-${largeur}.png` })
+    await page.mouse.move(0, 0)
+    await page.goto('/#/tirelire/mois/2026-10')
+    await expect(page.getByRole('region', { name: 'Période', exact: true })).toContainText('mois complet')
+    await prendre(largeur, 'mois-complet')
+    await page.goto('/#/tirelire/categorie/3?periode=2026-11')
+    await expect(page.getByRole('region', { name: 'Historique' })).toBeVisible()
+    await prendre(largeur, 'categorie')
+    await page.goto('/#/tirelire/mois')
+    await page.getByRole('region', { name: 'Période', exact: true }).getByRole('button', { name: 'Par relevé' }).click()
+    await expect(page.getByText('Dépenses du relevé')).toBeVisible()
+    await prendre(largeur, 'mois-par-releve')
+    await page.goto('/#/tirelire')
+    await expect(page.getByRole('region', { name: 'Ce qui dépasse' })).toBeVisible()
+    await prendre(largeur, 'accueil-par-releve')
+    await page.evaluate(() => localStorage.removeItem('tirelire.mode'))
+    for (const [srv, nom] of [[seul, 'limite-une-periode-sans-plafond'], [brut, 'limite-rien-de-classe']] as const) {
+      await page.unrouteAll()
+      await simulerTirelire(page, {}, srv)
+      await page.goto('/#/tirelire/import')
+      await page.reload()
+      await page.goto('/#/tirelire')
+      await expect(page.getByRole('region', { name: 'Ce qui dépasse' })).toBeVisible()
+      await prendre(largeur, `${nom}-accueil`)
+      await page.goto('/#/tirelire/mois')
+      await expect(page.getByRole('region', { name: 'Par catégorie' })).toBeVisible()
+      await prendre(largeur, `${nom}-mois`)
+    }
+    await page.goto('/#/tirelire/categorie/2?periode=2026-11')
+    await expect(page.getByRole('region', { name: 'Historique' })).toBeVisible()
+    await prendre(largeur, 'limite-rien-de-classe-categorie')
   }
 })

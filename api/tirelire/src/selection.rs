@@ -22,9 +22,11 @@ pub static OU: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
         "o.libelle || E'\\n' || array_to_string(o.details, E'\\n') || E'\\n' || coalesce(o.commercant_brut, '') || E'\\n' || coalesce(m.nom, '')",
     );
     let mot = plat("mot");
+    let jour =
+        "CASE WHEN $13 THEN coalesce(o.date_achat, o.date_operation) ELSE o.date_operation END";
     format!(
         "o.sub = $1 AND ($2::bigint IS NULL OR o.releve_id = $2)
-        AND ($3::date IS NULL OR o.date_operation >= $3) AND ($4::date IS NULL OR o.date_operation <= $4)
+        AND ($3::date IS NULL OR {jour} >= $3) AND ($4::date IS NULL OR {jour} <= $4)
         AND ($5::bigint IS NULL OR o.categorie_id = $5) AND ($6::bigint IS NULL OR o.commercant_id = $6)
         AND (NOT $7 OR o.categorie_id IS NULL)
         AND ($8::text[] IS NULL OR {texte} LIKE ALL (SELECT {mot} FROM unnest($8::text[]) AS mot))
@@ -49,6 +51,7 @@ pub struct Filtre {
     pub direction: Option<String>,
     #[serde(rename = "type")]
     pub genre: Option<String>,
+    pub date: Option<String>,
     pub limit: Option<String>,
     pub offset: Option<String>,
 }
@@ -66,6 +69,7 @@ pub struct Selection {
     pub max: Option<i64>,
     pub sens: Option<&'static str>,
     pub genre: Option<&'static str>,
+    pub par_achat: bool,
 }
 
 pub struct Resume {
@@ -91,6 +95,7 @@ macro_rules! lier {
             .bind($selection.max)
             .bind($selection.sens)
             .bind($selection.genre)
+            .bind($selection.par_achat)
     };
 }
 pub(crate) use lier;
@@ -156,7 +161,13 @@ impl Selection {
                     .ok_or_else(|| invalide("type : type d'opération inconnu"))
             })
             .transpose()?;
+        let par_achat = match f.date.as_deref() {
+            None | Some("operation") => false,
+            Some("purchase") => true,
+            Some(_) => return Err(invalide("date : operation ou purchase")),
+        };
         Ok(Self {
+            par_achat,
             releve: entier(&f.statement, "statement : identifiant d'un relevé")?,
             du,
             au,
@@ -261,5 +272,8 @@ mod tests {
         );
         assert!(f(|f| f.direction = Some("Debit".into())).is_err());
         assert!(f(|f| f.genre = Some("cheque".into())).is_err());
+        assert!(f(|f| f.date = Some("purchase".into())).unwrap().par_achat);
+        assert!(!f(|f| f.date = Some("operation".into())).unwrap().par_achat);
+        assert!(f(|f| f.date = Some("valeur".into())).is_err());
     }
 }

@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../lib/api'
-import { CATEGORIES, commercant, operation, OPERATIONS, page, releve } from './essais'
+import { CATEGORIES, commercant, moisStats, operation, OPERATIONS, page, releve } from './essais'
 import TirelireOperation from './TirelireOperation.svelte'
 import TirelireOperations from './TirelireOperations.svelte'
 import TirelireSpace from './TirelireSpace.svelte'
@@ -16,6 +16,8 @@ beforeEach(() => {
   vi.spyOn(tirelireApi, 'categories').mockResolvedValue(CATEGORIES)
   vi.spyOn(tirelireApi, 'compteur').mockResolvedValue({ operations: 0, merchants: 0, debits: 0, credits: 0 })
   vi.spyOn(tirelireApi, 'commercants').mockResolvedValue([commercant({ id: 7, name: 'Cafe Tamis Villeneuve' })])
+  vi.spyOn(tirelireApi, 'mois').mockResolvedValue(moisStats())
+  vi.spyOn(tirelireApi, 'periodes').mockResolvedValue([])
   vi.spyOn(tirelireApi, 'operation').mockImplementation(async (id: number) => {
     const o = OPERATIONS.find((x) => x.id === id)
     if (!o) throw new ApiError(404, 'not_found', 'introuvable')
@@ -388,9 +390,9 @@ describe('TirelireSpace', () => {
     ])
   })
 
-  it('Mois, Évolution et Habitudes restent en attente, sans chiffre inventé ; l’accueil aussi, hors bandeau', async () => {
+  it('Évolution et Habitudes restent en attente, sans chiffre inventé', async () => {
     vi.spyOn(tirelireApi, 'releves').mockResolvedValue([releve(), releve({ id: 10, number: 10, from: '2026-09-30', to: '2026-10-31', operations: 91 })])
-    for (const [section, titre] of [[undefined, 'Accueil'], ['mois', 'Vue du mois'], ['evolution', 'Évolution'], ['habitudes', 'Habitudes']] as const) {
+    for (const [section, titre] of [['evolution', 'Évolution'], ['habitudes', 'Habitudes']] as const) {
       const vue = monter(section)
       expect(await vue.findByRole('heading', { name: 'Bientôt disponible' })).toBeInTheDocument()
       expect(vue.getByRole('heading', { name: titre, level: 1 })).toBeInTheDocument()
@@ -398,6 +400,7 @@ describe('TirelireSpace', () => {
       expect(vue.queryByRole('link', { name: /à classer/i })).toBeNull()
       expect(texte(vue.getByRole('link', { name: /^Opérations\s*175/ }))).toContain('175 opérations · du 30 sept. au 26 nov. 2026')
       expect(vue.getByRole('link', { name: /Catégories et règles/ })).toHaveAttribute('href', '#/tirelire/categories')
+      expect(vue.getByRole('link', { name: /^Vue du mois/ })).toHaveAttribute('href', '#/tirelire/mois')
       vue.unmount()
       tirelire.reinitialiser()
     }
@@ -412,17 +415,17 @@ describe('TirelireSpace', () => {
     expect(texte(bandeau)).toBe('7 opérations à classer28,00 € de débits sans catégorie · 5 commerçants')
     vue.unmount()
     const mois = monter('mois')
-    expect(await mois.findByRole('heading', { name: 'Bientôt disponible' })).toBeInTheDocument()
+    expect(await mois.findByRole('heading', { name: 'Par catégorie' })).toBeInTheDocument()
     expect(mois.getByRole('link', { name: 'À classer : 7 opérations' })).toHaveAttribute('href', '#/tirelire/a-classer')
     expect(mois.container.querySelector('.tir-bandeau')).toBeNull()
   })
 
-  it('premier lancement : l’étape « classe l’inconnu » n’est plus à venir', async () => {
+  it('premier lancement : plus aucune étape « à venir »', async () => {
     vi.spyOn(tirelireApi, 'releves').mockResolvedValue([])
     const vue = monter()
     const etapes = within(await vue.findByRole('region', { name: 'Comment ça marche' }))
     expect(texte(etapes.getByText('Classe l’inconnu').closest('.tir-li'))).toBe('2Classe l’inconnuUn choix crée une règle pour tout le commerçant.')
-    expect(etapes.getAllByText('à venir')).toHaveLength(1)
+    expect(etapes.queryByText('à venir')).toBeNull()
   })
 
   it('Tirelire injoignable : message et relance, sans bloquer la navigation', async () => {

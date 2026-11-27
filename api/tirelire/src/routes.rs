@@ -13,7 +13,7 @@ use crate::{
     etat::AppState,
     export,
     garde::{self, Garde},
-    import, interne, regles, releves,
+    import, interne, mois, regles, releves,
 };
 
 pub struct Route {
@@ -205,6 +205,24 @@ pub fn table() -> Vec<Entree> {
             "/merchants/{id}/split",
             Garde::Droit(Droit::Acces),
             post(commercants::separer),
+        ),
+        entree(
+            Method::GET,
+            "/stats/months",
+            Garde::Droit(Droit::Acces),
+            get(mois::lister),
+        ),
+        entree(
+            Method::GET,
+            "/stats/month",
+            Garde::Droit(Droit::Acces),
+            get(mois::lire),
+        ),
+        entree(
+            Method::GET,
+            "/stats/month/categories/{id}",
+            Garde::Droit(Droit::Acces),
+            get(mois::categorie),
         ),
     ]
 }
