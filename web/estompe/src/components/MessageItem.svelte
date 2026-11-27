@@ -38,7 +38,6 @@
   const canReact = $derived(app.canConv(convKey, 'add_reactions'))
   const serverId = $derived(convKey.startsWith('c:') ? app.channel(convKey.slice(2))?.server.id : undefined)
   const authorColor = $derived(serverId ? nameColor(app.details[serverId], app.details[serverId]?.members.find((x) => x.id === m.author.id)) : undefined)
-  const html = $derived(renderMarkdown(m.content, pseudos, emojis.names()))
   let body = $state<HTMLElement>()
 
   // Pose l'image des emojis personnalisés (téléchargée avec l'authentification) sur leurs <span class="cemoji">.
@@ -75,6 +74,9 @@
     }
   }
   const link = $derived(prefs.showPreviews ? firstLink(m.content) : null)
+  let lienIntegre = $state(false)
+  const texte = $derived(lienIntegre && link ? m.content.replace(link, '').trim() : m.content)
+  const html = $derived(renderMarkdown(texte, pseudos, emojis.names()))
 
   let editing = $state(false)
   let draft = $state('')
@@ -244,7 +246,7 @@
     {:else if m.poll}
       <PollCard message={m} {convKey} {pseudos} />
     {:else}
-      {#if m.content}
+      {#if texte}
         <div class="msg-body" bind:this={body} use:spoilers={html}>
           {@html html}
           {#if m.edited_at}<span class="edited" title="Modifié le {new Date(m.edited_at).toLocaleString('fr-FR')}"> (modifié)</span>{/if}
@@ -255,7 +257,7 @@
           {#each m.attachments as a (a.id)}{#if a.kind === 'voice'}<VoiceMessage attachment={a} {mine} />{:else}<AttachmentView attachment={a} />{/if}{/each}
         </div>
       {/if}
-      {#if link}<LinkCard url={link} message={m.id} />{/if}
+      {#if link}<LinkCard url={link} message={m.id} onintegre={(v) => (lienIntegre = v)} />{/if}
     {/if}
 
     {#if m.reactions.length || readers.length}

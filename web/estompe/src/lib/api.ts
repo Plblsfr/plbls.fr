@@ -398,10 +398,11 @@ export const filmsApi = {
     const [id, n] = sid.split(SEP)
     return liste(eget(`/titles/${enc(id)}/seasons/${enc(n ?? '')}/episodes`))
   },
-  image: (id: string, type: 'poster' | 'fond', w: number) => {
+  image: async (id: string, type: 'poster' | 'fond', w: number) => URL.createObjectURL(await filmsApi.imageBlob(id, type, w)),
+  imageBlob: (id: string, type: 'poster' | 'fond', w: number) => {
     const [titre, saison] = id.split(SEP)
-    if (saison !== undefined) return imageAt(ENTRACTE_URL, `/titles/${enc(titre)}/seasons/${enc(saison)}/image`)
-    return imageAt(ENTRACTE_URL, `/titles/${enc(id)}/image?type=${type === 'fond' ? 'backdrop' : 'poster'}&w=${width(w)}`)
+    if (saison !== undefined) return blobAt(ENTRACTE_URL, `/titles/${enc(titre)}/seasons/${enc(saison)}/image`)
+    return blobAt(ENTRACTE_URL, `/titles/${enc(id)}/image?type=${type === 'fond' ? 'backdrop' : 'poster'}&w=${width(w)}`)
   },
   progress: (id: string, position: number, duration: number) => esend<void>('PUT', `/titles/${enc(id)}/progress`, { position, duration }),
   outroSkipped: (id: string) => esend<void>('POST', `/titles/${enc(id)}/outro-skipped`),
