@@ -4,6 +4,7 @@
   import Loader from '../../components/Loader.svelte'
   import { hrefs } from '../../lib/route.svelte'
   import { dateLongue, montant, periode, pluriel } from './formats'
+  import { methodeRaison, raisonDe } from './habitudes'
   import TirelirePastille from './TirelirePastille.svelte'
   import { actives, NATURES_LONGUES, nomReleve, ORDRE_NATURES, SOURCES, titreDe, typeDe, type Portee } from './tirelire'
   import { tirelire } from './tirelire.svelte'
@@ -19,7 +20,12 @@
   const porteeUtile = $derived<Portee>(o?.merchant_id === null ? 'operation' : portee)
   const inchange = $derived(!!o && choix === (o.category_id === null ? '' : String(o.category_id)) && (porteeUtile === 'merchant' ? o.category_source !== 'operation' : o.category_source === 'operation' || o.category_id === null))
 
-  onMount(() => { void tirelire.chargerDetail(id) })
+  const raison = $derived(tirelire.inhabituelle?.id === id ? tirelire.inhabituelle.raison : null)
+
+  onMount(() => {
+    void tirelire.chargerDetail(id)
+    void tirelire.chargerInhabituelle(id)
+  })
 
   $effect(() => {
     choix = o?.category_id === null || !o ? '' : String(o.category_id)
@@ -40,6 +46,12 @@
       <div class="tir-col tir-grandit"><h2 class="tir-h2" style:overflow-wrap="anywhere">{titreDe(o)}</h2><span class="tir-sous"><TirelirePastille {categorie} /><span class="tir-note">{typeDe(o)}</span></span></div>
       <span class="tir-gros" class:tir-credit={o.direction === 'credit'}>{montant(o.amount, o.direction)}</span>
     </div>
+    {#if raison}
+      <p class="tir-inhabituelle" role="note">
+        <span class="tir-etq tir-etq--attente"><Icon name="alerte" size={14} />Inhabituelle</span>
+        <span class="tir-col tir-col--colle tir-grandit"><span class="tir-fort">{raisonDe(raison).replace(/^./, (c) => c.toUpperCase())}</span><span class="tir-note">{methodeRaison(raison)}</span></span>
+      </p>
+    {/if}
   </section>
 
   <section class="tir-carte" aria-label="Catégorie">

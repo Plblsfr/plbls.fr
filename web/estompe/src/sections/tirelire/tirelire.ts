@@ -2,6 +2,7 @@ import { ApiError, fichierAt, requestAt } from '../../lib/api'
 import { config } from '../../lib/config'
 import { centimes, dateCourte, euros, signe, type Sens } from './formats'
 import type { Annees, Fenetre, Historique, Soldes } from './evolution'
+import type { FenetreHabitudes, Habitudes, Raison, Recurrents } from './habitudes'
 import type { DetailCategorie, Mode, Mois, ResumePeriode } from './stats'
 
 export const TIRELIRE_URL = config.tirelireUrl
@@ -203,6 +204,10 @@ export const tirelireApi = {
   historique: (mode: Mode, fenetre: Fenetre) => get<Historique>(`/stats/history?mode=${mode}&window=${fenetre}`),
   soldes: (mode: Mode, fenetre: Fenetre) => get<Soldes>(`/stats/balance?mode=${mode}&window=${fenetre}`),
   annees: (mode: Mode) => get<Annees>(`/stats/years?mode=${mode}`),
+  habitudes: (mode: Mode, fenetre: FenetreHabitudes) => get<Habitudes>(`/stats/habits?mode=${mode}&window=${fenetre}`),
+  recurrents: () => get<Recurrents>('/stats/recurring'),
+  modifierRecurrent: (id: string, corps: { dismissed?: boolean; seen?: true }) => envoyer<Recurrents>('PATCH', `/stats/recurring/${encodeURIComponent(id)}`, corps),
+  inhabituelle: async (id: number) => (await get<{ unusual: Raison | null }>(`/operations/${id}/unusual`)).unusual,
   separer: (id: number, cles: string[]) => envoyer<{ merchant: Commercant; created: Commercant[] }>('POST', `/merchants/${id}/split`, { keys: cles }),
 }
 

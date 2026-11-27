@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor, within } from '@testing-library/svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../lib/api'
 import { CATEGORIES, commercant, moisStats, operation, OPERATIONS, page, releve } from './essais'
+import { habitudesStats, recurrentsStats } from './essais-habitudes'
 import TirelireOperation from './TirelireOperation.svelte'
 import TirelireOperations from './TirelireOperations.svelte'
 import TirelireSpace from './TirelireSpace.svelte'
@@ -18,6 +19,9 @@ beforeEach(() => {
   vi.spyOn(tirelireApi, 'commercants').mockResolvedValue([commercant({ id: 7, name: 'Cafe Tamis Villeneuve' })])
   vi.spyOn(tirelireApi, 'mois').mockResolvedValue(moisStats())
   vi.spyOn(tirelireApi, 'periodes').mockResolvedValue([])
+  vi.spyOn(tirelireApi, 'habitudes').mockResolvedValue(habitudesStats())
+  vi.spyOn(tirelireApi, 'recurrents').mockResolvedValue(recurrentsStats())
+  vi.spyOn(tirelireApi, 'inhabituelle').mockResolvedValue(null)
   vi.spyOn(tirelireApi, 'operation').mockImplementation(async (id: number) => {
     const o = OPERATIONS.find((x) => x.id === id)
     if (!o) throw new ApiError(404, 'not_found', 'introuvable')
@@ -390,21 +394,15 @@ describe('TirelireSpace', () => {
     ])
   })
 
-  it('Habitudes reste en attente, sans chiffre inventé', async () => {
+  it('Habitudes affiche ses blocs et la carte d’accès aux abonnements', async () => {
     vi.spyOn(tirelireApi, 'releves').mockResolvedValue([releve(), releve({ id: 10, number: 10, from: '2026-09-30', to: '2026-10-31', operations: 91 })])
-    for (const [section, titre] of [['habitudes', 'Habitudes']] as const) {
-      const vue = monter(section)
-      expect(await vue.findByRole('heading', { name: 'Bientôt disponible' })).toBeInTheDocument()
-      expect(vue.getByRole('heading', { name: titre, level: 1 })).toBeInTheDocument()
-      expect(vue.container.textContent).not.toMatch(/€/)
-      expect(vue.queryByRole('link', { name: /à classer/i })).toBeNull()
-      expect(texte(vue.getByRole('link', { name: /^Opérations\s*175/ }))).toContain('175 opérations · du 30 sept. au 26 nov. 2026')
-      expect(vue.getByRole('link', { name: /Catégories et règles/ })).toHaveAttribute('href', '#/tirelire/categories')
-      expect(vue.getByRole('link', { name: /^Vue du mois/ })).toHaveAttribute('href', '#/tirelire/mois')
-      expect(within(vue.getByRole('region', { name: 'Déjà disponible' })).getByRole('link', { name: /^Évolution/ })).toHaveAttribute('href', '#/tirelire/evolution')
-      vue.unmount()
-      tirelire.reinitialiser()
-    }
+    const vue = monter('habitudes')
+    expect(await vue.findByRole('region', { name: 'Top commerçants' })).toBeInTheDocument()
+    expect(vue.getByRole('heading', { name: 'Habitudes', level: 1 })).toBeInTheDocument()
+    expect(vue.queryByRole('heading', { name: 'Bientôt disponible' })).toBeNull()
+    const acces = await vue.findByRole('link', { name: /Abonnements et prélèvements.*2 alertes/ })
+    expect(acces).toHaveAttribute('href', '#/tirelire/habitudes/abonnements')
+    expect(tirelireApi.habitudes).toHaveBeenCalledWith('calendar', '3')
   })
 
   it('bandeau « à classer » sur l’accueil et pastille dans l’en-tête tant que la file n’est pas vide', async () => {

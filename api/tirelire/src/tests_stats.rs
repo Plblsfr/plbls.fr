@@ -26,6 +26,7 @@ pub(crate) fn jour(texte: &str) -> NaiveDate {
 pub(crate) fn categorie(id: i64, nom: &str, nature: Nature, plafond: Option<i64>) -> Categorie {
     Categorie {
         id,
+        cle: None,
         nom: nom.to_string(),
         nature,
         plafond,
@@ -88,6 +89,7 @@ impl Jeu {
             credit: false,
             montant,
             commercant: None,
+            preleve: false,
         });
         id
     }
@@ -110,7 +112,7 @@ impl Jeu {
         id
     }
 
-    fn chez(&mut self, commercant: i64) {
+    pub(crate) fn chez(&mut self, commercant: i64) {
         self.d.operations.last_mut().unwrap().commercant = Some(commercant);
     }
 }

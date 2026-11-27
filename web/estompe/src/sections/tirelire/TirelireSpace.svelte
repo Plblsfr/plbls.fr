@@ -12,7 +12,8 @@
   import TirelireCategories from './TirelireCategories.svelte'
   import TirelireEvolution from './TirelireEvolution.svelte'
   import TirelireClasser from './TirelireClasser.svelte'
-  import TirelireAttente from './TirelireAttente.svelte'
+  import TirelireAbonnements from './TirelireAbonnements.svelte'
+  import TirelireHabitudes from './TirelireHabitudes.svelte'
   import TirelireImport from './TirelireImport.svelte'
   import TirelireMois from './TirelireMois.svelte'
   import TirelireOnglets from './TirelireOnglets.svelte'
@@ -45,14 +46,17 @@
   const titre = $derived(vue === 'accueil' ? (vide ? 'Bienvenue' : mois && aJour ? titrePeriode(mois.period, mois.mode) : 'Accueil') : (ONGLETS.find((o) => o.id === actif)?.long ?? 'Tirelire'))
 
   function charger() {
-    if (vue === 'evolution') void tirelire.chargerEvolution()
+    if (vue === 'habitudes' || vue === 'abonnements' || vue === 'accueil') void tirelire.chargerRecurrents()
+    if (vue === 'abonnements') return
+    if (vue === 'habitudes') void tirelire.chargerHabitudes()
+    else if (vue === 'evolution') void tirelire.chargerEvolution()
     else if (vue === 'categorie') void tirelire.chargerCategorieDuMois(Number(id), cible)
     else void tirelire.chargerMois(cible)
   }
 
   $effect(() => {
-    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie' || vue === 'evolution')
-    const cle = [vue, id, cible, tirelire.mode, tirelire.version, vue === 'evolution' ? tirelire.fenetre : ''].join()
+    const pret = !!tirelire.releves?.length && (vue === 'accueil' || vue === 'mois' || vue === 'categorie' || vue === 'evolution' || vue === 'habitudes' || vue === 'abonnements')
+    const cle = [vue, id, cible, tirelire.mode, tirelire.version, vue === 'evolution' ? tirelire.fenetre : vue === 'habitudes' ? tirelire.fenetreHabitudes : ''].join()
     untrack(() => {
       if (!pret || !cle) return
       charger()
@@ -76,6 +80,8 @@
     <TirelireTete titre={detail?.category.name ?? 'Catégorie'} sous={detail ? `${NATURES_LONGUES[detail.category.kind].toLowerCase()} · ${titrePeriode(detail.period, detail.mode).toLowerCase()}` : ''} retour={hrefs.tirelire('mois', detail?.period.id ?? cible)} retourLabel="Retour à la vue du mois">
       <a class="tir-ib" href={hrefs.tirelire('categories')} aria-label="Catégories et règles" title="Catégories et règles"><Icon name="curseurs" size={20} /></a>
     </TirelireTete>
+  {:else if vue === 'abonnements'}
+    <TirelireTete titre="Abonnements" sous="et paiements récurrents" retour={hrefs.tirelire('habitudes')} retourLabel="Retour aux habitudes" />
   {:else if vue === 'operation'}
     <TirelireTete titre="Opération" sous={operation ? `${dateCourte(operation.date)} · ${natureDe(operation)}` : ''} retour={hrefs.tirelire('operations')} retourLabel="Retour aux opérations" />
   {:else}
@@ -99,8 +105,6 @@
         <TirelireOperations {requete} />
       {:else if tirelire.releves && vide && vue === 'accueil'}
         <TirelireVide />
-      {:else if tirelire.releves && vue === 'habitudes'}
-        <TirelireAttente releves={tirelire.releves} />
       {:else if tirelire.releves && vide}
         <section class="tir-carte tir-etat" aria-label="Aucun relevé">
           <span class="tir-pas tir-pas--grand tir-pas--rose"><Icon name="envoie" size={22} /></span>
@@ -108,6 +112,19 @@
           <p class="tir-note tir-note--texte">Les statistiques se calculent à partir de tes relevés.</p>
           <a class="tir-btn tir-btn--plein" href={hrefs.tirelire('import')}>Importer un relevé PDF</a>
         </section>
+      {:else if tirelire.releves && vue === 'abonnements' && tirelire.recurrents}
+        <TirelireAbonnements recurrents={tirelire.recurrents} />
+      {:else if tirelire.releves && (vue === 'abonnements' ? tirelire.erreurRecurrents : vue === 'habitudes' && tirelire.erreurHabitudes)}
+        <section class="tir-carte tir-etat" role="alert">
+          <span class="tir-pas tir-pas--grand tir-pas--danger"><Icon name="alerte" size={22} /></span>
+          <h2 class="tir-h2">{vue === 'abonnements' ? 'Abonnements indisponibles' : 'Habitudes indisponibles'}</h2>
+          <p class="tir-note tir-note--texte">{vue === 'abonnements' ? tirelire.erreurRecurrents : tirelire.erreurHabitudes}</p>
+          <button class="tir-btn tir-btn--plein" onclick={charger}><Icon name="actualise" size={16} />Réessayer</button>
+        </section>
+      {:else if tirelire.releves && vue === 'habitudes' && tirelire.habitudes}
+        <TirelireHabitudes habitudes={tirelire.habitudes} recurrents={tirelire.recurrents} />
+      {:else if tirelire.releves && (vue === 'habitudes' || vue === 'abonnements')}
+        <div class="tir-etat" role="status"><Loader text={vue === 'abonnements' ? 'Recherche des paiements récurrents…' : 'Calcul des habitudes…'} /></div>
       {:else if tirelire.releves && vue === 'evolution' && tirelire.erreurEvolution}
         <section class="tir-carte tir-etat" role="alert">
           <span class="tir-pas tir-pas--grand tir-pas--danger"><Icon name="alerte" size={22} /></span>
@@ -136,7 +153,7 @@
       {:else if tirelire.releves && vue === 'categorie' && detail}
         <TirelireCategorie {detail} />
       {:else if tirelire.releves && vue === 'accueil' && mois && aJour}
-        <TirelireAccueil {mois} />
+        <TirelireAccueil {mois} recurrents={tirelire.recurrents} />
       {:else if tirelire.releves && vue === 'mois' && mois}
         <div class="tir-col" style:gap="12px" style:opacity={aJour ? undefined : 0.6} aria-busy={!aJour}><TirelireMois {mois} /></div>
       {:else if tirelire.releves}
