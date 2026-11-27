@@ -57,8 +57,8 @@
     <EntracteAdmin />
   {:else if section === 'seen'}
     <FilmHistory />
-  {:else if section === 'badges'}
-    <FilmBadges />
+  {:else if section === 'badges' || section === 'badge'}
+    <FilmBadges cle={section === 'badge' ? id : undefined} />
   {:else}
     <FilmsLibrary {section} />
   {/if}

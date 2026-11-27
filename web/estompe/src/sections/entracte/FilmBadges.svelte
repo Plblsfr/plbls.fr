@@ -5,7 +5,10 @@
   import Loader from '../../components/Loader.svelte'
   import FilmPoster from './FilmPoster.svelte'
   import FilmBadgeCarte from './FilmBadgeCarte.svelte'
-  import { afficheBadge, cleBadge, dateBadge, detailsBadge, etiquetteBadge, type FilmBadge, type GenreBadge } from './badges'
+  import { hrefs, router } from '../../lib/route.svelte'
+  import { afficheBadge, cleBadge, dateBadge, detailsBadge, etiquetteBadge, lireCleBadge, type FilmBadge, type GenreBadge } from './badges'
+
+  let { cle }: { cle?: string } = $props()
 
   const FILTRES: { id: GenreBadge | ''; label: string }[] = [
     { id: '', label: 'Tous' },
@@ -26,6 +29,19 @@
     filmsApi.badges().then((r) => { if (actif) items = r.items }, (e) => notify.error(e, 'Les badges sont indisponibles')).finally(() => { if (actif) loading = false })
     return () => { actif = false }
   })
+
+  $effect(() => {
+    if (!cle || loading) return
+    const mien = items.find((b) => cleBadge(b) === cle)
+    if (mien) { ouvert = mien; return }
+    const ref = lireCleBadge(cle)
+    router.go(ref ? hrefs.films('item', ref.title_id) : hrefs.films('badges'))
+  })
+
+  const fermer = () => {
+    ouvert = null
+    if (cle) router.go(hrefs.films('badges'))
+  }
 </script>
 
 <div class="film-page">
@@ -48,7 +64,7 @@
     <div class="film-grid">
       {#each visibles as b (cleBadge(b))}
         {@const a = afficheBadge(b)}
-        <button type="button" class="film-card film-badge" onclick={() => (ouvert = b)} aria-label={`${etiquetteBadge(b)} : ${b.title}. Partager`}>
+        <button type="button" class="film-card film-badge" onclick={() => (ouvert = b)} aria-label={`${etiquetteBadge(b)} : ${b.title}. Ouvrir`}>
           <span class="film-card-art">
             <FilmPoster id={a.id} title={b.title} image={a.image} />
             <span class="film-badge-sceau" aria-hidden="true"><Icon name="ok" size={18} /></span>
@@ -63,7 +79,7 @@
   {/if}
 </div>
 
-{#if ouvert}<FilmBadgeCarte badge={ouvert} onclose={() => (ouvert = null)} />{/if}
+{#if ouvert}<FilmBadgeCarte badge={ouvert} onclose={fermer} />{/if}
 
 <style>
   .film-badges-regle { max-width: 70ch; margin: 0; }
