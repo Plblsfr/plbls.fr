@@ -110,7 +110,7 @@
   async function regrouper() {
     const liste = (tirelire.commercants ?? []).filter((c) => choisis.includes(c.id))
     if (liste.length < 2) return
-    const [garde, ...autres] = [...liste].sort((a, b) => b.operations - a.operations)
+    const [garde, ...autres] = liste.toSorted((a, b) => b.operations - a.operations)
     const ok = await confirmer({ titre: `Regrouper ${liste.length} commerçants ?`, message: `Ils deviennent « ${garde.name} ». Les prochains imports suivront ce regroupement ; tu pourras dissocier une variante.`, action: 'Regrouper' })
     if (!ok) return
     if (await tirelire.fusionner(garde.id, autres.map((c) => c.id))) {

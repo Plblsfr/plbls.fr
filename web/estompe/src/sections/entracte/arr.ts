@@ -207,7 +207,7 @@ export function filterReleases(items: ArrRelease[], f: ReleaseFilter): ArrReleas
   const gardees = items.filter((r) => (f.approved === '' || r.approved === (f.approved === 'yes')) && (!f.resolution || resolutionOf(r) === f.resolution) && (!f.language || r.languages.includes(f.language)))
   if (f.sort === 'score') return gardees
   const cle = (r: ArrRelease) => (f.sort === 'seeders' ? -(r.seeders ?? -1) : f.sort === 'size' ? -r.size : r.age)
-  return [...gardees].sort((a, b) => cle(a) - cle(b))
+  return gardees.toSorted((a, b) => cle(a) - cle(b))
 }
 
 export type CatalogFilter = { service: '' | ArrService; state: '' | 'missing' | 'unmonitored'; text: string }

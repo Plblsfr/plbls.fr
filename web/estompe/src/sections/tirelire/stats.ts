@@ -106,7 +106,7 @@ export function filtresPeriode(p: Periode, mode: Mode, f: Partial<Filtres> = {})
 }
 
 export function parRang(depassements: Depassement[], en: 'euros' | 'pourcent'): Depassement[] {
-  return [...depassements].sort((a, b) => (en === 'euros' ? a.rank_amount - b.rank_amount : a.rank_percent - b.rank_percent))
+  return depassements.toSorted((a, b) => (en === 'euros' ? a.rank_amount - b.rank_amount : a.rank_percent - b.rank_percent))
 }
 
 export interface Graduations { max: number; pas: number; valeurs: number[] }

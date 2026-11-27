@@ -37,7 +37,7 @@ const arrondi = (x: number, n = 1) => Math.round(x * 10 ** n) / 10 ** n
 
 export function quantile(valeurs: number[], q: number): number {
   if (!valeurs.length) return 0
-  const v = [...valeurs].sort((a, b) => a - b)
+  const v = valeurs.toSorted((a, b) => a - b)
   const i = (v.length - 1) * q
   const bas = Math.floor(i)
   return v[bas] + (v[Math.min(bas + 1, v.length - 1)] - v[bas]) * (i - bas)

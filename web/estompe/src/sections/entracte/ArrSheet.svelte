@@ -21,7 +21,7 @@
   const label = $derived(sheet ? titleLabel(sheet) : '')
   const etat = $derived(sheet ? titleState(sheet, queue) : null)
   const episodes = (n: number) => (sheet?.episode_list ?? []).filter((e) => e.season === n).sort((a, b) => a.number - b.number)
-  const saisons = $derived([...(sheet?.seasons ?? [])].sort((a, b) => (a.number === 0 ? 1 : b.number === 0 ? -1 : a.number - b.number)))
+  const saisons = $derived((sheet?.seasons ?? []).toSorted((a, b) => (a.number === 0 ? 1 : b.number === 0 ? -1 : a.number - b.number)))
   const enCours = (e: ArrEpisode) => queue.find((q) => q.service === 'sonarr' && q.episode?.id === e.id)
 
   async function load() {

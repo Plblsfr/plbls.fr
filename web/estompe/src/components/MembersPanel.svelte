@@ -22,7 +22,7 @@
   onMount(() => { const t = setInterval(() => (now = Date.now()), 10_000); return () => clearInterval(t) })
 
   const sorted = $derived(
-    [...detail.members].sort((a, b) => Number(!!app.online[b.id]) - Number(!!app.online[a.id]) || a.pseudo.localeCompare(b.pseudo, 'fr', { sensitivity: 'base' })),
+    detail.members.toSorted((a, b) => Number(!!app.online[b.id]) - Number(!!app.online[a.id]) || a.pseudo.localeCompare(b.pseudo, 'fr', { sensitivity: 'base' })),
   )
   const cherche = $derived(filtre.trim().toLocaleLowerCase('fr'))
   const visibles = $derived(cherche ? sorted.filter((m) => `${m.pseudo} ${m.nickname ?? ''}`.toLocaleLowerCase('fr').includes(cherche)) : sorted)

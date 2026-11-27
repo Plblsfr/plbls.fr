@@ -59,7 +59,7 @@ export function corpsSimulation(mode: Mode, r: Reglages) {
   return {
     mode,
     categories: Object.entries(r.categories).map(([id, x]) => ({ id: Number(id), ...x })).sort((a, b) => a.id - b.id),
-    subscriptions: [...r.arrets].sort(),
+    subscriptions: r.arrets.toSorted(),
   }
 }
 

@@ -45,7 +45,7 @@ export function totaliser(items: Recurrent[], reste: Partial<Recurrents> = {}): 
   const rang = (x: Recurrent) => (x.dismissed ? 2 : x.status === 'stopped' ? 1 : 0)
   return {
     as_of: '2026-11-26', from: '2026-06-01', span_days: 179, statements: 6, detectable: ['weekly', 'monthly', 'quarterly'],
-    items: [...items].sort((a, b) => rang(a) - rang(b) || b.yearly - a.yearly),
+    items: items.toSorted((a, b) => rang(a) - rang(b) || b.yearly - a.yearly),
     alerts_unseen: comptes.reduce((n, x) => n + x.alerts.filter((a) => !a.seen).length, 0),
     total: somme(comptes), subscriptions: somme(comptes.filter((x) => x.group === 'subscription')), charges: somme(comptes.filter((x) => x.group === 'charge')),
     ...reste,

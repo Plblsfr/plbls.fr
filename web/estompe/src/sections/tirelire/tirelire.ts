@@ -405,4 +405,4 @@ export function raisonControle(r: Refus): string {
 
 const RANG: Record<Issue['status'], number> = { rejected: 0, failed: 0, imported: 1, already_imported: 2 }
 
-export const parGravite = (issues: Issue[]) => [...issues].sort((a, b) => RANG[a.status] - RANG[b.status])
+export const parGravite = (issues: Issue[]) => issues.toSorted((a, b) => RANG[a.status] - RANG[b.status])

@@ -64,7 +64,7 @@ export function indexerState(i: Indexer): { label: string; tone: Tone } {
 /** En panne d'abord, puis actifs, puis désactivés ; par nom dans chaque groupe. */
 export function sortIndexers(items: Indexer[]): Indexer[] {
   const rang = (i: Indexer) => (!i.enabled ? 2 : i.failing ? 0 : 1)
-  return [...items].sort((a, b) => rang(a) - rang(b) || a.name.localeCompare(b.name, 'fr'))
+  return items.toSorted((a, b) => rang(a) - rang(b) || a.name.localeCompare(b.name, 'fr'))
 }
 
 const UNITES = ['o', 'Ko', 'Mo', 'Go', 'To']
