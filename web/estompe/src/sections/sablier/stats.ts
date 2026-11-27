@@ -202,13 +202,13 @@ export interface VueTrophees {
 }
 
 export function vueTrophees(t: Trophees, periode: Periode, jour: string): VueTrophees {
-  const parDate = [...t.unlocked].sort((a, b) => (a.unlocked_at < b.unlocked_at ? 1 : a.unlocked_at > b.unlocked_at ? -1 : 0))
+  const parDate = t.unlocked.toSorted((a, b) => (a.unlocked_at < b.unlocked_at ? 1 : a.unlocked_at > b.unlocked_at ? -1 : 0))
   const visibles = parDate.filter((x) => !x.hidden)
   const acquis = new Set(t.unlocked.map((x) => x.id))
   return {
     recents: periode === 'all' ? [] : visibles.filter((x) => contient(periode, jour, x.unlocked_at)),
     tous: visibles,
-    enCours: [...t.in_progress].sort((a, b) => b.value / Math.max(1, b.next_threshold) - a.value / Math.max(1, a.next_threshold)),
+    enCours: t.in_progress.toSorted((a, b) => b.value / Math.max(1, b.next_threshold) - a.value / Math.max(1, a.next_threshold)),
     cachesTrouves: parDate.filter((x) => x.hidden),
     cachesRestants: Math.max(0, t.hidden_remaining),
     debloques: t.unlocked.length,

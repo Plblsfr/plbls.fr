@@ -72,7 +72,7 @@ export const nomSemaineLong = (t: Tranche) => `du ${t.from_day === 1 ? '1er' : t
 export function phraseSemaines(r: Repartition): string {
   const pleines = r.buckets.filter((t) => t.days > 0 && t.per_day !== null)
   if (r.amount <= 0 || pleines.length < 2) return ''
-  const haute = [...pleines].sort((a, b) => (b.per_day ?? 0) - (a.per_day ?? 0))[0]
+  const haute = pleines.toSorted((a, b) => (b.per_day ?? 0) - (a.per_day ?? 0))[0]
   return `C’est ${nomSemaineLong(haute)} que tu dépenses le plus par jour : ${euros(haute.per_day ?? 0)} en moyenne.`
 }
 

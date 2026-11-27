@@ -436,7 +436,7 @@ export class EtatTirelire {
 
   get groupes(): Groupe[] {
     const rang = (g: Groupe) => (this.cleDe(g) === this.enTete ? 0 : this.passes.includes(this.cleDe(g)) ? 2 : 1)
-    return [...(this.file?.groups ?? [])].sort((x, y) => rang(x) - rang(y))
+    return (this.file?.groups ?? []).toSorted((x, y) => rang(x) - rang(y))
   }
 
   passer(g: Groupe) {

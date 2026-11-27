@@ -170,7 +170,7 @@ export function rangerRecaps(recaps: RecapResume[]): Rangement {
     const dernier = mois[mois.length - 1].period
     for (let p = mois[0].period, garde = 0; p >= dernier && garde < 600; p = moisPrecedent(p), garde++) cases.push({ periode: p, label: libelleRecap('month', p), recap: connus.get(p) ?? null })
   }
-  const nouveau = [...recaps].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).find((r) => !r.seen) ?? null
+  const nouveau = recaps.toSorted((a, b) => (a.created_at < b.created_at ? 1 : -1)).find((r) => !r.seen) ?? null
   return {
     nouveau,
     mois: cases.filter((c) => !nouveau || c.recap?.id !== nouveau.id),

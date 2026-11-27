@@ -15,7 +15,7 @@
   const groupes = $derived(tirelire.groupes)
   const courant = $derived(groupes[0] ?? null)
   const suivants = $derived(groupes.slice(1))
-  const categories = $derived([...actives(tirelire.categories ?? [])].sort((a, b) => Number(b.kind === 'variable') - Number(a.kind === 'variable')))
+  const categories = $derived(actives(tirelire.categories ?? []).toSorted((a, b) => Number(b.kind === 'variable') - Number(a.kind === 'variable')))
   const visibles = $derived(toutes ? categories : categories.filter((c, i) => i < COURT || c.id === choix))
   const choisie = $derived(categories.find((c) => c.id === choix) ?? null)
   const total = $derived(tirelire.classeesIci + tirelire.aClasser)
