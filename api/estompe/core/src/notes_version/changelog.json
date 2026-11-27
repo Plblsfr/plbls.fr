@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.122.0",
+    "date": "2026-11-27",
+    "new": [
+      "Tirelire (nouveau, réservé aux personnes à qui l'accès est accordé) : suivez vos comptes bancaires dans Estompe. Importez vos relevés PDF du Crédit Mutuel de Bretagne ; le PDF d'origine n'est pas conservé.",
+      "Tirelire : chaque opération est classée dans une catégorie (fixe, variable, épargne, revenu). Les règles se réappliquent à tout l'historique quand vous les changez, et vous fixez un plafond par catégorie.",
+      "Tirelire : la vue du mois, l'évolution sur plusieurs mois, les habitudes (commerçants, petits achats, abonnements) et un simulateur pour voir ce qu'une économie rapporterait.",
+      "Tirelire : recherche d'opérations par mot, montant, sens ou type, et export en CSV pour tableur."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.114.1",
     "date": "2026-11-26",
     "new": [
