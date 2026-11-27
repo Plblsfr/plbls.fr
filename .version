@@ -1,14 +1,14 @@
 {
   "api": "0.93.0",
-  "web": "0.122.0",
-  "windows": "0.124.0",
-  "android": "0.122.0",
-  "security": "0.1.5",
-  "aegis": "0.2.0",
-  "entracte": "0.7.1",
-  "sillon": "0.3.0",
-  "sablier": "0.1.0",
-  "regie": "0.2.0",
+  "web": "0.123.0",
+  "windows": "0.125.0",
+  "android": "0.123.0",
+  "security": "0.2.0",
+  "aegis": "0.3.0",
+  "entracte": "0.8.0",
+  "sillon": "0.4.0",
+  "sablier": "0.2.0",
+  "regie": "0.3.0",
   "ui": "2.0.2",
-  "tirelire": "0.7.0"
+  "tirelire": "0.8.0"
 }
